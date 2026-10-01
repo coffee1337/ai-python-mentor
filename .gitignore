@@ -1,0 +1,17 @@
+# Local environment
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Web build and dependencies
+node_modules/
+.next/
+out/
+
+# Local databases and editor files
+*.sqlite3
+.vscode/
+.idea/
