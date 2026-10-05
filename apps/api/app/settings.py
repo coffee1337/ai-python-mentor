@@ -55,7 +55,7 @@ def load_runner_settings(*, allow_test_transport: bool = False) -> RunnerSetting
             policy_file = Path(os.environ["RUNNER_VERIFIED_POLICY_FILE"])
             if policy_file.stat().st_size > 4096:
                 raise ValueError()
-            policy = json.loads(policy_file.read_text())
+            policy = json.loads(policy_file.read_text(encoding="utf-8"))
             reviewed = policy.get("policy") == "python-authored-v1" and policy.get("isolation_verified") is True
             if parsed.scheme != "https" or not reviewed or not all(Path(p).is_file() for p in files):
                 raise ValueError()
