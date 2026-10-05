@@ -59,7 +59,7 @@ class Policy:
         try:
             if self.attestation_file.stat().st_size > 4096:
                 raise ValueError()
-            attestation = json.loads(self.attestation_file.read_text())
+            attestation = json.loads(self.attestation_file.read_text(encoding="utf-8"))
             profile_digest = hashlib.sha256(Path(self.seccomp_file).read_bytes()).hexdigest()
             catalog_digest = hashlib.sha256(self.catalog_file.read_bytes()).hexdigest()
             if not (attestation.get("policy") == POLICY and attestation.get("isolation_verified") is True

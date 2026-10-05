@@ -13,6 +13,6 @@ rows = [{"exercise_id": row["exercise_id"], "version": row["version"],
          "cases": [{key: case[key] for key in ("args", "kwargs", "expected", "visibility")} for case in row["cases"]]}
         for row in RUNNER_EXERCISES.values()]
 destination = Path(sys.argv[1])
-destination.write_text(json.dumps(rows, ensure_ascii=False, allow_nan=False, separators=(",", ":")))
+destination.write_text(json.dumps(rows, ensure_ascii=False, allow_nan=False, separators=(",", ":")), encoding="utf-8")
 destination.chmod(0o600)
 print(f"exported {len(rows)} immutable coding exercises")

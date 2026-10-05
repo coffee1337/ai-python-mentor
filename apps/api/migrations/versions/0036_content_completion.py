@@ -15,7 +15,7 @@ depends_on=None
 
 
 def seeds():
-    return json.loads((Path(__file__).parents[1]/'data'/'0036_content_completion.json').read_text())
+    return json.loads((Path(__file__).parents[1]/'data'/'0036_content_completion.json').read_text(encoding='utf-8'))
 
 
 def tables():
