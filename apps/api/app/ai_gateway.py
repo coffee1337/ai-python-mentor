@@ -25,6 +25,7 @@ class Choice(BaseModel):
 
 class ProviderResponse(BaseModel):
     choices: list[Choice] = Field(min_length=1, max_length=1)
+    usage: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -35,13 +36,14 @@ class GatewayConfig:
     timeout: float
 
 
-def configuration() -> GatewayConfig:
+def configuration(*, model_override: str | None = None) -> GatewayConfig:
     url = os.getenv("AI_GATEWAY_URL", "").strip()
     model = os.getenv("AI_GATEWAY_MODEL", "").strip()
     key = os.getenv("AI_GATEWAY_API_KEY", "").strip()
     try:
         parts = urlsplit(url)
         timeout = float(os.getenv("AI_GATEWAY_TIMEOUT_SECONDS", "20"))
+        model = model_override.strip() if model_override else model
         valid = (parts.scheme == "https" and parts.hostname and not parts.username
                  and not parts.password and not parts.query and not parts.fragment
                  and model and key and 1 <= timeout <= 60)
@@ -53,13 +55,25 @@ def configuration() -> GatewayConfig:
 
 
 def generate(config: GatewayConfig, messages: list[dict[str, str]]) -> str:
+    content, _ = generate_with_usage(config, messages)
+    return content
+
+
+def generate_with_usage(
+    config: GatewayConfig,
+    messages: list[dict[str, str]],
+    *,
+    max_completion_tokens: int = 2200,
+) -> tuple[str, dict | None]:
     """One HTTP call. Validate the envelope; never expose provider error bodies."""
+    if not 1 <= max_completion_tokens <= 3000:
+        raise ValueError("Invalid completion-token budget")
     try:
         with httpx.Client(timeout=config.timeout, follow_redirects=False, trust_env=False) as client:
             with client.stream(
                 "POST", config.url,
                 headers={"Authorization": f"Bearer {config.key}"},
-                json={"model": config.model, "messages": messages, "max_completion_tokens": 800},
+                json={"model": config.model, "messages": messages, "max_completion_tokens": max_completion_tokens},
             ) as response:
                 response.raise_for_status()
                 raw = bytearray()
@@ -71,7 +85,7 @@ def generate(config: GatewayConfig, messages: list[dict[str, str]]) -> str:
         choice = parsed.choices[0]
         if choice.message.role != "assistant" or choice.finish_reason != "stop" or not choice.message.content.strip():
             raise ValueError("Incomplete response")
-        return choice.message.content.strip()
+        return choice.message.content.strip(), parsed.usage
     except httpx.TimeoutException:
         raise GatewayError(504, "AI mentor timed out; retry later") from None
     except (httpx.HTTPError, ValidationError, ValueError, UnicodeError):

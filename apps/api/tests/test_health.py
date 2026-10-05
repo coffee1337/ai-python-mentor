@@ -32,3 +32,18 @@ def test_health_reports_database_unavailable(monkeypatch):
     response = TestClient(app).get("/health")
     assert response.status_code == 503
     assert response.json()["detail"] == "Database is unavailable"
+
+
+def test_cors_preflight_allows_hint_post_headers():
+    response = TestClient(app).options(
+        "/learning/exercises/variables-v1/hints",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "X-CSRF-Token, Idempotency-Key",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert "idempotency-key" in response.headers["access-control-allow-headers"].lower()
+    assert "x-csrf-token" in response.headers["access-control-allow-headers"].lower()

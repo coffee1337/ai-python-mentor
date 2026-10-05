@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 
 from app import ai_gateway
-from app.db.models import LessonCompletion
+from app.db.models import AIUsageLedger, LessonCompletion
 from app.db.session import get_db
 from app.main import app
 from test_auth import client, csrf
@@ -41,6 +41,11 @@ def provider(monkeypatch):
 def send(client, request_id=None, message="Помоги понять присваивание"):
     return client.post(PATH, headers={"X-CSRF-Token": csrf(client)},
                        json={"request_id": str(request_id or uuid4()), "message": message})
+
+
+def ledger_rows():
+    with next(app.dependency_overrides[get_db]()) as db:
+        return list(db.scalars(select(AIUsageLedger)))
 
 
 def test_missing_config_and_access(client, monkeypatch):
@@ -104,6 +109,71 @@ def test_success_history_retry_and_evidence(client, provider):
     assert complete(client).status_code == 200
     with next(app.dependency_overrides[get_db]()) as db:
         assert db.scalar(select(LessonCompletion)).evidence_type == "authored_quiz_assisted"
+
+
+def test_success_records_usage_with_safe_token_types_and_character_counts(client, provider):
+    register(client); onboard(client)
+    provider[0]["body"]["usage"] = {
+        "prompt_tokens": 17,
+        "completion_tokens": "not-an-int",
+    }
+
+    response = send(client)
+
+    assert response.status_code == 200
+    row = ledger_rows()[0]
+    request = provider[1][0]
+    assert row.operation == "mentor_chat"
+    assert row.model_id == "test-model"
+    assert row.generation_id is None
+    assert row.cache_hit is False
+    assert row.status == "completed"
+    assert row.input_chars == sum(len(message["content"]) for message in request["messages"])
+    assert row.output_chars == len(response.json()["content"])
+    assert row.input_tokens == 17
+    assert row.output_tokens is None
+
+
+def test_gateway_error_records_usage_without_provider_details(client, provider):
+    register(client); onboard(client)
+    state, calls = provider
+    state["status"] = 500
+    state["body"] = {"error": "secret-test-key"}
+
+    response = send(client)
+
+    assert response.status_code == 502
+    assert "secret-test-key" not in response.text
+    row = ledger_rows()[0]
+    assert row.operation == "mentor_chat"
+    assert row.model_id == "test-model"
+    assert row.generation_id is None
+    assert row.cache_hit is False
+    assert row.status == "gateway_error"
+    assert row.input_chars == sum(len(message["content"]) for message in calls[0]["messages"])
+    assert row.output_chars == 0
+    assert row.input_tokens is None
+    assert row.output_tokens is None
+
+
+def test_repeated_request_id_records_a_cache_hit_without_another_provider_call(client, provider):
+    register(client); onboard(client)
+    request_id = uuid4()
+
+    first = send(client, request_id)
+    second = send(client, request_id)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["id"] == first.json()["id"]
+    assert len(provider[1]) == 1
+    rows = ledger_rows()
+    assert len(rows) == 2
+    assert {row.cache_hit for row in rows} == {False, True}
+    cached = next(row for row in rows if row.cache_hit)
+    assert cached.status == "cache_hit"
+    assert cached.input_chars == len("Помоги понять присваивание")
+    assert cached.output_chars == len(first.json()["content"])
 
 
 @pytest.mark.parametrize("failure,expected", [("timeout", 504), ("http", 502), ("schema", 502)])

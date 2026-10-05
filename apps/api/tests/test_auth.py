@@ -11,6 +11,8 @@ from app.main import app
 
 @pytest.fixture()
 def client():
+    from app.auth import _attempts
+    _attempts.clear()
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 
 from app.security import normalize_email
 
@@ -78,3 +80,54 @@ class OnboardingResponse(BaseModel):
     completed: bool
     profile: ProfileResponse | None = None
     goal: GoalResponse | None = None
+
+
+class ReviewTodayQuestion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=100)
+    prompt: str = Field(min_length=1, max_length=4000)
+    choices: list[str] = Field(min_length=1, max_length=8)
+
+
+class ReviewTodayItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    review_token: str = Field(min_length=32, max_length=200)
+    skill_id: str = Field(min_length=1, max_length=120)
+    scheduled_for: date
+    overdue_days: int = Field(ge=0, le=36500)
+    questions: list[ReviewTodayQuestion] = Field(min_length=1, max_length=20)
+
+
+class ReviewTodayResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    as_of: datetime
+    items: list[ReviewTodayItem] = Field(max_length=100)
+
+
+class ReviewTodayCompleteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    review_token: str = Field(min_length=32, max_length=200)
+    answers: dict[StrictStr, StrictStr] = Field(min_length=1, max_length=20)
+
+    @field_validator("answers")
+    @classmethod
+    def valid_answers(cls, value: dict[str, str]) -> dict[str, str]:
+        if any(not 1 <= len(key) <= 100 for key in value):
+            raise ValueError("Answers are invalid")
+        if any(not 1 <= len(answer) <= 200 for answer in value.values()):
+            raise ValueError("Answers are invalid")
+        return value
+
+
+class ReviewTodayCompleteResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["recorded", "replayed"]
+    outcome: Literal["correct", "partial", "incorrect"]
+    schedule_applied: bool
+    same_day: bool
+    next_review_at: datetime | None = None

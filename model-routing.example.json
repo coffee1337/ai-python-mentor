@@ -1,10 +1,66 @@
 {
-  "note": "Подставлять только точные slug из cheapvibecode-models.json; не угадывать по display name.",
+  "note": "Slug'ы сверены с каталогом провайдера (cheapvibecode-models.json). При замене провайдера — пересверить по каталогу, не угадывать по display name.",
+  "principle": "Приоритет — качество на сложных задачах, экономия — на массовых рутинных вызовах. Никогда не понижать модель для рисков данных, sandbox и достоверности обучения.",
+  "efficiency": "Эффективность = качество / коэффициент расхода. Лидеры: muse-spark-1.3 (~1800), muse-spark-1.2 (~1500), deepseek-v4.1-flash (~1050), composer-2.5-fast (~333), grok-4.7 (~248), grok-4.6 (~232). Отсюда дешёвый средний класс Grok/Muse/DeepSeek выгоднее GPT при близком качестве.",
+  "context_note": "grok-4.x и deepseek имеют 500k контекста; gpt/claude/glm/gemini/kimi — около 1M. Задачи с большим репозиторием отдавай моделям с 1M.",
   "tiers": {
-    "ultra_cheap": ["Space Bunny", "DeepSeek V4.1 Flash", "GLM 5.3 Flash"],
-    "cheap": ["GPT 6 Luna", "GPT 5.6 Luna", "Qwen3.8 Flash", "Muse Spark 1.3"],
-    "balanced": ["GPT 6 Sol", "Claude Sonnet 5", "Gemini 3.8 Flash", "Grok 4.7"],
-    "premium": ["GPT 6.1 Sol", "GPT 6 Astra", "Claude Opus 5", "Claude Fable 5.1"]
+    "ultra_cheap": {
+      "models": ["space-bunny", "mimo-v2.5", "deepseek-v4.1-flash", "deepseek-v4-flash", "minimax-m3", "composer-2.5-fast", "glm-5.3-flash"],
+      "cost_multiplier": "0.001 / 0.05 / 0.1 / 0.1 / 0.3 / 0.3 / 0.3",
+      "quality": "58-105%",
+      "use_for": ["классификация и теги", "суммаризация", "простые quiz и подсказки", "микро-правки по однозначному требованию", "форматирование и boilerplate"],
+      "avoid_for": ["архитектура", "ревью риска", "security", "сложные многошаговые рассуждения"]
+    },
+    "cheap": {
+      "models": ["muse-spark-1.3", "muse-spark-1.2", "deepseek-v4.1-flash", "gpt-6-luna", "gpt-5.6-luna", "deepseek-v4-pro", "qwen3.8-flash"],
+      "cost_multiplier": "0.07 / 0.07 / 0.1 / 0.38 / 0.5 / 0.5 / 0.7",
+      "quality": "92-126%",
+      "use_for": ["рутинный scoped-код", "простые уроки и подсказки", "переформулировки", "диспетчеризация", "точечные тесты"],
+      "avoid_for": ["необратимые решения по схеме данных", "миграции", "auth/sandbox"]
+    },
+    "balanced": {
+      "models": ["grok-4.7", "grok-4.6", "hy4-preview", "gpt-5.6-terra", "glm-5.3", "gemini-3.8-flash", "kimi-k3", "claude-sonnet-5", "gpt-6-sol", "gpt-5.6-sol"],
+      "cost_multiplier": "0.5 / 0.5 / 1 / 1.3 / 1.5 / 2 / 2.5 / 2 / 3 / 4",
+      "quality": "100-130%",
+      "use_for": ["основная реализация фич", "тесты и диагностика падений", "содержание уроков", "среднее ревью", "сложный debugging"],
+      "note": "Grok 4.7 (124% при 0,5) и Muse Spark 1.3 (126% при 0,07) — лучшее качество на цену в каталоге. GLM 5.3 (118% при 1,5) силён на длинном контексте и русском тексте. Не ставить grok на security и доменную консистентность без проверки фактов."
+    },
+    "premium": {
+      "models": ["gpt-6.1-sol", "claude-opus-5", "claude-opus-5-5", "claude-opus-4.8", "gpt-5.6-sol", "claude-fable-5.1", "gpt-6-astra"],
+      "cost_multiplier": "3 / 4 / 4 / 4 / 4 / 8 / 10",
+      "quality": "111-139%",
+      "use_for": ["архитектурные развилки", "сложный debugging высокого риска", "security-sensitive ревью", "миграции данных"],
+      "note": "Вызывать редко и по сигналу риска, не на каждый вызов в цикле."
+    }
   },
-  "routes": {"classification_summary_simple_quiz":"ultra_cheap", "routine_scoped_code":"ultra_cheap", "medium_review_content":"cheap", "architecture_ambiguous_debugging":"balanced", "security_data_migrations":"premium"}
+  "routes": {
+    "classification_tags_summaries_simple_quiz": "ultra_cheap",
+    "routine_scoped_code": "cheap",
+    "orchestration_dispatch": "cheap",
+    "test_diagnosis": "cheap",
+    "medium_review_content": "balanced",
+    "feature_implementation": "balanced",
+    "architecture_ambiguous_debugging": "premium",
+    "security_data_migrations": "premium"
+  },
+  "escalation_signals": [
+    "неоднозначность требований или конфликт доменных инвариантов",
+    "две неудачные попытки решения",
+    "необратимое изменение схемы данных или миграция",
+    "security boundary, PII, sandbox, uploads, prompt injection",
+    "плавающие/нестабильные падения, async-гонки, таймауты",
+    "задача не помещается в 500k контекста"
+  ],
+  "downgrade_signals": [
+    "задача сводится к одному файлу по ясному требованию",
+    "тот же вопрос уже решён и нужен только повтор/вариация формулировки",
+    "проверка фактов по локальному коду без спорных выводы"
+  ],
+  "guardrails": [
+    "не понижать модель для рисков данных, sandbox и достоверности обучения",
+    "сначала пробовать исправление на текущей модели, потом эскалация",
+    "в agent TOML не дублировать premium-модель на ежедневную рутину",
+    "сверять фактические расходы по usage telemetry провайдера",
+    "grok и deepseek: 500k контекста — режь входные chunks"
+  ]
 }

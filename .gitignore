@@ -15,3 +15,10 @@ out/
 *.sqlite3
 .vscode/
 .idea/
+
+# Private PostgreSQL backups / restore-drill reports (contain user data)
+/backups/
+*.dump
+*.dump.partial
+*.backup
+*.pgpass

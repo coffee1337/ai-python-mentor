@@ -1,4 +1,6 @@
 import os
+import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,19 +10,63 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.auth import router as auth_router
 from app.learning import router as learning_router
 from app.mentor import router as mentor_router
+from app.practice import router as practice_router
+from app.learning_plan_api import router as learning_plan_router
+from app.knowledge_check import router as knowledge_check_router
+from app.assessment import router as assessment_router
+from app.skill_graph_api import router as skill_graph_router
+from app.curriculum_api import router as curriculum_router
+from app.ai_curriculum_api import router as ai_curriculum_router
+from app.exercise_hints import router as exercise_hints_router
+from app.mistake_memory_api import router as mistake_memory_router
+from app.reviews_api import router as reviews_router
 from app.db.session import engine
 
-app = FastAPI(title="AI-наставник API", version="0.1.0")
+logger = logging.getLogger("mentor.startup")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    report_gateway_status()
+    yield
+
+
+app = FastAPI(title="AI-наставник API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in os.getenv("WEB_ORIGINS", "http://localhost:3000").split(",") if origin.strip()],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
-    allow_headers=["Content-Type", "X-CSRF-Token"],
+    allow_headers=["Content-Type", "X-CSRF-Token", "Idempotency-Key"],
 )
 app.include_router(auth_router)
 app.include_router(learning_router)
 app.include_router(mentor_router)
+app.include_router(practice_router)
+app.include_router(learning_plan_router)
+app.include_router(knowledge_check_router)
+app.include_router(assessment_router)
+app.include_router(skill_graph_router)
+app.include_router(curriculum_router)
+app.include_router(ai_curriculum_router)
+app.include_router(exercise_hints_router)
+app.include_router(mistake_memory_router)
+app.include_router(reviews_router)
+
+
+def report_gateway_status() -> None:
+    """Log gateway readiness without printing keys or endpoints."""
+    try:
+        from app import ai_gateway
+
+        ai_gateway.configuration()
+    except ai_gateway.GatewayError:
+        logger.warning(
+            "AI gateway is not configured: mentor chat and AI curriculum return 503. "
+            "Set AI_GATEWAY_URL, AI_GATEWAY_MODEL and AI_GATEWAY_API_KEY in .env, then restart."
+        )
+    else:
+        logger.info("AI gateway configured; mentor chat and AI curriculum are available.")
 
 
 @app.get("/health", tags=["health"])
