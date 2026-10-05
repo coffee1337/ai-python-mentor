@@ -9,10 +9,11 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 import pytest
-from sqlalchemy import create_engine
+import sqlalchemy as sa
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.models import ExerciseVersion, LessonCompletion, User
+from app.db.models import ExerciseVersion, LessonCompletion, Skill, User
 from app.db.session import get_db
 from app.main import app
 
@@ -35,19 +36,34 @@ def legacy_locale(monkeypatch):
     monkeypatch.setattr(Path, "open", legacy_open)
 
 
+def enforce_foreign_keys(engine):
+    @event.listens_for(engine, "connect")
+    def enable_foreign_keys(connection, _record):
+        connection.execute("PRAGMA foreign_keys=ON")
+    return engine
+
+
+@pytest.fixture
+def migration_foreign_keys(monkeypatch):
+    original_factory = sa.engine_from_config
+    def foreign_key_engine(*args, **kwargs):
+        return enforce_foreign_keys(original_factory(*args, **kwargs))
+    monkeypatch.setattr(sa, "engine_from_config", foreign_key_engine)
+
+
 def test_frozen_migration_seeds_decode_independently_of_windows_locale(legacy_locale):
     expected = json.loads(SEEDS.read_bytes())
     assert "Ответ на" in expected["mappings"][0]["error_text"]
     assert runpy.run_path(str(MIGRATION))["seeds"]() == expected
 
 
-def test_locale_independent_upgrade_rollback_preserves_data_and_registration(tmp_path, monkeypatch, legacy_locale):
+def test_locale_independent_upgrade_rollback_preserves_data_and_registration(tmp_path, monkeypatch, legacy_locale, migration_foreign_keys):
     url = f"sqlite:///{(tmp_path / 'windows-upgrade.db').as_posix()}"
     monkeypatch.setenv("DATABASE_URL", url)
     config = Config(str(API_ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(API_ROOT / "migrations"))
     command.upgrade(config, "0030_bind_submission_results_to_exercise_version")
-    engine = create_engine(url, connect_args={"check_same_thread": False})
+    engine = enforce_foreign_keys(create_engine(url, connect_args={"check_same_thread": False}))
     user_id, version_id = uuid4(), uuid4()
     snapshot = {"schema_version": 1, "exercise_id": "encoding-sentinel", "version": 1,
                 "lesson": {"id": "encoding-sentinel", "skill_id": "python.variables", "title": "Сохранённый урок 🙂"}}
@@ -85,6 +101,38 @@ def test_locale_independent_upgrade_rollback_preserves_data_and_registration(tmp
             assert_preserved()
             assert client.get("/ready").status_code == 200
             assert client.get("/me").json()["email"] == "encoding-new@example.invalid"
+    finally:
+        engine.dispose()
+
+
+def test_clean_upgrade_seeds_missing_skills_without_overwriting_existing_catalog(tmp_path, monkeypatch, migration_foreign_keys):
+    url = f"sqlite:///{(tmp_path / 'foreign-keys.db').as_posix()}"
+    monkeypatch.setenv("DATABASE_URL", url)
+    config = Config(str(API_ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(API_ROOT / "migrations"))
+    command.upgrade(config, "0035_execution_jobs")
+    engine = enforce_foreign_keys(create_engine(url))
+    with Session(engine) as db:
+        assert db.get(Skill, "python.imports") is None
+        existing = db.get(Skill, "python.variables")
+        existing.name = "Историческое название 🙂"
+        existing.description = "Сохранённое описание"
+        db.commit()
+    try:
+        command.upgrade(config, "head")
+        with Session(engine) as db:
+            assert db.connection().exec_driver_sql("PRAGMA foreign_key_check").all() == []
+            assert db.get(Skill, "python.imports").name == "imports"
+            assert db.get(Skill, "python.variables").name == "Историческое название 🙂"
+            assert db.get(Skill, "python.variables").description == "Сохранённое описание"
+        command.downgrade(config, "0035_execution_jobs")
+        with Session(engine) as db:
+            assert db.get(Skill, "python.imports") is not None
+        command.upgrade(config, "head")
+        command.check(config)
+        with Session(engine) as db:
+            assert db.connection().exec_driver_sql("PRAGMA foreign_key_check").all() == []
+            assert db.get(Skill, "python.variables").name == "Историческое название 🙂"
     finally:
         engine.dispose()
 

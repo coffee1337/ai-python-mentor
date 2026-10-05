@@ -10354,5 +10354,1087 @@
       "remediation_exercise_id": "fixtures-v2",
       "remediation_exercise_version": 2
     }
+  ],
+  "skills": [
+    {
+      "id": "python.variables",
+      "name": "variables",
+      "category": "python.core",
+      "difficulty": 0.1,
+      "description": "Python core skill: variables",
+      "importance": 0.965,
+      "tags": [
+        "python.core",
+        "variables"
+      ]
+    },
+    {
+      "id": "python.data_types",
+      "name": "data types",
+      "category": "python.core",
+      "difficulty": 0.12000000000000001,
+      "description": "Python core skill: data types",
+      "importance": 0.958,
+      "tags": [
+        "python.core",
+        "data_types"
+      ]
+    },
+    {
+      "id": "python.conditionals",
+      "name": "conditionals",
+      "category": "python.core",
+      "difficulty": 0.14,
+      "description": "Python core skill: conditionals",
+      "importance": 0.951,
+      "tags": [
+        "python.core",
+        "conditionals"
+      ]
+    },
+    {
+      "id": "python.loops",
+      "name": "loops",
+      "category": "python.core",
+      "difficulty": 0.16,
+      "description": "Python core skill: loops",
+      "importance": 0.944,
+      "tags": [
+        "python.core",
+        "loops"
+      ]
+    },
+    {
+      "id": "python.functions",
+      "name": "functions",
+      "category": "python.core",
+      "difficulty": 0.18,
+      "description": "Python core skill: functions",
+      "importance": 0.937,
+      "tags": [
+        "python.core",
+        "functions"
+      ]
+    },
+    {
+      "id": "python.parameters",
+      "name": "parameters",
+      "category": "python.core",
+      "difficulty": 0.2,
+      "description": "Python core skill: parameters",
+      "importance": 0.93,
+      "tags": [
+        "python.core",
+        "parameters"
+      ]
+    },
+    {
+      "id": "python.return_values",
+      "name": "return values",
+      "category": "python.core",
+      "difficulty": 0.22,
+      "description": "Python core skill: return values",
+      "importance": 0.923,
+      "tags": [
+        "python.core",
+        "return_values"
+      ]
+    },
+    {
+      "id": "python.scope",
+      "name": "scope",
+      "category": "python.core",
+      "difficulty": 0.24000000000000002,
+      "description": "Python core skill: scope",
+      "importance": 0.916,
+      "tags": [
+        "python.core",
+        "scope"
+      ]
+    },
+    {
+      "id": "python.mutability",
+      "name": "mutability",
+      "category": "python.core",
+      "difficulty": 0.26,
+      "description": "Python core skill: mutability",
+      "importance": 0.909,
+      "tags": [
+        "python.core",
+        "mutability"
+      ]
+    },
+    {
+      "id": "python.strings",
+      "name": "strings",
+      "category": "python.core",
+      "difficulty": 0.28,
+      "description": "Python core skill: strings",
+      "importance": 0.902,
+      "tags": [
+        "python.core",
+        "strings"
+      ]
+    },
+    {
+      "id": "python.numbers",
+      "name": "numbers",
+      "category": "python.core",
+      "difficulty": 0.30000000000000004,
+      "description": "Python core skill: numbers",
+      "importance": 0.895,
+      "tags": [
+        "python.core",
+        "numbers"
+      ]
+    },
+    {
+      "id": "python.booleans",
+      "name": "booleans",
+      "category": "python.core",
+      "difficulty": 0.32,
+      "description": "Python core skill: booleans",
+      "importance": 0.888,
+      "tags": [
+        "python.core",
+        "booleans"
+      ]
+    },
+    {
+      "id": "python.truthiness",
+      "name": "truthiness",
+      "category": "python.core",
+      "difficulty": 0.33999999999999997,
+      "description": "Python core skill: truthiness",
+      "importance": 0.881,
+      "tags": [
+        "python.core",
+        "truthiness"
+      ]
+    },
+    {
+      "id": "python.comprehensions",
+      "name": "comprehensions",
+      "category": "python.core",
+      "difficulty": 0.36,
+      "description": "Python core skill: comprehensions",
+      "importance": 0.874,
+      "tags": [
+        "python.core",
+        "comprehensions"
+      ]
+    },
+    {
+      "id": "python.lists",
+      "name": "lists",
+      "category": "python.core",
+      "difficulty": 0.38,
+      "description": "Python core skill: lists",
+      "importance": 0.867,
+      "tags": [
+        "python.core",
+        "lists"
+      ]
+    },
+    {
+      "id": "python.tuples",
+      "name": "tuples",
+      "category": "python.core",
+      "difficulty": 0.4,
+      "description": "Python core skill: tuples",
+      "importance": 0.86,
+      "tags": [
+        "python.core",
+        "tuples"
+      ]
+    },
+    {
+      "id": "python.sets",
+      "name": "sets",
+      "category": "python.core",
+      "difficulty": 0.42000000000000004,
+      "description": "Python core skill: sets",
+      "importance": 0.853,
+      "tags": [
+        "python.core",
+        "sets"
+      ]
+    },
+    {
+      "id": "python.dictionaries",
+      "name": "dictionaries",
+      "category": "python.core",
+      "difficulty": 0.44000000000000006,
+      "description": "Python core skill: dictionaries",
+      "importance": 0.846,
+      "tags": [
+        "python.core",
+        "dictionaries"
+      ]
+    },
+    {
+      "id": "python.slicing",
+      "name": "slicing",
+      "category": "python.core",
+      "difficulty": 0.45999999999999996,
+      "description": "Python core skill: slicing",
+      "importance": 0.839,
+      "tags": [
+        "python.core",
+        "slicing"
+      ]
+    },
+    {
+      "id": "python.iteration",
+      "name": "iteration",
+      "category": "python.core",
+      "difficulty": 0.48,
+      "description": "Python core skill: iteration",
+      "importance": 0.832,
+      "tags": [
+        "python.core",
+        "iteration"
+      ]
+    },
+    {
+      "id": "python.exceptions",
+      "name": "exceptions",
+      "category": "python.core",
+      "difficulty": 0.5,
+      "description": "Python core skill: exceptions",
+      "importance": 0.825,
+      "tags": [
+        "python.core",
+        "exceptions"
+      ]
+    },
+    {
+      "id": "python.try_except",
+      "name": "try except",
+      "category": "python.core",
+      "difficulty": 0.52,
+      "description": "Python core skill: try except",
+      "importance": 0.818,
+      "tags": [
+        "python.core",
+        "try_except"
+      ]
+    },
+    {
+      "id": "python.custom_exceptions",
+      "name": "custom exceptions",
+      "category": "python.core",
+      "difficulty": 0.54,
+      "description": "Python core skill: custom exceptions",
+      "importance": 0.811,
+      "tags": [
+        "python.core",
+        "custom_exceptions"
+      ]
+    },
+    {
+      "id": "python.modules",
+      "name": "modules",
+      "category": "python.core",
+      "difficulty": 0.56,
+      "description": "Python core skill: modules",
+      "importance": 0.804,
+      "tags": [
+        "python.core",
+        "modules"
+      ]
+    },
+    {
+      "id": "python.packages",
+      "name": "packages",
+      "category": "python.core",
+      "difficulty": 0.58,
+      "description": "Python core skill: packages",
+      "importance": 0.797,
+      "tags": [
+        "python.core",
+        "packages"
+      ]
+    },
+    {
+      "id": "python.imports",
+      "name": "imports",
+      "category": "python.core",
+      "difficulty": 0.6,
+      "description": "Python core skill: imports",
+      "importance": 0.79,
+      "tags": [
+        "python.core",
+        "imports"
+      ]
+    },
+    {
+      "id": "python.testing_basics",
+      "name": "testing basics",
+      "category": "python.core",
+      "difficulty": 0.62,
+      "description": "Python core skill: testing basics",
+      "importance": 0.783,
+      "tags": [
+        "python.core",
+        "testing_basics"
+      ]
+    },
+    {
+      "id": "python.assertions",
+      "name": "assertions",
+      "category": "python.core",
+      "difficulty": 0.64,
+      "description": "Python core skill: assertions",
+      "importance": 0.776,
+      "tags": [
+        "python.core",
+        "assertions"
+      ]
+    },
+    {
+      "id": "python.pytest_basics",
+      "name": "pytest basics",
+      "category": "python.core",
+      "difficulty": 0.66,
+      "description": "Python core skill: pytest basics",
+      "importance": 0.769,
+      "tags": [
+        "python.core",
+        "pytest_basics"
+      ]
+    },
+    {
+      "id": "python.fixtures",
+      "name": "fixtures",
+      "category": "python.core",
+      "difficulty": 0.6799999999999999,
+      "description": "Python core skill: fixtures",
+      "importance": 0.762,
+      "tags": [
+        "python.core",
+        "fixtures"
+      ]
+    },
+    {
+      "id": "python.typing_basics",
+      "name": "typing basics",
+      "category": "python.core",
+      "difficulty": 0.7,
+      "description": "Python core skill: typing basics",
+      "importance": 0.755,
+      "tags": [
+        "python.core",
+        "typing_basics"
+      ]
+    },
+    {
+      "id": "python.type_hints",
+      "name": "type hints",
+      "category": "python.core",
+      "difficulty": 0.72,
+      "description": "Python core skill: type hints",
+      "importance": 0.748,
+      "tags": [
+        "python.core",
+        "type_hints"
+      ]
+    },
+    {
+      "id": "python.dataclasses",
+      "name": "dataclasses",
+      "category": "python.core",
+      "difficulty": 0.74,
+      "description": "Python core skill: dataclasses",
+      "importance": 0.741,
+      "tags": [
+        "python.core",
+        "dataclasses"
+      ]
+    },
+    {
+      "id": "python.classes",
+      "name": "classes",
+      "category": "python.core",
+      "difficulty": 0.76,
+      "description": "Python core skill: classes",
+      "importance": 0.734,
+      "tags": [
+        "python.core",
+        "classes"
+      ]
+    },
+    {
+      "id": "python.objects",
+      "name": "objects",
+      "category": "python.core",
+      "difficulty": 0.78,
+      "description": "Python core skill: objects",
+      "importance": 0.727,
+      "tags": [
+        "python.core",
+        "objects"
+      ]
+    },
+    {
+      "id": "python.inheritance",
+      "name": "inheritance",
+      "category": "python.core",
+      "difficulty": 0.8,
+      "description": "Python core skill: inheritance",
+      "importance": 0.72,
+      "tags": [
+        "python.core",
+        "inheritance"
+      ]
+    },
+    {
+      "id": "python.composition",
+      "name": "composition",
+      "category": "python.core",
+      "difficulty": 0.82,
+      "description": "Python core skill: composition",
+      "importance": 0.713,
+      "tags": [
+        "python.core",
+        "composition"
+      ]
+    },
+    {
+      "id": "python.protocols",
+      "name": "protocols",
+      "category": "python.core",
+      "difficulty": 0.84,
+      "description": "Python core skill: protocols",
+      "importance": 0.706,
+      "tags": [
+        "python.core",
+        "protocols"
+      ]
+    },
+    {
+      "id": "python.decorators",
+      "name": "decorators",
+      "category": "python.core",
+      "difficulty": 0.86,
+      "description": "Python core skill: decorators",
+      "importance": 0.699,
+      "tags": [
+        "python.core",
+        "decorators"
+      ]
+    },
+    {
+      "id": "python.generators",
+      "name": "generators",
+      "category": "python.core",
+      "difficulty": 0.88,
+      "description": "Python core skill: generators",
+      "importance": 0.692,
+      "tags": [
+        "python.core",
+        "generators"
+      ]
+    },
+    {
+      "id": "python.iterators",
+      "name": "iterators",
+      "category": "python.core",
+      "difficulty": 0.9,
+      "description": "Python core skill: iterators",
+      "importance": 0.685,
+      "tags": [
+        "python.core",
+        "iterators"
+      ]
+    },
+    {
+      "id": "python.context_managers",
+      "name": "context managers",
+      "category": "python.core",
+      "difficulty": 0.9,
+      "description": "Python core skill: context managers",
+      "importance": 0.685,
+      "tags": [
+        "python.core",
+        "context_managers"
+      ]
+    },
+    {
+      "id": "backend.http_basics",
+      "name": "http basics",
+      "category": "python.backend",
+      "difficulty": 0.25,
+      "description": "Python backend skill: http basics",
+      "importance": 0.912,
+      "tags": [
+        "python.backend",
+        "http_basics"
+      ]
+    },
+    {
+      "id": "backend.rest",
+      "name": "rest",
+      "category": "python.backend",
+      "difficulty": 0.262,
+      "description": "Python backend skill: rest",
+      "importance": 0.908,
+      "tags": [
+        "python.backend",
+        "rest"
+      ]
+    },
+    {
+      "id": "backend.api_design",
+      "name": "api design",
+      "category": "python.backend",
+      "difficulty": 0.274,
+      "description": "Python backend skill: api design",
+      "importance": 0.904,
+      "tags": [
+        "python.backend",
+        "api_design"
+      ]
+    },
+    {
+      "id": "backend.json",
+      "name": "json",
+      "category": "python.backend",
+      "difficulty": 0.28600000000000003,
+      "description": "Python backend skill: json",
+      "importance": 0.9,
+      "tags": [
+        "python.backend",
+        "json"
+      ]
+    },
+    {
+      "id": "backend.fastapi_basics",
+      "name": "fastapi basics",
+      "category": "python.backend",
+      "difficulty": 0.298,
+      "description": "Python backend skill: fastapi basics",
+      "importance": 0.896,
+      "tags": [
+        "python.backend",
+        "fastapi_basics"
+      ]
+    },
+    {
+      "id": "backend.fastapi_routing",
+      "name": "fastapi routing",
+      "category": "python.backend",
+      "difficulty": 0.31,
+      "description": "Python backend skill: fastapi routing",
+      "importance": 0.891,
+      "tags": [
+        "python.backend",
+        "fastapi_routing"
+      ]
+    },
+    {
+      "id": "backend.fastapi_dependencies",
+      "name": "fastapi dependencies",
+      "category": "python.backend",
+      "difficulty": 0.322,
+      "description": "Python backend skill: fastapi dependencies",
+      "importance": 0.887,
+      "tags": [
+        "python.backend",
+        "fastapi_dependencies"
+      ]
+    },
+    {
+      "id": "backend.request_validation",
+      "name": "request validation",
+      "category": "python.backend",
+      "difficulty": 0.334,
+      "description": "Python backend skill: request validation",
+      "importance": 0.883,
+      "tags": [
+        "python.backend",
+        "request_validation"
+      ]
+    },
+    {
+      "id": "backend.response_models",
+      "name": "response models",
+      "category": "python.backend",
+      "difficulty": 0.346,
+      "description": "Python backend skill: response models",
+      "importance": 0.879,
+      "tags": [
+        "python.backend",
+        "response_models"
+      ]
+    },
+    {
+      "id": "backend.authentication",
+      "name": "authentication",
+      "category": "python.backend",
+      "difficulty": 0.358,
+      "description": "Python backend skill: authentication",
+      "importance": 0.875,
+      "tags": [
+        "python.backend",
+        "authentication"
+      ]
+    },
+    {
+      "id": "backend.authorization",
+      "name": "authorization",
+      "category": "python.backend",
+      "difficulty": 0.37,
+      "description": "Python backend skill: authorization",
+      "importance": 0.871,
+      "tags": [
+        "python.backend",
+        "authorization"
+      ]
+    },
+    {
+      "id": "backend.sessions",
+      "name": "sessions",
+      "category": "python.backend",
+      "difficulty": 0.382,
+      "description": "Python backend skill: sessions",
+      "importance": 0.866,
+      "tags": [
+        "python.backend",
+        "sessions"
+      ]
+    },
+    {
+      "id": "backend.csrf",
+      "name": "csrf",
+      "category": "python.backend",
+      "difficulty": 0.394,
+      "description": "Python backend skill: csrf",
+      "importance": 0.862,
+      "tags": [
+        "python.backend",
+        "csrf"
+      ]
+    },
+    {
+      "id": "backend.password_hashing",
+      "name": "password hashing",
+      "category": "python.backend",
+      "difficulty": 0.406,
+      "description": "Python backend skill: password hashing",
+      "importance": 0.858,
+      "tags": [
+        "python.backend",
+        "password_hashing"
+      ]
+    },
+    {
+      "id": "backend.async_python",
+      "name": "async python",
+      "category": "python.backend",
+      "difficulty": 0.41800000000000004,
+      "description": "Python backend skill: async python",
+      "importance": 0.854,
+      "tags": [
+        "python.backend",
+        "async_python"
+      ]
+    },
+    {
+      "id": "backend.async_io",
+      "name": "async io",
+      "category": "python.backend",
+      "difficulty": 0.43,
+      "description": "Python backend skill: async io",
+      "importance": 0.85,
+      "tags": [
+        "python.backend",
+        "async_io"
+      ]
+    },
+    {
+      "id": "backend.background_tasks",
+      "name": "background tasks",
+      "category": "python.backend",
+      "difficulty": 0.442,
+      "description": "Python backend skill: background tasks",
+      "importance": 0.845,
+      "tags": [
+        "python.backend",
+        "background_tasks"
+      ]
+    },
+    {
+      "id": "backend.logging",
+      "name": "logging",
+      "category": "python.backend",
+      "difficulty": 0.454,
+      "description": "Python backend skill: logging",
+      "importance": 0.841,
+      "tags": [
+        "python.backend",
+        "logging"
+      ]
+    },
+    {
+      "id": "backend.configuration",
+      "name": "configuration",
+      "category": "python.backend",
+      "difficulty": 0.46599999999999997,
+      "description": "Python backend skill: configuration",
+      "importance": 0.837,
+      "tags": [
+        "python.backend",
+        "configuration"
+      ]
+    },
+    {
+      "id": "backend.environment_variables",
+      "name": "environment variables",
+      "category": "python.backend",
+      "difficulty": 0.478,
+      "description": "Python backend skill: environment variables",
+      "importance": 0.833,
+      "tags": [
+        "python.backend",
+        "environment_variables"
+      ]
+    },
+    {
+      "id": "backend.error_handling",
+      "name": "error handling",
+      "category": "python.backend",
+      "difficulty": 0.49,
+      "description": "Python backend skill: error handling",
+      "importance": 0.829,
+      "tags": [
+        "python.backend",
+        "error_handling"
+      ]
+    },
+    {
+      "id": "backend.middleware",
+      "name": "middleware",
+      "category": "python.backend",
+      "difficulty": 0.502,
+      "description": "Python backend skill: middleware",
+      "importance": 0.824,
+      "tags": [
+        "python.backend",
+        "middleware"
+      ]
+    },
+    {
+      "id": "backend.openapi",
+      "name": "openapi",
+      "category": "python.backend",
+      "difficulty": 0.514,
+      "description": "Python backend skill: openapi",
+      "importance": 0.82,
+      "tags": [
+        "python.backend",
+        "openapi"
+      ]
+    },
+    {
+      "id": "backend.websockets",
+      "name": "websockets",
+      "category": "python.backend",
+      "difficulty": 0.526,
+      "description": "Python backend skill: websockets",
+      "importance": 0.816,
+      "tags": [
+        "python.backend",
+        "websockets"
+      ]
+    },
+    {
+      "id": "backend.sql_basics",
+      "name": "sql basics",
+      "category": "python.backend",
+      "difficulty": 0.538,
+      "description": "Python backend skill: sql basics",
+      "importance": 0.812,
+      "tags": [
+        "python.backend",
+        "sql_basics"
+      ]
+    },
+    {
+      "id": "backend.postgresql",
+      "name": "postgresql",
+      "category": "python.backend",
+      "difficulty": 0.55,
+      "description": "Python backend skill: postgresql",
+      "importance": 0.807,
+      "tags": [
+        "python.backend",
+        "postgresql"
+      ]
+    },
+    {
+      "id": "backend.sql_select",
+      "name": "sql select",
+      "category": "python.backend",
+      "difficulty": 0.562,
+      "description": "Python backend skill: sql select",
+      "importance": 0.803,
+      "tags": [
+        "python.backend",
+        "sql_select"
+      ]
+    },
+    {
+      "id": "backend.sql_joins",
+      "name": "sql joins",
+      "category": "python.backend",
+      "difficulty": 0.5740000000000001,
+      "description": "Python backend skill: sql joins",
+      "importance": 0.799,
+      "tags": [
+        "python.backend",
+        "sql_joins"
+      ]
+    },
+    {
+      "id": "backend.sql_indexes",
+      "name": "sql indexes",
+      "category": "python.backend",
+      "difficulty": 0.5860000000000001,
+      "description": "Python backend skill: sql indexes",
+      "importance": 0.795,
+      "tags": [
+        "python.backend",
+        "sql_indexes"
+      ]
+    },
+    {
+      "id": "backend.transactions",
+      "name": "transactions",
+      "category": "python.backend",
+      "difficulty": 0.5980000000000001,
+      "description": "Python backend skill: transactions",
+      "importance": 0.791,
+      "tags": [
+        "python.backend",
+        "transactions"
+      ]
+    },
+    {
+      "id": "backend.isolation",
+      "name": "isolation",
+      "category": "python.backend",
+      "difficulty": 0.61,
+      "description": "Python backend skill: isolation",
+      "importance": 0.786,
+      "tags": [
+        "python.backend",
+        "isolation"
+      ]
+    },
+    {
+      "id": "backend.migrations",
+      "name": "migrations",
+      "category": "python.backend",
+      "difficulty": 0.622,
+      "description": "Python backend skill: migrations",
+      "importance": 0.782,
+      "tags": [
+        "python.backend",
+        "migrations"
+      ]
+    },
+    {
+      "id": "backend.sqlalchemy_core",
+      "name": "sqlalchemy core",
+      "category": "python.backend",
+      "difficulty": 0.634,
+      "description": "Python backend skill: sqlalchemy core",
+      "importance": 0.778,
+      "tags": [
+        "python.backend",
+        "sqlalchemy_core"
+      ]
+    },
+    {
+      "id": "backend.sqlalchemy_orm",
+      "name": "sqlalchemy orm",
+      "category": "python.backend",
+      "difficulty": 0.646,
+      "description": "Python backend skill: sqlalchemy orm",
+      "importance": 0.774,
+      "tags": [
+        "python.backend",
+        "sqlalchemy_orm"
+      ]
+    },
+    {
+      "id": "backend.relationships",
+      "name": "relationships",
+      "category": "python.backend",
+      "difficulty": 0.658,
+      "description": "Python backend skill: relationships",
+      "importance": 0.77,
+      "tags": [
+        "python.backend",
+        "relationships"
+      ]
+    },
+    {
+      "id": "backend.n_plus_one",
+      "name": "n plus one",
+      "category": "python.backend",
+      "difficulty": 0.6699999999999999,
+      "description": "Python backend skill: n plus one",
+      "importance": 0.766,
+      "tags": [
+        "python.backend",
+        "n_plus_one"
+      ]
+    },
+    {
+      "id": "backend.connection_pooling",
+      "name": "connection pooling",
+      "category": "python.backend",
+      "difficulty": 0.6819999999999999,
+      "description": "Python backend skill: connection pooling",
+      "importance": 0.761,
+      "tags": [
+        "python.backend",
+        "connection_pooling"
+      ]
+    },
+    {
+      "id": "backend.caching",
+      "name": "caching",
+      "category": "python.backend",
+      "difficulty": 0.694,
+      "description": "Python backend skill: caching",
+      "importance": 0.757,
+      "tags": [
+        "python.backend",
+        "caching"
+      ]
+    },
+    {
+      "id": "backend.redis_basics",
+      "name": "redis basics",
+      "category": "python.backend",
+      "difficulty": 0.706,
+      "description": "Python backend skill: redis basics",
+      "importance": 0.753,
+      "tags": [
+        "python.backend",
+        "redis_basics"
+      ]
+    },
+    {
+      "id": "backend.docker_basics",
+      "name": "docker basics",
+      "category": "python.backend",
+      "difficulty": 0.718,
+      "description": "Python backend skill: docker basics",
+      "importance": 0.749,
+      "tags": [
+        "python.backend",
+        "docker_basics"
+      ]
+    },
+    {
+      "id": "backend.linux_cli",
+      "name": "linux cli",
+      "category": "python.backend",
+      "difficulty": 0.73,
+      "description": "Python backend skill: linux cli",
+      "importance": 0.744,
+      "tags": [
+        "python.backend",
+        "linux_cli"
+      ]
+    },
+    {
+      "id": "backend.git_basics",
+      "name": "git basics",
+      "category": "python.backend",
+      "difficulty": 0.742,
+      "description": "Python backend skill: git basics",
+      "importance": 0.74,
+      "tags": [
+        "python.backend",
+        "git_basics"
+      ]
+    },
+    {
+      "id": "backend.git_branching",
+      "name": "git branching",
+      "category": "python.backend",
+      "difficulty": 0.754,
+      "description": "Python backend skill: git branching",
+      "importance": 0.736,
+      "tags": [
+        "python.backend",
+        "git_branching"
+      ]
+    },
+    {
+      "id": "backend.ci_basics",
+      "name": "ci basics",
+      "category": "python.backend",
+      "difficulty": 0.766,
+      "description": "Python backend skill: ci basics",
+      "importance": 0.732,
+      "tags": [
+        "python.backend",
+        "ci_basics"
+      ]
+    },
+    {
+      "id": "backend.ci_testing",
+      "name": "ci testing",
+      "category": "python.backend",
+      "difficulty": 0.778,
+      "description": "Python backend skill: ci testing",
+      "importance": 0.728,
+      "tags": [
+        "python.backend",
+        "ci_testing"
+      ]
+    },
+    {
+      "id": "backend.structured_logging",
+      "name": "structured logging",
+      "category": "python.backend",
+      "difficulty": 0.79,
+      "description": "Python backend skill: structured logging",
+      "importance": 0.724,
+      "tags": [
+        "python.backend",
+        "structured_logging"
+      ]
+    },
+    {
+      "id": "backend.observability",
+      "name": "observability",
+      "category": "python.backend",
+      "difficulty": 0.802,
+      "description": "Python backend skill: observability",
+      "importance": 0.719,
+      "tags": [
+        "python.backend",
+        "observability"
+      ]
+    },
+    {
+      "id": "backend.security_basics",
+      "name": "security basics",
+      "category": "python.backend",
+      "difficulty": 0.8140000000000001,
+      "description": "Python backend skill: security basics",
+      "importance": 0.715,
+      "tags": [
+        "python.backend",
+        "security_basics"
+      ]
+    }
   ]
 }

@@ -30,10 +30,19 @@ def tables():
 
 def upgrade():
     bind=op.get_bind(); misconceptions,versions,mappings,links=tables()
-    for lesson,skill in seeds()['lesson_skills']:
+    frozen=seeds()
+    # A fresh database has only the historical skill catalog. Seed missing FK
+    # parents from this revision's frozen asset, before links and misconceptions.
+    skills=sa.table('skills',sa.column('id',sa.String),sa.column('name',sa.String),
+        sa.column('category',sa.String),sa.column('difficulty',sa.Float),
+        sa.column('importance',sa.Float),sa.column('tags',sa.JSON),sa.column('description',sa.Text))
+    for row in frozen['skills']:
+        if bind.scalar(sa.select(skills.c.id).where(skills.c.id==row['id'])) is None:
+            bind.execute(skills.insert().values(**row))
+    for lesson,skill in frozen['lesson_skills']:
         if bind.scalar(sa.select(links.c.id).where(links.c.lesson_id==lesson,links.c.skill_id==skill)) is None:
             bind.execute(links.insert().values(id=uuid5(NAMESPACE_URL,'mentor:0036:link:'+lesson),lesson_id=lesson,skill_id=skill))
-    for row in seeds()['mappings']:
+    for row in frozen['mappings']:
         where=[mappings.c[k]==row[k] for k in ('source_type','exercise_id','exercise_version','question_id','wrong_choice')]
         if bind.scalar(sa.select(mappings.c.id).where(*where)) is not None: continue
         if bind.scalar(sa.select(misconceptions.c.code).where(misconceptions.c.code==row['code'])) is None:
@@ -48,6 +57,8 @@ def upgrade():
 
 def downgrade():
     bind=op.get_bind(); misconceptions,versions,mappings,links=tables()
+    # Shared skills stay: they may now have learner evidence or graph references,
+    # and IDs alone cannot distinguish pre-existing rows from rows seeded here.
     # Only migration-owned UUIDs are removed. Existing links/mappings stay intact.
     occurrences=sa.table('mistake_occurrences',sa.column('misconception_version_id',sa.Uuid))
     user_mistakes=sa.table('user_mistakes',sa.column('misconception_code',sa.String))
