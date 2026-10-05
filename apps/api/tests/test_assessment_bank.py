@@ -1,3 +1,4 @@
+from content_helpers import authored_answer, authored_wrong_answer
 """Behaviour tests for the extended diagnostic bank and adaptive branch.
 
 These assert what the learner can observe, not how the selector is written.
@@ -132,7 +133,7 @@ def test_early_stop_respects_max_questions(client):
         state = client.post(
             "/assessment/answers",
             headers=headers,
-            json={"question_id": question["id"], "answer": question["choices"][0]},
+            json={"question_id": question["id"], "answer": authored_answer(question["id"])},
         ).json()["state"]
         answered += 1
         assert answered <= MAX_QUESTIONS
@@ -159,7 +160,7 @@ def test_answer_never_reaches_the_client(client):
     answered = client.post(
         "/assessment/answers",
         headers=headers,
-        json={"question_id": question["id"], "answer": question["choices"][0]},
+        json={"question_id": question["id"], "answer": authored_answer(question["id"])},
     )
     assert answered.status_code == 200
     body = answered.json()
@@ -181,11 +182,11 @@ def test_weak_run_starts_at_the_beginning_and_never_fails_the_learner(client):
     state = None
     for _ in range(MAX_QUESTIONS):
         question = state["question"] if state else first
-        # Always the first offered choice, which is right roughly half the time.
+        # Exercise the successful branch with authored answer strings, regardless of presentation order.
         state = client.post(
             "/assessment/answers",
             headers=headers,
-            json={"question_id": question["id"], "answer": question["choices"][0]},
+            json={"question_id": question["id"], "answer": authored_answer(question["id"])},
         ).json()["state"]
     assert state["completed"] is True
     assert 0.0 <= state["score"] <= 1.0
@@ -217,7 +218,7 @@ def test_run_records_prior_for_every_asked_skill(client):
         state = client.post(
             "/assessment/answers",
             headers=headers,
-            json={"question_id": question["id"], "answer": question["choices"][0]},
+            json={"question_id": question["id"], "answer": authored_answer(question["id"])},
         ).json()["state"]
     with next(app.dependency_overrides[get_db]()) as db:
         rows = db.scalars(select(UserSkill)).all()

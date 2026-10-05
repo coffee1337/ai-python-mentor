@@ -291,7 +291,7 @@ def test_hint_ladder_reveals_one_next_level_and_is_append_only(client):
     ).status_code == 403
 
     with next(app.dependency_overrides[get_db]()) as db:
-        assert db.scalar(select(func.count()).select_from(ExerciseVersion)) == len(EXERCISE_HINT_LADDERS)
+        assert db.scalar(select(func.count()).select_from(ExerciseVersion)) == len(LESSONS)
         assert db.scalar(select(func.count()).select_from(ExerciseHint)) == 5
         assert db.scalar(select(func.count()).select_from(HintReveal)) == 2
 

@@ -58,3 +58,13 @@ def verify_password(password: str, encoded: str) -> bool:
 
 def normalize_email(email: str) -> str:
     return email.strip().casefold()
+
+
+def signed_payload_valid(raw: bytes, timestamp: str, signature: str, secret: str, *, now: int) -> bool:
+    """Bounded, replay-window HMAC envelope for provider-independent webhooks."""
+    if not timestamp.isdecimal() or len(timestamp) > 12 or len(signature) != 64 or len(secret) < 32:
+        return False
+    if abs(now - int(timestamp)) > 300:
+        return False
+    expected = hmac.new(secret.encode(), timestamp.encode() + b"." + raw, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(signature, expected)

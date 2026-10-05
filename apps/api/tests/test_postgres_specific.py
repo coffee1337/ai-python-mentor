@@ -362,3 +362,80 @@ def test_user_delete_cascades_learning_children(
             )
             == 0
         )
+
+
+def test_parallel_ai_requests_claim_one_durable_lease(postgres_engine, sandbox):
+    from app.ai_admission import reserve_ai_call
+    from app.ai_gateway import GatewayError
+    from app.db.domain_models import AICallReservation
+    factory = sessionmaker(bind=postgres_engine, expire_on_commit=False)
+    start = Barrier(2)
+    def claim():
+        with factory() as db:
+            start.wait(timeout=15)
+            try:
+                reserve_ai_call(db, sandbox.user_id, "postgres_test", "same-request",
+                                limit=10, window_seconds=60, input_chars=1)
+                return 200
+            except GatewayError as error:
+                return error.status
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(claim) for _ in range(2)]
+        statuses = [future.result(timeout=30) for future in futures]
+    assert sorted(statuses) == [200, 409]
+    with factory() as db:
+        assert db.scalar(select(func.count()).select_from(AICallReservation).where(
+            AICallReservation.user_id == sandbox.user_id)) == 1
+
+
+def test_parallel_auth_admission_does_not_reset_counter(postgres_engine, sandbox):
+    from fastapi import HTTPException
+    from app.account_services import throttle, throttle_key
+    from app.db.account_models import AuthThrottle
+    factory = sessionmaker(bind=postgres_engine, expire_on_commit=False)
+    subject, start = str(sandbox.user_id), Barrier(4)
+    def claim():
+        with factory() as db:
+            start.wait(timeout=15)
+            try:
+                throttle(db, scope="postgres_test", subject=subject, limit=1)
+                return 200
+            except HTTPException as error:
+                return error.status_code
+    try:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [executor.submit(claim) for _ in range(4)]
+            statuses = [future.result(timeout=30) for future in futures]
+        assert sorted(statuses) == [200, 429, 429, 429]
+        with factory() as db:
+            row = db.get(AuthThrottle, throttle_key("postgres_test", subject))
+            assert row.attempts == 4
+    finally:
+        with factory() as db:
+            db.execute(delete(AuthThrottle).where(AuthThrottle.key == throttle_key("postgres_test", subject)))
+            db.commit()
+
+
+def test_parallel_account_token_consumption_is_single_use(postgres_engine, sandbox):
+    from fastapi import HTTPException
+    from app.account_services import consume_token, issue_token
+    factory = sessionmaker(bind=postgres_engine, expire_on_commit=False)
+    with factory() as db:
+        token, _ = issue_token(db, sandbox.user_id, "email_verify", 15)
+        db.commit()
+    start = Barrier(2)
+    def consume():
+        with factory() as db:
+            start.wait(timeout=15)
+            try:
+                user = consume_token(db, token, "email_verify")
+                user.email_verified = True
+                db.commit()
+                return 200
+            except HTTPException as error:
+                db.rollback()
+                return error.status_code
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(consume) for _ in range(2)]
+        statuses = [future.result(timeout=30) for future in futures]
+    assert sorted(statuses) == [200, 400]

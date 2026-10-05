@@ -4,9 +4,9 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mentor}
       POSTGRES_USER: ${POSTGRES_USER:-mentor}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mentor_local_only}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -16,22 +16,83 @@ services:
       retries: 10
   api:
     build: ./apps/api
-    environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-mentor}:${POSTGRES_PASSWORD:-mentor_local_only}@db:5432/${POSTGRES_DB:-mentor}
+    env_file: .env
+    environment: &api_environment
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-mentor}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-mentor}
+      APP_ENV: ${APP_ENV:-development}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      WEB_ORIGINS: ${WEB_ORIGINS:-http://localhost:3000}
+      API_WORKERS: ${API_WORKERS:-2}
       AI_GATEWAY_URL: ${AI_GATEWAY_URL:-}
       AI_GATEWAY_MODEL: ${AI_GATEWAY_MODEL:-}
       AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY:-}
       AI_GATEWAY_TIMEOUT_SECONDS: ${AI_GATEWAY_TIMEOUT_SECONDS:-20}
+      AI_GATEWAY_EMBEDDINGS_URL: ${AI_GATEWAY_EMBEDDINGS_URL:-}
+      AI_GATEWAY_EMBEDDINGS_MODEL: ${AI_GATEWAY_EMBEDDINGS_MODEL:-}
+      AI_GATEWAY_EMBEDDINGS_DIMENSION: ${AI_GATEWAY_EMBEDDINGS_DIMENSION:-}
+      RUNNER_URL: ${RUNNER_URL:-}
+      RUNNER_AUTH_TOKEN: ${RUNNER_AUTH_TOKEN:-}
+      RUNNER_CA_FILE: ${RUNNER_CA_FILE:-}
+      RUNNER_CLIENT_CERT_FILE: ${RUNNER_CLIENT_CERT_FILE:-}
+      RUNNER_CLIENT_KEY_FILE: ${RUNNER_CLIENT_KEY_FILE:-}
+      RUNNER_VERIFIED_POLICY_FILE: ${RUNNER_VERIFIED_POLICY_FILE:-}
+      RUNNER_REQUEST_TIMEOUT_SECONDS: ${RUNNER_REQUEST_TIMEOUT_SECONDS:-20}
+      # Set only in a deployment that runs the separate durable dispatcher.
+      EXECUTION_JOBS_ENABLED: ${EXECUTION_JOBS_ENABLED:-false}
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=2)"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs: ["/tmp:size=16m,nosuid,nodev,noexec"]
+  execution-dispatcher:
+    profiles: ["execution"]
+    build: ./apps/api
+    env_file: .env
+    environment: *api_environment
+    command: ["python", "-m", "app.jobs"]
+    depends_on:
+      api:
+        condition: service_healthy
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs: ["/tmp:size=16m,nosuid,nodev,noexec"]
+  notification-dispatcher:
+    profiles: ["notifications"]
+    build: ./apps/api
+    env_file: .env
+    environment: *api_environment
+    command: ["python", "-m", "app.notifications"]
+    depends_on:
+      api:
+        condition: service_healthy
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs: ["/tmp:size=16m,nosuid,nodev,noexec"]
   web:
-    build: ./apps/web
+    build:
+      context: ./apps/web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+        API_INTERNAL_URL: http://api:8000
     ports:
       - "3000:3000"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs: ["/tmp:size=16m,nosuid,nodev,noexec", "/app/.next/cache:size=32m,nosuid,nodev,noexec,uid=10001,gid=10001"]
 volumes:
   postgres_data:

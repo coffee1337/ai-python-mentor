@@ -155,6 +155,11 @@ def _coding_evidence_context(
         raise InvalidEvidence("Passed coding result has incomplete test counts")
     if result.status == "failed" and result.tests_passed == result.tests_total:
         raise InvalidEvidence("Failed coding result has complete test counts")
+    snapshot = version.content_snapshot
+    if isinstance(snapshot, dict) and snapshot.get("kind") == "authored_python_function":
+        cases = snapshot.get("coding", {}).get("cases", [])
+        if result.tests_total != len(cases):
+            raise InvalidEvidence("Coding runner result does not cover the bound authored test contract")
 
     return (
         attempt,

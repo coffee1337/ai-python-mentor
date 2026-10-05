@@ -1483,7 +1483,7 @@ _LEAKAGE_MARKERS = ("решение", "правильный ответ", "отв
 
 def validate_hint_ladders() -> None:
     """Reject malformed authored ladders before they can be persisted."""
-    lesson_by_id = {lesson["id"]: lesson for lesson in LESSONS}
+    lesson_by_id = globals().get("LESSONS_BY_ID", {lesson["id"]: lesson for lesson in LESSONS})
     for exercise_id, ladder in EXERCISE_HINT_LADDERS.items():
         lesson = lesson_by_id.get(exercise_id)
         if lesson is None or ladder["lesson_id"] != exercise_id:
@@ -1504,4 +1504,15 @@ def validate_hint_ladders() -> None:
                     raise ValueError("Non-solution hint contains the answer")
 
 
+validate_hint_ladders()
+
+# Publish corrections under new IDs; keep historical IDs available to bound flows.
+from app.completion_content import COMPLETION_LESSONS, COMPLETION_LADDERS
+from app.content_publication import corrected_lessons, corrected_ladders
+HISTORICAL_LESSONS = tuple(item for item in LESSONS if item["id"] in {"imports-v1", "fixtures-v1"})
+_replacements = {item["skill_id"]: item for item in corrected_lessons(LESSONS)}
+LESSONS = tuple(_replacements.get(item["skill_id"], item) for item in LESSONS) + COMPLETION_LESSONS
+LESSONS_BY_ID = {item["id"]: item for item in (*HISTORICAL_LESSONS, *LESSONS)}
+EXERCISE_HINT_LADDERS.update(corrected_ladders(EXERCISE_HINT_LADDERS))
+EXERCISE_HINT_LADDERS.update(COMPLETION_LADDERS)
 validate_hint_ladders()

@@ -1,3 +1,5 @@
+from content_helpers import public_question_identity
+from content_helpers import authored_answer, authored_wrong_answer
 """Behaviour tests for the authored `python.backend` phase 1 track.
 
 These tests assert what a learner can observe: which lessons exist, which
@@ -64,7 +66,7 @@ def finish_assessment(test_client) -> None:
             headers={"X-CSRF-Token": csrf(test_client)},
             json={
                 "question_id": question["id"],
-                "answer": question["choices"][0],
+                "answer": authored_answer(question["id"]),
             },
         )
         assert response.status_code == 200
@@ -187,6 +189,7 @@ def test_phase_one_opens_only_after_its_core_prerequisite(client):
     # `backend.http_basics` requires `python.functions`, whose own closure is
     # the entire core track.
     set_mastery(client, set(CORE_SKILL_IDS) - {"python.functions"}, 1.0)
+    set_mastery(client, {"python.functions"}, 0.0)
 
     lessons = {
         item["id"]: item
@@ -216,7 +219,7 @@ def test_phase_progress_is_reported_as_lesson_counts_without_percentages(client)
     phases = response.json()["phases"]
     published = [item for item in phases if item["total"] > 0]
 
-    assert [item["id"] for item in published] == [1]
+    assert [item["id"] for item in published] == [1, 2, 3]
     assert published[0]["completed"] == 0
     assert published[0]["total"] == len(PHASE_ONE_LESSON_IDS)
     assert published[0]["status"] in {"available", "locked"}
@@ -242,14 +245,14 @@ def test_each_phase_one_lesson_publishes_a_versioned_snapshot(client):
             f"/learning/lessons/{lesson_id}/knowledge-check"
         )
         assert checks.status_code == 200
-        assert checks.json() == [
+        assert public_question_identity(checks.json()) == public_question_identity([
             {
                 "id": question["id"],
                 "prompt": question["prompt"],
                 "choices": question["choices"],
             }
             for question in CHECKS[lesson_id]
-        ]
+        ])
 
         ladder = EXERCISE_HINT_LADDERS[lesson_id]
         for level, kind, text in ladder["hints"]:

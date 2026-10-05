@@ -114,7 +114,7 @@ def test_0028_mapping_upgrade_downgrade_preserves_learning_history(tmp_path, mon
             {"user_id": user_id, "version_id": version_id},
         )
 
-    command.upgrade(config, "head")
+    command.upgrade(config, "0028_correct_variables_data_types_mapping")
     with engine.connect() as connection:
         links = set(
             connection.execute(
@@ -160,7 +160,7 @@ def test_0028_mapping_upgrade_downgrade_preserves_learning_history(tmp_path, mon
             {"id": version_id},
         )) == snapshot
 
-    command.upgrade(config, "head")
+    command.upgrade(config, "0028_correct_variables_data_types_mapping")
     with engine.connect() as connection:
         assert set(
             connection.execute(

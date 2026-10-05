@@ -1,3 +1,4 @@
+from content_helpers import authored_answer, authored_wrong_answer
 from sqlalchemy import select
 from datetime import datetime, timedelta, timezone
 
@@ -15,7 +16,7 @@ def setup_user(c, email="plan@example.com"):
 def finish_assessment(c, answers=None):
     headers={"X-CSRF-Token":csrf(c)}; state=c.get("/assessment").json(); answers=answers or []
     for index in range(MAX_QUESTIONS):
-        q=state["question"]; value=answers[index] if index < len(answers) and answers[index] in q["choices"] else q["choices"][0]
+        q=state["question"]; value=answers[index] if index < len(answers) and answers[index] in q["choices"] else authored_answer(q["id"])
         state=c.post("/assessment/answers",headers=headers,json={"question_id":q["id"],"answer":value}).json()["state"]
     return state
 

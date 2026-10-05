@@ -22,7 +22,7 @@ def test_mistake_memory_seed_is_idempotent_and_downgrade_removes_new_tables(tmp_
     monkeypatch.setenv("DATABASE_URL", url)
     config = _config()
 
-    command.upgrade(config, "head")
+    command.upgrade(config, "0025_assessment_mistake_mappings")
     engine = create_engine(url)
     seed = runpy.run_path(
         str(Path(__file__).resolve().parents[1] / "migrations" / "versions" / "0023_mistake_memory.py")
@@ -275,7 +275,7 @@ def test_mistake_memory_seed_is_idempotent_and_downgrade_removes_new_tables(tmp_
             )
         ) == 0
 
-    command.upgrade(config, "head")
+    command.upgrade(config, "0025_assessment_mistake_mappings")
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM misconception_mappings")) == 20
         assert connection.scalar(text("SELECT count(*) FROM mistake_occurrences")) == 1
@@ -292,7 +292,7 @@ def test_mistake_memory_seed_is_idempotent_and_downgrade_removes_new_tables(tmp_
             )
         ) == 1
 
-    command.upgrade(config, "head")
+    command.upgrade(config, "0025_assessment_mistake_mappings")
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM misconception_mappings")) == 20
         assert connection.scalar(text("SELECT count(*) FROM mistake_occurrences")) == 1
@@ -309,7 +309,7 @@ def test_mistake_memory_seed_is_idempotent_and_downgrade_removes_new_tables(tmp_
             text("SELECT email FROM users WHERE email = 'mistake-memory@example.com'")
         ) == "mistake-memory@example.com"
 
-    command.upgrade(config, "head")
+    command.upgrade(config, "0025_assessment_mistake_mappings")
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM misconceptions")) == 16
         assert connection.scalar(text("SELECT count(*) FROM misconception_versions")) == 16

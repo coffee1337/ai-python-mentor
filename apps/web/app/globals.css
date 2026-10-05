@@ -2,11 +2,11 @@
 :root {
   --ink: #1b2b25;
   --ink-soft: #33463d;
-  --muted: #6c7c74;
+  --muted: #58675f;
   --paper: #f7f6f0;
   --surface: #fbfcf8;
   --green: #d8ed91;
-  --green-deep: #6f9142;
+  --green-deep: #4a6b2c;
   --line: #dfe2d8;
   --danger: #9a5148;
   --sans: "Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -581,7 +581,7 @@ h2 em {
 }
 
 .optional {
-  color: #9aa49d;
+  color: var(--muted);
   font-size: 0.6875rem;
 }
 
@@ -1330,5 +1330,114 @@ footer {
   :root {
     --muted: #4a5850;
     --line: #b9bfb0;
+  }
+}
+
+/* ---------- account, projects and learning forms ---------- */
+.app-header {
+  align-items: flex-start;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.app-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem 1.2rem;
+  font-size: 0.875rem;
+}
+
+.app-nav a {
+  padding-block: 0.35rem;
+}
+
+.settings-form,
+.settings-form fieldset {
+  display: grid;
+  gap: 1rem;
+}
+
+.settings-form {
+  margin-block: 1rem;
+}
+
+.settings-form fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--ink-soft);
+}
+
+.settings-form input,
+.settings-form select,
+.settings-form textarea {
+  width: 100%;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  min-width: 0;
+}
+
+.settings-form textarea {
+  resize: vertical;
+}
+
+.settings-form .check-label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.check-label input {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.preserve-lines {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.saved-item {
+  border-top: 1px solid var(--line);
+  padding-block: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.product-list {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.code-editor-field {
+  min-width: 0;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+summary {
+  cursor: pointer;
+  padding-block: 0.5rem;
+  color: var(--ink-soft);
+}
+
+@media (max-width: 560px) {
+  .app-nav {
+    gap: 0.4rem 0.8rem;
+  }
+
+  .settings-form .form-button {
+    gap: 0.75rem;
   }
 }

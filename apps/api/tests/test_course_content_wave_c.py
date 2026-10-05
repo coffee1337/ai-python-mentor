@@ -1,3 +1,5 @@
+from content_helpers import public_question_identity
+from content_helpers import authored_answer, authored_wrong_answer
 from collections import defaultdict
 from copy import deepcopy
 
@@ -87,7 +89,7 @@ def finish_assessment(test_client) -> None:
             headers={"X-CSRF-Token": csrf(test_client)},
             json={
                 "question_id": question["id"],
-                "answer": question["choices"][0],
+                "answer": authored_answer(question["id"]),
             },
         )
         assert response.status_code == 200
@@ -176,14 +178,14 @@ def test_wave_c_checks_choice_feedback_hints_and_schema_two_snapshots(client):
             f"/learning/lessons/{lesson_id}/knowledge-check"
         )
         assert check_response.status_code == 200
-        assert check_response.json() == [
+        assert public_question_identity(check_response.json()) == public_question_identity([
             {
                 "id": question["id"],
                 "prompt": question["prompt"],
                 "choices": question["choices"],
             }
             for question in questions
-        ]
+        ])
 
         ladder = EXERCISE_HINT_LADDERS[lesson_id]
         assert ladder["lesson_id"] == lesson_id

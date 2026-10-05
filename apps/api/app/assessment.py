@@ -27,6 +27,7 @@ from app.skill_evidence import derive_assistance, record_evidence
 from app.mistake_memory import record_response_mistake
 from app.curriculum import build_curriculum
 from app.ai_curriculum import generate_personalized_plan
+from app.choice_order import ordered_choices
 
 router=APIRouter(prefix="/assessment", tags=["assessment"])
 class QuestionResponse(BaseModel):
@@ -73,12 +74,12 @@ def _version_for_question(db: Session, question_id: str):
     return version
 
 
-def _question_response(q, number): return QuestionResponse(id=q["id"],skill_id=q["skill_id"],difficulty=q["difficulty"],prompt=q["prompt"],choices=q["choices"],question_number=number,total_questions=MAX_QUESTIONS)
+def _question_response(q, number, session_id): return QuestionResponse(id=q["id"],skill_id=q["skill_id"],difficulty=q["difficulty"],prompt=q["prompt"],choices=ordered_choices(q["choices"],session_id=session_id,question_id=q["id"]),question_number=number,total_questions=MAX_QUESTIONS)
 def _state(run, db):
     responses=db.scalars(select(AssessmentResponse).where(AssessmentResponse.run_id==run.id).order_by(AssessmentResponse.created_at)).all()
     if run.status=="completed": return AssessmentState(status=run.status,completed=True,score=(sum(r.is_correct for r in responses)/len(responses) if responses else 0),answered=len(responses))
     q=_snapshot_question(run, db)
-    return AssessmentState(status=run.status,completed=False,answered=len(responses),question=_question_response(q,len(responses)+1))
+    return AssessmentState(status=run.status,completed=False,answered=len(responses),question=_question_response(q,len(responses)+1,run.id))
 
 def _owned_run(user,db, *, lock=False):
     query=select(AssessmentRun).where(AssessmentRun.user_id==user.id,AssessmentRun.status=="in_progress").order_by(AssessmentRun.created_at.desc())

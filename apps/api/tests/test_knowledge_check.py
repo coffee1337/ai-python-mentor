@@ -1,3 +1,4 @@
+from content_helpers import authored_answer, authored_wrong_answer
 from datetime import datetime, timezone
 import pytest
 from sqlalchemy import select
@@ -18,7 +19,7 @@ def setup_user(c,email="check@example.com"):
 def finish_assessment(c):
     h={"X-CSRF-Token":csrf(c)}; state=c.get("/assessment").json()
     for _ in range(MAX_QUESTIONS):
-        q=state["question"]; state=c.post("/assessment/answers",headers=h,json={"question_id":q["id"],"answer":q["choices"][0]}).json()["state"]
+        q=state["question"]; state=c.post("/assessment/answers",headers=h,json={"question_id":q["id"],"answer":authored_answer(q["id"])}).json()["state"]
 
 def test_check_requires_auth_and_returns_no_answer_key(client):
     assert client.get("/learning/lessons/variables-v1/knowledge-check").status_code==401
@@ -30,7 +31,7 @@ def test_check_requires_auth_and_returns_no_answer_key(client):
 
 def test_failed_check_is_persisted_with_explanations_and_does_not_complete(client):
     setup_user(client); h={"X-CSRF-Token":csrf(client)}; questions=client.get("/learning/lessons/variables-v1/knowledge-check").json()
-    bad={q["id"]:q["choices"][0] for q in questions}
+    bad={q["id"]:authored_wrong_answer(q["id"]) for q in questions}
     result=client.post("/learning/lessons/variables-v1/knowledge-check",headers=h,json={"answers":bad})
     assert result.status_code==201 and result.json()["passed"] is False and len(result.json()["explanations"])==2
     assert "attempt_id" not in result.json()
@@ -41,7 +42,7 @@ def test_failed_check_is_persisted_with_explanations_and_does_not_complete(clien
 
 def test_passed_check_completes_lesson_and_refreshes_plan(client):
     setup_user(client); finish_assessment(client); h={"X-CSRF-Token":csrf(client)}; questions=client.get("/learning/lessons/variables-v1/knowledge-check").json()
-    answers={questions[0]["id"]:"6",questions[1]["id"]:questions[1]["choices"][0]}
+    answers={questions[0]["id"]:"6",questions[1]["id"]:authored_answer(questions[1]["id"])}
     result=client.post("/learning/lessons/variables-v1/knowledge-check",headers=h,json={"answers":answers})
     assert result.status_code==201 and result.json()["passed"] is True
     assert client.get("/learning/path").json()["completed"]==1
@@ -87,7 +88,7 @@ def test_repeated_check_keeps_completion_and_appends_history(client):
     first=client.post("/learning/lessons/variables-v1/knowledge-check",headers=h,json={"answers":pass_answers})
     assert first.status_code==201 and first.json()["passed"] is True
     completion=client.get("/learning/path").json()["lessons"][0]["completed_at"]
-    fail_answers={q["id"]:q["choices"][0] for q in questions}
+    fail_answers={q["id"]:authored_wrong_answer(q["id"]) for q in questions}
     assert client.post("/learning/lessons/variables-v1/knowledge-check",headers=h,json={"answers":fail_answers}).status_code==409
     questions=client.get("/learning/lessons/variables-v1/knowledge-check").json()
     second=client.post("/learning/lessons/variables-v1/knowledge-check",headers=h,json={"answers":fail_answers})
@@ -398,7 +399,7 @@ def test_check_requires_pending_get_and_preserves_it_after_invalid_answers(clien
     assert client.post(endpoint, headers=headers, json={"answers": {}}).status_code == 422
     with next(app.dependency_overrides[get_db]()) as db:
         assert db.scalar(select(KnowledgeCheckSession)).consumed_at is None
-    answers = {q["id"]: q["choices"][0] for q in questions}
+    answers = {q["id"]: authored_answer(q["id"]) for q in questions}
     assert client.post(endpoint, headers=headers, json={"answers": answers}).status_code == 201
     assert client.post(endpoint, headers=headers, json={"answers": answers}).status_code == 409
 

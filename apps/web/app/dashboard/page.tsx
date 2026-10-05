@@ -1,24 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import CoursePath from "../learning/course-path";
-import { api, User } from "../lib/api";
+import { api, clearLocalDrafts } from "../lib/api";
+import { useUser } from "../lib/use-user";
+import AppHeader from "../components/app-header";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const { user, loading, error: loadError, reload } = useUser();
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    void api<User>("/me")
-      .then(setUser)
-      .catch(() => router.replace("/auth"));
-  }, [router]);
 
   async function logout() {
     try {
       await api<void>("/auth/logout", { method: "POST" });
+      clearLocalDrafts();
       router.replace("/");
     } catch {
       setError("Не удалось завершить сессию. Попробуйте ещё раз.");
@@ -28,21 +25,16 @@ export default function DashboardPage() {
   if (!user) {
     return (
       <main className="auth-shell">
-        <p role="status" aria-live="polite">Загружаем ваш маршрут…</p>
+        {loading && <p role="status" aria-live="polite">Загружаем ваш маршрут…</p>}
+        {loadError && <div role="alert"><p>{loadError}</p><button type="button" className="text-button" onClick={() => void reload()}>Повторить загрузку</button></div>}
       </main>
     );
   }
 
   return (
     <main className="dashboard-shell">
-      <header className="topbar">
-        <a className="brand" href="/">
-          ↗ наставник<span className="brand-dot">.</span>
-        </a>
-        <button className="text-button" type="button" onClick={() => void logout()}>
-          Выйти
-        </button>
-      </header>
+      <AppHeader />
+      <button className="text-button" type="button" onClick={() => void logout()}>Выйти</button>
 
       <section className="dashboard-card">
         <span className="eyebrow"><i aria-hidden="true" /> ВАШ ПРОФИЛЬ</span>
@@ -60,7 +52,7 @@ export default function DashboardPage() {
             <span>минут в неделю</span>
           </div>
           <div>
-            <b>{user.profile?.experience_level ?? "—"}</b>
+            <b>{{ beginner: "Начинающий", student: "Есть опыт", junior: "Junior" }[user.profile?.experience_level ?? ""] ?? "—"}</b>
             <span>текущий уровень</span>
           </div>
         </div>

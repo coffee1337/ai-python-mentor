@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import ssl
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -34,6 +35,7 @@ class RunnerConfig:
     url: str
     auth_token: str
     timeout: float
+    tls_context: ssl.SSLContext | None = None
 
 
 @dataclass(frozen=True)
@@ -135,16 +137,22 @@ class _RunnerErrorResponse(BaseModel):
         return value
 
 
-def configuration() -> RunnerConfig:
+def configuration(*, allow_test_transport: bool = False) -> RunnerConfig:
     """Load runner settings without exposing credentials in errors or logs."""
     try:
-        settings: RunnerSettings = load_runner_settings()
-    except SettingsError as exc:
+        settings: RunnerSettings = load_runner_settings(allow_test_transport=allow_test_transport)
+        context = None
+        if not allow_test_transport:
+            context = ssl.create_default_context(cafile=settings.ca_file)
+            context.minimum_version = ssl.TLSVersion.TLSv1_3
+            context.load_cert_chain(settings.client_cert_file, settings.client_key_file)
+    except (SettingsError, OSError, ssl.SSLError) as exc:
         raise RunnerUnavailable("Runner is not configured") from exc
     return RunnerConfig(
         url=_endpoint_url(settings.url),
         auth_token=settings.auth_token,
         timeout=settings.timeout_seconds,
+        tls_context=context,
     )
 
 
@@ -254,6 +262,7 @@ class Runner:
         language: str,
         mode: str,
         idempotency_key: str | None = None,
+        allow_in_progress: bool = False,
     ) -> RunnerResult:
         """Submit source to the private worker; never execute source locally."""
         if exercise_version is None or idempotency_key is None:
@@ -272,7 +281,7 @@ class Runner:
                 source=source_code,
                 mode=mode,
             )
-            config = configuration()
+            config = configuration(allow_test_transport=self._transport is not None)
         except (ValidationError, RunnerUnavailable) as exc:
             if isinstance(exc, RunnerUnavailable):
                 raise
@@ -289,6 +298,7 @@ class Runner:
                 follow_redirects=False,
                 trust_env=False,
                 transport=self._transport,
+                verify=config.tls_context or True,
             ) as client:
                 with client.stream("POST", config.url, headers=headers, json=request.model_dump()) as response:
                     raw = _bounded_body(response)
@@ -311,6 +321,8 @@ class Runner:
         status = wire.status
         if status == "finished":
             api_status = "passed" if wire.tests_total > 0 and wire.tests_passed == wire.tests_total else "failed"
+        elif status == "in_progress" and allow_in_progress:
+            api_status = "in_progress"
         elif status in {"unavailable", "in_progress"}:
             api_status = "unavailable"
         else:

@@ -29,7 +29,7 @@ const INDENT = "    ";
 export type CodeEditorProps = {
   /** Current code. The component is controlled: it never keeps its own copy. */
   value: string;
-  /** Called on every document change with the next value, already truncated to `maxLength`. */
+  /** Called for accepted document changes. Changes beyond `maxLength` are rejected. */
   onChange: (value: string) => void;
   /** Hard limit in characters. Previously held in `textarea.maxLength`. */
   maxLength?: number;
@@ -118,7 +118,10 @@ export default function CodeEditor({
       indentUnit.of(INDENT),
       EditorState.tabSize.of(4),
       EditorState.allowMultipleSelections.of(true),
-      editableCompartment.of(EditorView.editable.of(true)),
+      editableCompartment.of([EditorView.editable.of(true), EditorState.readOnly.of(false)]),
+      EditorState.transactionFilter.of((transaction) =>
+        transaction.docChanged && transaction.newDoc.length > maxLengthRef.current ? [] : transaction,
+      ),
       lineNumbers(),
       highlightActiveLine(),
       highlightSpecialChars(),
@@ -144,13 +147,7 @@ export default function CodeEditor({
       ]),
       EditorView.updateListener.of((update) => {
         if (!update.docChanged) return;
-        // The limit is enforced here rather than through a native `maxlength`
-        // attribute, because CodeMirror renders a contenteditable surface. Any
-        // overflow is truncated and pushed back into the document by the
-        // controlled sync effect below.
-        onChangeRef.current(
-          trimToLimit(update.state.doc.toString(), maxLengthRef.current),
-        );
+        onChangeRef.current(update.state.doc.toString());
       }),
     ],
     [highlightStyle, labelId, describedByValue, editableCompartment],
@@ -161,7 +158,7 @@ export default function CodeEditor({
     if (!container) return;
     const view = new EditorView({
       parent: container,
-      state: EditorState.create({ doc: value, extensions }),
+      state: EditorState.create({ doc: trimToLimit(value, maxLengthRef.current), extensions }),
     });
     viewRef.current = view;
     return () => {
@@ -190,7 +187,10 @@ export default function CodeEditor({
   // `disabled` and `readOnly` must block editing without recreating the editor.
   useEffect(() => {
     viewRef.current?.dispatch({
-      effects: editableCompartment.reconfigure(EditorView.editable.of(!disabled && !readOnly)),
+      effects: editableCompartment.reconfigure([
+        EditorView.editable.of(!disabled && !readOnly),
+        EditorState.readOnly.of(disabled || readOnly),
+      ]),
     });
   }, [disabled, readOnly, editableCompartment]);
 
@@ -227,7 +227,7 @@ export default function CodeEditor({
       <div className="code-editor-footer">
         <p className="code-editor-hint" id={hintId}>
           {hint ??
-            "Отступы 4 пробела. С клавиатуры: Tab и Shift+Tab меняют отступ, Esc возвращает фокус на страницу."}
+            "Отступы 4 пробела. С клавиатуры: Tab и Shift+Tab меняют отступ, Esc, затем Tab — выйти из редактора."}
         </p>
         <p className="code-editor-counter" id={counterId} data-at-limit={isAtLimit || undefined}>
           {value.length} из {maxLength} символов

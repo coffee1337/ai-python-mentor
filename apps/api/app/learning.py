@@ -10,12 +10,13 @@ from sqlalchemy.orm import Session
 from app.auth import csrf_protected, current_auth
 from app.db.models import AuthSession, ExerciseVersion, LearningPlan, LearningPlanItem, LessonCompletion, LessonSession, KnowledgeCheckSession, MentorConversation, MentorMessage, User, UserSkill, KnowledgeCheckAttempt, KnowledgeCheckResponse
 from app.db.session import get_db
-from app.learning_content import LESSONS
+from app.learning_content import LESSONS, LESSONS_BY_ID
 from app.backend_content import BACKEND_PHASES, BACKEND_PHASE_ONE_LESSONS
 from app.skill_graph import seed_skill_graph
 from app.curriculum import build_curriculum
 from app.prerequisites import prerequisite_state
 from app.db.models import LearningPlan, LearningPlanItem
+from app.choice_order import ordered_choices
 
 router = APIRouter(prefix="/learning", tags=["learning"])
 
@@ -140,12 +141,30 @@ def _lesson_from_snapshot(version: ExerciseVersion, lesson_id: str) -> dict[str,
     return lesson
 
 
+def _lesson_response(version: ExerciseVersion, lesson_id: str, session_id) -> dict[str, Any]:
+    lesson = dict(_lesson_from_snapshot(version, lesson_id))
+    lesson["version"] = str(version.version)
+    lesson["choices"] = ordered_choices(lesson["choices"], session_id=session_id, question_id=lesson_id)
+    checkpoint = lesson.get("checkpoint")
+    if isinstance(checkpoint, dict):
+        checkpoint = dict(checkpoint)
+        # imports-v1 was published with one string instead of a list. Adapt
+        # the public shape only; its immutable snapshot and grading stay intact.
+        choices = checkpoint.get("choices")
+        if isinstance(choices, str):
+            choices = [choices]
+        if isinstance(choices, list):
+            checkpoint["choices"] = ordered_choices(choices, session_id=session_id, question_id=f"{lesson_id}:checkpoint")
+        lesson["checkpoint"] = checkpoint
+    return lesson
+
+
 def _persisted_lesson(lesson_id: str, db: Session) -> dict[str, Any]:
     return _lesson_from_snapshot(_persisted_lesson_version(lesson_id, db), lesson_id)
 
 
 def _persisted_lesson_version(lesson_id: str, db: Session) -> ExerciseVersion:
-    if not any(item.get("id") == lesson_id for item in LESSONS):
+    if lesson_id not in LESSONS_BY_ID:
         raise HTTPException(404, "Lesson not found")
 
     # Keep the import local: exercise_hints uses accessible_lesson for its
@@ -227,6 +246,9 @@ def learning_path(db: Session, user: User) -> LearningPath:
         row.lesson_id: row.completed_at
         for row in db.scalars(select(LessonCompletion).where(LessonCompletion.user_id == user.id))
     }
+    for old_id, new_id in {"imports-v1": "imports-v2", "fixtures-v1": "fixtures-v2"}.items():
+        if old_id in completions and new_id not in completions:
+            completions[new_id] = completions[old_id]
     plan = db.scalar(select(LearningPlan).where(LearningPlan.user_id == user.id))
     ordered_lessons = []
     for item in LESSONS:
@@ -289,7 +311,7 @@ def _phase_summaries(lessons: list[LessonSummary]) -> list[PhaseSummary]:
         for skill_id in phase["skill_ids"]
     }
     published: dict[int, list[LessonSummary]] = {}
-    for lesson in BACKEND_PHASE_ONE_LESSONS:
+    for lesson in LESSONS:
         summary = by_id.get(lesson["id"])
         phase_id = phase_of_skill.get(lesson["skill_id"])
         if summary is not None and phase_id is not None:
@@ -361,8 +383,11 @@ def accessible_lesson(
             _lesson_from_snapshot(_lesson_session_version(db, session, lesson_id), lesson_id)
             if session else _persisted_lesson(lesson_id, db)
         )
-    summary = next(item for item in learning_path(db, user).lessons if item.id == lesson_id)
-    if summary.status == "locked" and not bound_pending_flow:
+    summary = next((item for item in learning_path(db, user).lessons if item.id == lesson_id), None)
+    # Historical publications remain readable/finishable under the same
+    # prerequisite policy even after their replacement becomes active.
+    locked = summary.status == "locked" if summary is not None else not prerequisite_state(db, user.id).is_lesson_ready(lesson)
+    if locked and not bound_pending_flow:
         raise HTTPException(409, "Complete prerequisite lessons first")
     return lesson
 
@@ -382,9 +407,9 @@ def get_next(auth: tuple[User, AuthSession] = Depends(current_auth), db: Session
     if not next_id:
         return None
     accessible_lesson(next_id, db, user)
-    _, version = _get_or_create_lesson_session(db, user, next_id)
+    session, version = _get_or_create_lesson_session(db, user, next_id)
     db.commit()
-    return _lesson_from_snapshot(version, next_id)
+    return _lesson_response(version, next_id, session.id)
 
 
 @router.get("/lessons/{lesson_id}", response_model=LessonResponse)
@@ -397,9 +422,9 @@ def get_lesson(lesson_id: str, auth: tuple[User, AuthSession] = Depends(current_
         )
     else:
         accessible_lesson(lesson_id, db, user)
-    _, version = _get_or_create_lesson_session(db, user, lesson_id)
+    session, version = _get_or_create_lesson_session(db, user, lesson_id)
     db.commit()
-    return _lesson_from_snapshot(version, lesson_id)
+    return _lesson_response(version, lesson_id, session.id)
 
 
 @router.post("/lessons/{lesson_id}/complete", response_model=AnswerResponse)

@@ -198,22 +198,35 @@ def _unavailable_result(message: str) -> RunnerResult:
 
 @router.get("/exercises/{exercise_id}/attempts", response_model=list[AttemptResponse])
 def history(exercise_id: str, auth: tuple[User, AuthSession] = Depends(current_auth), db: Session = Depends(get_db)):
-    require_onboarding(auth[0]); accessible_lesson(exercise_id, db, auth[0])
+    require_onboarding(auth[0])
+    if exercise_id.endswith("-code"):
+        from app.coding_exercises import resolve_coding_exercise
+        resolve_coding_exercise(db, auth[0], exercise_id)
+        db.commit()
+    else:
+        accessible_lesson(exercise_id, db, auth[0])
     rows = db.scalars(select(CodingAttempt).where(CodingAttempt.user_id == auth[0].id, CodingAttempt.exercise_id == exercise_id).order_by(CodingAttempt.created_at.desc()).limit(20)).all()
     return [_response(row) for row in rows]
 
 @router.post("/exercises/{exercise_id}/attempts", response_model=AttemptResponse, status_code=201)
 def submit(exercise_id: str, payload: AttemptRequest, auth: tuple[User, AuthSession] = Depends(csrf_protected), db: Session = Depends(get_db)):
-    user, _ = auth; require_onboarding(user); accessible_lesson(exercise_id, db, user)
+    user, _ = auth; require_onboarding(user)
+    if not exercise_id.endswith("-code"):
+        accessible_lesson(exercise_id, db, user)
     if payload.language != "python" or payload.mode != "function":
         raise HTTPException(422, "Only Python function exercises are supported")
-    _rate_limit(user.id)
+    from app.account_services import throttle
+    throttle(db, scope="coding_submission", subject=str(user.id), limit=LIMIT, window_seconds=int(WINDOW))
     pending_session = _pending_lesson_session(db, user.id, exercise_id)
-    exercise_version = (
-        _lesson_session_version(db, pending_session, exercise_id)
-        if pending_session is not None
-        else _persisted_lesson_version(exercise_id, db)
-    )
+    if exercise_id.endswith("-code"):
+        from app.coding_exercises import resolve_coding_exercise
+        _, exercise_version = resolve_coding_exercise(db, user, exercise_id)
+    else:
+        exercise_version = (
+            _lesson_session_version(db, pending_session, exercise_id)
+            if pending_session is not None
+            else _persisted_lesson_version(exercise_id, db)
+        )
     row = CodingAttempt(
         user_id=user.id,
         exercise_id=exercise_id,
@@ -234,9 +247,11 @@ def submit(exercise_id: str, payload: AttemptRequest, auth: tuple[User, AuthSess
         ),
     )
     db.add(row); db.commit(); db.refresh(row)
+    version_number, attempt_key = exercise_version.version, str(row.id)
+    db.commit()  # Release the connection before the private HTTP call.
     # No API-process execution. If a safe adapter is installed in the future, it must be isolated.
     try:
-        with runner.attempt_context(exercise_version=exercise_version.version, idempotency_key=str(row.id)):
+        with runner.attempt_context(exercise_version=version_number, idempotency_key=attempt_key):
             result = runner.run(
                 exercise_id=exercise_id,
                 source_code=payload.source_code,

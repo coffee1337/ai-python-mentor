@@ -1571,3 +1571,8 @@ CHECKS = {
  ),
  **BACKEND_PHASE_ONE_CHECKS,
 }
+
+from app.completion_content import COMPLETION_CHECKS
+from app.content_publication import CORRECTED_CHECKS
+CHECKS.update(COMPLETION_CHECKS)
+CHECKS.update(CORRECTED_CHECKS)

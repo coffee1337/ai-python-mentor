@@ -27,6 +27,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
+# Register extension tables for create_all, Alembic and privacy traversal.
+from app.db import account_models, domain_models, job_models, product_models, reflection_models  # noqa: F401
+
 
 class User(Base):
     __tablename__ = "users"
@@ -1005,6 +1008,7 @@ class KnowledgeChunk(Base):
 
     __tablename__ = "knowledge_chunks"
     __table_args__ = (
+        Index("ix_knowledge_chunks_skill_version", "skill_id", "exercise_version_id"),
         UniqueConstraint(
             "exercise_version_id", "section", "ordinal", name="uq_knowledge_chunk_position",
         ),

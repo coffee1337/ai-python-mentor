@@ -6,16 +6,31 @@ from sqlalchemy.orm import Session
 from app.db.models import (
     CurriculumActivity, CurriculumPlanRevision, CurriculumSession, Goal,
     LearningPlan, LearningPlanItem, LessonCompletion, Skill,
-    User, UserSkill,
+    User, UserSkill, UserMistake,
 )
 from app.learning_content import LESSONS
 from app.skill_graph import seed_skill_graph
 from app.prerequisites import PrerequisiteState, mastery_value, prerequisite_state
 
-POLICY_VERSION = "curriculum-v1"
+POLICY_VERSION = "curriculum-v2"
 MIN_SESSION = 20
 MAX_SESSION = 60
 MAX_REVIEW_PRIORITY = 0.30
+
+
+def selected_vacancy(db: Session, user_id) -> tuple[dict | None, set[str]]:
+    """Bounded selected target; never fetch or execute vacancy URLs."""
+    from app.db.product_models import VacancyAnalysis, VacancyTarget
+    target = db.get(VacancyTarget, user_id)
+    row = db.get(VacancyAnalysis, target.vacancy_id) if target else None
+    if row is None or row.user_id != user_id:
+        return None, set()
+    ids = {item["skill_id"] for item in row.requirements if isinstance(item, dict) and isinstance(item.get("skill_id"), str)}
+    readiness = prerequisite_state(db, user_id)
+    closure = set(ids)
+    for skill_id in ids:
+        closure.update(readiness.required_skills(skill_id))
+    return {"title": row.title, "target_skill_ids": sorted(ids)}, closure
 
 
 def _mastery(row: UserSkill | None) -> float:
@@ -83,7 +98,11 @@ def build_curriculum(db: Session, user: User, *, reason: str = "evidence") -> Cu
     seed_skill_graph(db)
     goal = db.scalar(select(Goal).where(Goal.user_id == user.id))
     mastery = {row.skill_id: row for row in db.scalars(select(UserSkill).where(UserSkill.user_id == user.id))}
+    mistake_counts: dict[str, int] = {}
+    for item in db.scalars(select(UserMistake).where(UserMistake.user_id == user.id)):
+        mistake_counts[item.skill_id] = mistake_counts.get(item.skill_id, 0) + item.occurrence_count
     readiness = prerequisite_state(db, user.id)
+    _, vacancy_skills = selected_vacancy(db, user.id)
     completed = set(readiness.completed_lesson_ids)
     lesson_order = {lesson["id"]: index for index, lesson in enumerate(LESSONS)}
     candidates = []
@@ -111,7 +130,7 @@ def build_curriculum(db: Session, user: User, *, reason: str = "evidence") -> Cu
         review_due = bool(next_review and next_review <= now)
         stale = bool(last_practiced and (now - last_practiced).days >= 30)
         due = review_due or stale
-        goal_fit = "backend" in goal_text and skill.category.startswith("backend.")
+        goal_fit = "backend" in goal_text and skill.category == "python.backend"
         priority = round(
             0.40 * gap
             + 0.30 * skill.importance
@@ -128,13 +147,21 @@ def build_curriculum(db: Session, user: User, *, reason: str = "evidence") -> Cu
         reasons.append("goal_fit_matched" if goal_fit else "goal_fit_unknown")
         if row is None or row.evidence_count == 0:
             reasons.append("unassessed")
+        if mistake_counts.get(skill_id):
+            # Approved distractor signals affect the recommendation, never the
+            # learner's mastery projection or prerequisite access.
+            priority = round(priority + min(0.05, 0.01 * mistake_counts[skill_id]), 6)
+            reasons.append("authored_mistake_remediation")
+        if skill_id in vacancy_skills:
+            priority = round(priority + 0.05, 6)
+            reasons.append("vacancy_target")
         candidates.append((priority, lesson_order[lesson["id"]], lesson, reasons))
     candidates.sort(key=lambda item: (-item[0], item[1], item[2]["skill_id"], item[2]["id"]))
     weekly = max(0, goal.weekly_minutes if goal else 0)
     budget = min(MAX_SESSION, weekly) if weekly else 0
     # A valid onboarding budget may be 15..19; don't misreport 20 minutes as
     # available. Mark coverage as insufficient rather than fabricate duration.
-    session_minutes = min(MAX_SESSION, budget) if budget >= MIN_SESSION else 0
+    session_minutes = min(MAX_SESSION, budget)
     review_candidates = _review_candidates(
         db,
         user,
@@ -145,16 +172,18 @@ def build_curriculum(db: Session, user: User, *, reason: str = "evidence") -> Cu
     selected: list[tuple[str, float, dict, list[str]]] = []
     used = 0
     for priority, _, lesson, reasons in candidates:
-        if used + 10 > session_minutes and selected:
-            break
+        duration = int(lesson["minutes"])
+        if duration <= 0 or used + duration > session_minutes:
+            continue
         selected.append(("lesson", priority, lesson, reasons))
-        used += 10
+        used += duration
     if used < session_minutes:
         for priority, _, lesson, reasons in review_candidates:
-            if used + 10 > session_minutes:
-                break
+            duration = int(lesson["minutes"])
+            if duration <= 0 or used + duration > session_minutes:
+                continue
             selected.append(("review", priority, lesson, reasons))
-            used += 10
+            used += duration
     version = (db.scalar(select(CurriculumPlanRevision.version).where(
         CurriculumPlanRevision.plan_id == plan.id
     ).order_by(CurriculumPlanRevision.version.desc())) or 0) + 1
@@ -194,7 +223,7 @@ def build_curriculum(db: Session, user: User, *, reason: str = "evidence") -> Cu
             "vacancy_fit": "unavailable", "practice": "unavailable",
             "review": "scheduled" if any(kind == "review" for kind, *_ in selected) else "available" if review_candidates else "unavailable",
             "unavailable_lessons": unavailable,
-            "session": "scheduled" if used >= MIN_SESSION else "insufficient_authored_content",
+            "session": "scheduled" if selected else "insufficient_authored_content",
         },
         reason=reason,
     )

@@ -15,9 +15,9 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: apps/api/requirements.txt
-      - run: pip install -r apps/api/requirements.txt
-      # Tests use SQLite and do not need PostgreSQL. Real row locking is unverified here.
+          cache-dependency-path: apps/api/requirements.lock
+      - run: pip install -r apps/api/requirements.lock
+      # Most tests override get_db with SQLite; PostgreSQL locking is checked below.
       - run: python -m pytest -q -p no:cacheprovider
         working-directory: apps/api
 
@@ -60,14 +60,39 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: apps/api/requirements.txt
-      - run: pip install -r apps/api/requirements.txt
+          cache-dependency-path: apps/api/requirements.lock
+      - run: pip install -r apps/api/requirements.lock
       - name: Upgrade and downgrade on real PostgreSQL
         working-directory: apps/api
         env:
           DATABASE_URL: postgresql+psycopg://mentor:mentor_local_only@localhost:5432/mentor
         run: |
           alembic upgrade head
+          alembic check
           alembic downgrade 0001_initial
           alembic upgrade head
           alembic check
+          python ../../scripts/migration-sentinel.py create
+          alembic downgrade 0031_knowledge_chunks
+          alembic upgrade head
+          alembic check
+          python ../../scripts/migration-sentinel.py verify
+          python ../../scripts/migration-sentinel.py create
+          alembic downgrade 0036_content_completion
+          alembic upgrade head
+          python ../../scripts/migration-sentinel.py verify
+      - name: PostgreSQL concurrency and evidence
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql+psycopg://mentor:mentor_local_only@localhost:5432/mentor
+          RUN_POSTGRES_TESTS: "1"
+        run: python -m pytest -q -s tests/test_postgres_specific.py
+  runner:
+    name: Runner policy and journal
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest discover -s apps/runner/tests -v

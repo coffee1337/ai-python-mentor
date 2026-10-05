@@ -1,0 +1,26 @@
+[Unit]
+Description=Independent sandbox lifetime watchdog
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=tutor-runner
+Group=tutor-runner
+WorkingDirectory=/opt/ai-tutor-runner
+EnvironmentFile=/etc/ai-tutor-runner/environment
+ExecStart=/opt/ai-tutor-runner/venv/bin/ai-tutor-reaper
+Restart=always
+RestartSec=1
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ai-tutor-runner
+UMask=0077
+TasksMax=32
+MemoryMax=128M
+LimitNOFILE=128
+
+[Install]
+WantedBy=multi-user.target

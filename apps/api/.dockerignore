@@ -1,5 +1,7 @@
-.pytest_cache
-.pytest_local_tmp
 __pycache__
 *.pyc
+.pytest_cache
+pytest-of-*
 .env
+tests
+%SystemDrive%

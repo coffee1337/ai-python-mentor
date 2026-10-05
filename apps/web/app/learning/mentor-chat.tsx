@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { api } from "../lib/api";
+import { api, errorMessage, newRequestId } from "../lib/api";
 
 type Message = { id: string; role: string; content: string; status: string; created_at: string };
 type Pending = { request_id: string; message: string };
@@ -39,18 +39,18 @@ export default function MentorChat({ lessonId }: { lessonId: string }) {
       setPending(null); setText("");
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Наставник временно недоступен.");
+      setError(errorMessage(err, "Наставник временно недоступен."));
     } finally { setBusy(false); }
   }
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (text.trim()) void send({ request_id: crypto.randomUUID(), message: text.trim() });
+    if (text.trim()) void send({ request_id: newRequestId(), message: text.trim() });
   }
 
   return <section aria-label="Чат с наставником">
     <h3>Наставник по этому уроку</h3>
-    <p className="muted">Небольшие подсказки, не готовые решения. Использование помощи учитывается при завершении урока. Ответ AI может быть ошибочным; не отправляйте секреты.</p>
+    <p className="muted">Небольшие подсказки, не готовые решения. Самостоятельность в проверках учитывается по открытым уровням подсказок; сообщения чата отдельно не снижают её. Ответ AI может быть ошибочным; не отправляйте секреты.</p>
     {loading && <p role="status">Загружаем историю…</p>}
     <div aria-live="polite">{messages.map(message => <div key={message.id}>
       <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}><strong>{message.role === "user" ? "Вы" : "Наставник"}: </strong>{message.content}</p>

@@ -7,7 +7,9 @@ from typing import Any
 
 from app.assessment_content import QUESTIONS
 from app.knowledge_check_content import CHECKS
-from app.learning_content import EXERCISE_HINT_LADDERS, LESSONS
+from app.learning_content import EXERCISE_HINT_LADDERS, LESSONS_BY_ID
+
+LESSONS = tuple(LESSONS_BY_ID.values())
 
 _LEGACY_SCHEMA_ONE_CHECKS = frozenset({"variables-v1", "conditions-v1"})
 
@@ -127,7 +129,7 @@ def validate_check_snapshot(snapshot: dict[str, Any], exercise_id: str) -> tuple
 
 def authored_snapshot(exercise_id: str) -> dict[str, Any]:
     authored = EXERCISE_HINT_LADDERS.get(exercise_id)
-    lesson = next((item for item in LESSONS if item["id"] == exercise_id), None)
+    lesson = next((item for item in LESSONS if item["id"] == exercise_id), None) or LESSONS_BY_ID.get(exercise_id)
     assessment = next((item for item in QUESTIONS if item["id"] == exercise_id), None)
     if authored is None and assessment is None and lesson is None:
         raise ValueError("Exercise snapshot references unknown authored content")
@@ -200,6 +202,24 @@ def snapshot_skill_id(
     lesson = snapshot.get("lesson")
     if isinstance(lesson, dict):
         skill_id = lesson.get("skill_id")
+        if snapshot.get("kind") == "authored_python_function":
+            from app.coding_exercises import contract_digest
+            contract = snapshot.get("coding")
+            if (not isinstance(contract, dict)
+                or contract.get("exercise_id") != exercise_id
+                or contract.get("version") != version
+                or contract.get("lesson_id") != lesson.get("id")
+                or contract.get("skill_id") != skill_id
+                or not isinstance(skill_id, str) or not skill_id.strip()
+                or not isinstance(contract.get("cases"), list) or not contract["cases"]):
+                raise ValueError("Coding snapshot has no trusted skill mapping")
+            try:
+                valid_digest = contract_digest(contract) == snapshot.get("contract_digest")
+            except (ValueError, TypeError):
+                valid_digest = False
+            if not valid_digest:
+                raise ValueError("Coding snapshot contract is invalid")
+            return skill_id
         if (
             lesson.get("id") != exercise_id
             or not isinstance(skill_id, str)
