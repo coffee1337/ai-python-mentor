@@ -4,6 +4,7 @@ import type { PathSummary } from "./lesson-types";
 
 type CoursePathSummaryProps = {
   path: PathSummary;
+  currentLessonId?: string;
 };
 
 const STATUS_LABELS = {
@@ -17,7 +18,7 @@ const STATUS_LABELS = {
  * in `course-path.tsx`; this block must not duplicate it. Progress is a count of
  * completed lessons, not a mastery percentage.
  */
-export default function CoursePathSummary({ path }: CoursePathSummaryProps) {
+export default function CoursePathSummary({ path, currentLessonId }: CoursePathSummaryProps) {
   if (path.lessons.length === 0) {
     return (
       <section className="lesson-route" aria-labelledby="lesson-route-title">
@@ -30,6 +31,8 @@ export default function CoursePathSummary({ path }: CoursePathSummaryProps) {
     );
   }
 
+  const visible = path.lessons.filter((item) => item.id === currentLessonId || item.id === path.next_lesson_id);
+
   return (
     <section className="lesson-route" aria-labelledby="lesson-route-title">
       <h2 id="lesson-route-title">Ваш маршрут</h2>
@@ -37,7 +40,7 @@ export default function CoursePathSummary({ path }: CoursePathSummaryProps) {
         Завершено уроков: {path.completed} из {path.total}
       </p>
       <ol>
-        {path.lessons.map((item) => (
+        {visible.map((item) => (
           <li key={item.id}>
             {item.title} · {item.minutes} мин · {STATUS_LABELS[item.status]}
           </li>

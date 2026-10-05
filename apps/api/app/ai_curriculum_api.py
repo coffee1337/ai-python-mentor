@@ -21,7 +21,7 @@ def generate_plan(auth: tuple[User, AuthSession] = Depends(csrf_protected), db=D
     user, _ = auth
     require_onboarding(user)
     try:
-        return generate_personalized_plan(db, user, trigger="manual")
+        return generate_personalized_plan(db, user, trigger="manual", force=True)
     except Exception as exc:
         if hasattr(exc, "status"):
             raise HTTPException(int(exc.status), "AI curriculum generation failed") from None

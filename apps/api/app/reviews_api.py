@@ -38,6 +38,7 @@ from app.schemas import (
 )
 from app.security import new_token, token_digest
 from app.skill_evidence import InvalidEvidence
+from app.choice_order import ordered_choices
 
 
 router = APIRouter(prefix="/learning/reviews", tags=["reviews"])
@@ -160,12 +161,12 @@ def _public_sources(version: ExerciseVersion, skill_id: str) -> list[dict]:
     return sources
 
 
-def _public_questions(version: ExerciseVersion, skill_id: str) -> list[ReviewQuestion]:
+def _public_questions(version: ExerciseVersion, skill_id: str, session_id) -> list[ReviewQuestion]:
     return [
         ReviewQuestion(
             id=source["id"],
             prompt=source.get("prompt", source.get("question")),
-            choices=list(source["choices"]),
+            choices=ordered_choices(source["choices"],session_id=session_id,question_id=source["id"]),
         )
         for source in _public_sources(version, skill_id)
     ]
@@ -301,7 +302,7 @@ def reviews_today(
                 status.HTTP_409_CONFLICT,
                 "Review content snapshot is unavailable",
             )
-        questions = _public_questions(version, session.skill_id)
+        questions = _public_questions(version, session.skill_id, session.id)
         items.append(
             ReviewTodayItem(
                 review_token=raw_token,
@@ -472,7 +473,7 @@ def start_review_session(
     version = db.get(ExerciseVersion, session.exercise_version_id)
     if version is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Review content snapshot is unavailable")
-    questions = _public_questions(version, session.skill_id)
+    questions = _public_questions(version, session.skill_id, session.id)
     db.commit()
     return StartReviewResponse(
         session_token=raw_token,

@@ -8,21 +8,21 @@ from sqlalchemy import create_engine, text
 
 url = os.environ["DATABASE_URL"]
 deadline = time.time() + 90
-last = None
 while time.time() < deadline:
     try:
         with create_engine(url, pool_pre_ping=True).connect() as connection:
             connection.execute(text("SELECT 1"))
         break
-    except Exception as exc:  # noqa: BLE001 - startup probe
-        last = exc
+    except Exception:  # Do not print connection strings or driver exceptions.
         time.sleep(2)
 else:
-    sys.exit(f"Database is not ready: {last}")
+    sys.exit("Database is not ready")
 PY
 
-echo "Applying migrations..."
-alembic upgrade head
+if [ "${APPLY_MIGRATIONS:-false}" = "true" ]; then
+  echo "Applying explicitly enabled migrations..."
+  alembic upgrade head
+fi
 
 echo "Starting API..."
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers "${API_WORKERS:-2}" --no-access-log

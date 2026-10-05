@@ -11,6 +11,9 @@ type KnowledgeCheckSectionProps = {
   onSubmit: (event: FormEvent) => void;
   onRetry: () => void;
   busy: boolean;
+  loading?: boolean;
+  error?: string;
+  onReload?: () => void;
 };
 
 /**
@@ -27,13 +30,22 @@ export default function KnowledgeCheckSection({
   onSubmit,
   onRetry,
   busy,
+  loading = false,
+  error = "",
+  onReload,
 }: KnowledgeCheckSectionProps) {
+  if (loading || error) {
+    return <section aria-label="Проверка знаний"><h3>Проверка усвоения</h3>
+      {loading && <p role="status">Загружаем вопросы…</p>}
+      {error && <div role="alert"><p className="form-error">{error}</p><button className="text-button" type="button" disabled={loading} onClick={onReload}>Повторить загрузку вопросов</button></div>}
+    </section>;
+  }
   if (questions.length === 0 && !result) {
     return (
       <section aria-label="Проверка знаний">
         <h3>Проверка усвоения</h3>
         <p role="status">
-          Для этого урока нет authored-вопросов. Проверка появится, когда наставник
+          Для этого урока ещё нет вопросов. Проверка появится, когда наставник
           опубликует вопросы.
         </p>
       </section>

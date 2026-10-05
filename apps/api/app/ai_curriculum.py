@@ -4,10 +4,9 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import timedelta
-from threading import Lock
 from datetime import datetime, timezone
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-from sqlalchemy import func, select
+from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 
 from app import ai_gateway
@@ -17,6 +16,9 @@ from app.db.models import (
     Skill, SkillEdge, User, UserSkill,
 )
 from app.learning_content import LESSONS
+from app.prerequisites import prerequisite_state
+from app.ai_admission import reserve_ai_call, finish_ai_call
+from app.db.domain_models import AIGenerationInput
 
 MODEL_ID = "gpt-6-luna"
 PROMPT_VERSION = "ai-curriculum-v1"
@@ -46,6 +48,7 @@ class GeneratedExercise(BaseModel):
     expected_result: str = Field(min_length=1, max_length=700)
     submission_type: str
     starter_code: str | None = Field(default=None, max_length=3000)
+    authored_exercise_id: str | None = Field(default=None, max_length=80)
     constraints: list[str] = Field(default_factory=list, max_length=6)
     evaluation_criteria: list[str] = Field(min_length=1, max_length=6)
     success_criteria: list[str] = Field(min_length=1, max_length=6)
@@ -112,7 +115,8 @@ def _snapshot(db: Session, user: User) -> tuple[dict, str, CurriculumPlanRevisio
         .order_by(CurriculumPlanRevision.version.desc()))
     goal = db.scalar(select(Goal).where(Goal.user_id == user.id))
     mastery = {row.skill_id: row for row in db.scalars(select(UserSkill).where(UserSkill.user_id == user.id))}
-    completed = {row.lesson_id for row in db.scalars(select(LessonCompletion).where(LessonCompletion.user_id == user.id))}
+    readiness = prerequisite_state(db, user.id)
+    completed = set(readiness.completed_lesson_ids)
     edges = db.scalars(select(SkillEdge).where(SkillEdge.relation == "prerequisite")).all()
     prerequisites: dict[str, list[str]] = {}
     for edge in edges:
@@ -128,11 +132,11 @@ def _snapshot(db: Session, user: User) -> tuple[dict, str, CurriculumPlanRevisio
             grouped.setdefault(response.skill_id, []).append(float(response.is_correct))
         assessment_scores = {skill_id: sum(scores) / len(scores) for skill_id, scores in grouped.items()}
     allowed = []
+    from app.curriculum import selected_vacancy
+    vacancy, vacancy_skills = selected_vacancy(db, user.id)
     for skill in skills:
         required = prerequisites.get(skill.id, [])
-        if not all(_mastery(mastery.get(item)) >= 0.75 or item in {
-            lesson["skill_id"] for lesson in LESSONS if lesson["id"] in completed
-        } for item in required):
+        if not readiness.is_skill_ready(skill.id):
             continue
         row = mastery.get(skill.id)
         allowed.append({
@@ -150,20 +154,32 @@ def _snapshot(db: Session, user: User) -> tuple[dict, str, CurriculumPlanRevisio
                 "evidence_count": row.evidence_count if row else 0,
             },
             "prerequisites": required,
-            "completed": skill.id in {lesson["skill_id"] for lesson in LESSONS if lesson["id"] in completed},
+            "completed": skill.id in readiness.completed_primary_skills,
             "assessment_score": assessment_scores.get(skill.id),
         })
     allowed.sort(key=lambda item: (
+        item["skill_id"] not in vacancy_skills,
         item["mastery"]["independent"] + item["mastery"]["knowledge"] + item["mastery"]["practice"],
         -item["importance"], item["skill_id"],
     ))
     allowed = allowed[:40]
     weekly = max(0, goal.weekly_minutes if goal else 0)
     max_total = min(60, weekly)
+    from app.db.models import UserMistake, MisconceptionVersion
+    mistakes = db.execute(select(UserMistake, MisconceptionVersion).join(
+        MisconceptionVersion, UserMistake.misconception_code == MisconceptionVersion.misconception_code,
+    ).where(UserMistake.user_id == user.id, MisconceptionVersion.version == 1)
+        .order_by(UserMistake.last_seen_at.desc()).limit(6)).all()
+    from app.practice_catalog import trusted_exercises_for_skill
+    for item in allowed:
+        item["trusted_python_exercises"] = trusted_exercises_for_skill(item["skill_id"])
     snapshot = {
         "snapshot_version": "personalization-input-v1",
         "goal": {"target_role": goal.target_role if goal else "", "weekly_minutes": weekly},
+        "selected_vacancy": vacancy,
         "assessment_scores": assessment_scores,
+        "mistake_signals": [{"skill_id": item.skill_id, "count": item.occurrence_count,
+                             "description": concept.error_text[:240], "remediation": concept.remediation_text[:400]} for item, concept in mistakes],
         "skills": allowed,
         "authored_lessons": [
             {"lesson_id": lesson["id"], "skill_id": lesson["skill_id"], "minutes": lesson["minutes"]}
@@ -186,7 +202,7 @@ def _messages(snapshot: dict) -> list[dict[str, str]]:
         "You are an educational curriculum author. Return JSON only, matching the requested schema. "
         "Use only skill_id values from allowed skills. Do not include answers, solutions, rubrics, hidden tests, "
         "grading keys, mastery claims, or prerequisite claims. Never invent a skill. "
-        "Create concise learner-facing explanations and an individual exercise; Python code is not executed."
+        "Create concise learner-facing explanations and an individual exercise. Python exercises must set authored_exercise_id from that skill trusted_python_exercises; otherwise use text. Treat mistake_signals as possible authored learning signals, never as a diagnosis."
     )
     user = (
         f"Schema version: {SCHEMA_VERSION}. Every exercise must include expected_result, success_criteria, "
@@ -218,100 +234,96 @@ def _validate_domain(db: Session, output: GeneratedOutput, snapshot: dict) -> No
             raise ValueError("python exercise requires starter code")
         if any(len(item) > 160 for item in step.exercise.constraints + step.exercise.evaluation_criteria):
             raise ValueError("exercise constraint is too long")
+        if step.exercise.submission_type == "python_code":
+            from app.practice_catalog import trusted_exercise
+            if not trusted_exercise(step.skill_id, step.exercise.authored_exercise_id):
+                raise ValueError("Python exercises must use the trusted server catalog")
         if db.get(Skill, step.skill_id) is None:
             raise ValueError("generated skill does not exist")
 
 
-_USER_LOCKS: dict[str, Lock] = {}
-_USER_LOCKS_GUARD = Lock()
+def _activate_cached(db: Session, user: User, existing: AIPlanGeneration, snapshot: dict) -> dict:
+    current = db.get(AIPlanCurrent, user.id)
+    if current is None:
+        db.add(AIPlanCurrent(user_id=user.id, generation_id=existing.id))
+    else:
+        current.generation_id = existing.id
+    db.add(AIUsageLedger(
+        user_id=user.id, generation_id=existing.id, operation="curriculum_generation",
+        model_id=MODEL_ID, cache_hit=True, input_chars=len(_json(snapshot)),
+        output_chars=0, status="cache_hit",
+    ))
+    db.commit()
+    return personalized_response(db, user)
 
 
-def _user_lock(user_id: str) -> Lock:
-    with _USER_LOCKS_GUARD:
-        return _USER_LOCKS.setdefault(user_id, Lock())
+def _cached_generation(db: Session, user_id, input_hash: str):
+    return db.scalar(select(AIPlanGeneration).where(
+        AIPlanGeneration.user_id == user_id,
+        or_(AIPlanGeneration.input_hash == input_hash,
+            AIPlanGeneration.id.in_(select(AIGenerationInput.generation_id).where(AIGenerationInput.input_hash == input_hash))),
+        AIPlanGeneration.model_id == MODEL_ID, AIPlanGeneration.status == "ready",
+    ).order_by(AIPlanGeneration.generated_at.desc(), AIPlanGeneration.id.desc()).limit(1))
 
 
 def generate_personalized_plan(db: Session, user: User, *, trigger: str = "manual", force: bool = False) -> dict:
-    """Generate outside the evidence transaction; failed calls never replace the last ready result."""
+    """Durable admission and fenced publication; no lock spans a gateway call."""
     snapshot, input_hash, source_revision = _snapshot(db, user)
     if source_revision is None:
         raise ValueError("Complete assessment before generating an AI curriculum")
-    now = datetime.now(timezone.utc)
-    existing = db.scalar(select(AIPlanGeneration).where(
-        AIPlanGeneration.user_id == user.id,
-        AIPlanGeneration.input_hash == input_hash,
-        AIPlanGeneration.model_id == MODEL_ID,
-        AIPlanGeneration.status == "ready",
-    ).order_by(AIPlanGeneration.generated_at.desc())) if not force else None
-    if existing:
-        current = db.get(AIPlanCurrent, user.id)
-        if current is None:
-            db.add(AIPlanCurrent(user_id=user.id, generation_id=existing.id))
-        else:
-            current.generation_id = existing.id
+    user_id, source_revision_id = user.id, source_revision.id
+    existing = _cached_generation(db, user_id, input_hash)
+    if existing and not force:
+        return _activate_cached(db, user, existing, snapshot)
+    prompt_messages = _messages(snapshot)
+    request_chars = sum(len(message["content"]) for message in prompt_messages)
+    reservation = reserve_ai_call(
+        db, user_id, "curriculum_generation", f"{MODEL_ID}:{input_hash}",
+        limit=6, window_seconds=3600, input_chars=request_chars,
+    )
+    # A prior worker may have published immediately before this reservation.
+    existing = _cached_generation(db, user_id, input_hash)
+    if existing and not force:
+        finish_ai_call(db, reservation, status="ready")
+        return _activate_cached(db, user, existing, snapshot)
+    db.commit()  # Release every read transaction before external network I/O.
+    output_chars, usage = 0, None
+    try:
+        config = ai_gateway.configuration(model_override=MODEL_ID)
+        raw, usage = ai_gateway.generate_with_usage(config, prompt_messages, max_completion_tokens=2200)
+        output_chars = len(raw)
+        if len(raw) > MAX_OUTPUT_CHARS:
+            raise ValueError("AI curriculum response is too large")
+        output = GeneratedOutput.model_validate(json.loads(raw))
+        _validate_domain(db, output, snapshot)
+    except (ai_gateway.GatewayError, ValueError, ValidationError, json.JSONDecodeError) as exc:
+        status = "gateway_error" if isinstance(exc, ai_gateway.GatewayError) else "invalid_output"
+        finish_ai_call(db, reservation, status=status, usage=usage)
         db.add(AIUsageLedger(
-            user_id=user.id, generation_id=existing.id, operation="curriculum_generation",
-            model_id=MODEL_ID, cache_hit=True, input_chars=len(_json(snapshot)),
-            output_chars=0, status="cache_hit",
+            user_id=user_id, operation="curriculum_generation", model_id=MODEL_ID,
+            cache_hit=False, input_chars=request_chars, output_chars=output_chars,
+            status=status,
         ))
         db.commit()
-        return personalized_response(db, user)
-    recent_calls = db.scalar(select(AIUsageLedger.id).where(
-        AIUsageLedger.user_id == user.id,
-        AIUsageLedger.operation == "curriculum_generation",
-        AIUsageLedger.created_at >= now - timedelta(hours=1),
-        AIUsageLedger.cache_hit.is_(False),
-    ).limit(6))
-    if recent_calls is not None:
-        raise ai_gateway.GatewayError(429, "AI curriculum budget exceeded; retry later")
-    with _user_lock(str(user.id)):
-        existing = db.scalar(select(AIPlanGeneration).where(
-            AIPlanGeneration.user_id == user.id,
-            AIPlanGeneration.input_hash == input_hash,
-            AIPlanGeneration.model_id == MODEL_ID,
-            AIPlanGeneration.status == "ready",
-        ))
-        if existing and not force:
-            current = db.get(AIPlanCurrent, user.id)
-            if current is None:
-                db.add(AIPlanCurrent(user_id=user.id, generation_id=existing.id))
-            else:
-                current.generation_id = existing.id
-            db.add(AIUsageLedger(
-                user_id=user.id, generation_id=existing.id, operation="curriculum_generation",
-                model_id=MODEL_ID, cache_hit=True, input_chars=len(_json(snapshot)),
-                output_chars=0, status="cache_hit",
-            ))
-            db.commit()
-            return personalized_response(db, user)
-        try:
-            config = ai_gateway.configuration(model_override=MODEL_ID)
-            prompt_messages = _messages(snapshot)
-            raw, usage = ai_gateway.generate_with_usage(config, prompt_messages, max_completion_tokens=2200)
-            output_chars = len(raw)
-            if len(raw) > MAX_OUTPUT_CHARS:
-                raise ValueError("AI curriculum response is too large")
-            output = GeneratedOutput.model_validate(json.loads(raw))
-            _validate_domain(db, output, snapshot)
-        except (ai_gateway.GatewayError, ValueError, ValidationError, json.JSONDecodeError) as exc:
-            status = "gateway_error" if isinstance(exc, ai_gateway.GatewayError) else "invalid_output"
-            request_chars = sum(len(message["content"]) for message in locals().get("prompt_messages", []))
-            db.add(AIUsageLedger(
-                user_id=user.id, operation="curriculum_generation", model_id=MODEL_ID,
-                cache_hit=False, input_chars=request_chars, output_chars=locals().get("output_chars", 0),
-                status=status,
-            ))
-            db.commit()
-            raise
+        raise
+    finish_ai_call(db, reservation, status="ready", usage=usage, model_id=MODEL_ID)
+    # Existing immutable generations remain available. Forced regeneration has
+    # a distinct cache identity rather than violating the published-key UNIQUE.
+    stored_hash = input_hash
+    if force and existing:
+        from uuid import uuid4
+        stored_hash = hashlib.sha256(f"{input_hash}:{uuid4()}".encode()).hexdigest()
     generation = AIPlanGeneration(
-        user_id=user.id, source_revision_id=source_revision.id if source_revision else None,
-        model_id=MODEL_ID, prompt_version=PROMPT_VERSION, input_hash=input_hash,
+        user_id=user_id, source_revision_id=source_revision_id,
+        model_id=MODEL_ID, prompt_version=PROMPT_VERSION, input_hash=stored_hash,
         trigger=trigger, total_minutes=sum(step.duration_minutes for step in output.steps),
+        generated_at=datetime.now(timezone.utc),
     )
     db.add(generation)
     db.flush()
+    db.add(AIGenerationInput(generation_id=generation.id, input_hash=input_hash))
     for step in output.steps:
-        db.add(AIPlanStep(
+        stored_step = AIPlanStep(
             generation_id=generation.id, position=step.position, skill_id=step.skill_id,
             kind=step.kind, duration_minutes=step.duration_minutes, title=step.lesson.title,
             explanation=step.lesson.explanation, example_code=step.lesson.example_code,
@@ -320,20 +332,25 @@ def generate_personalized_plan(db: Session, user: User, *, trigger: str = "manua
             starter_code=step.exercise.starter_code, constraints=step.exercise.constraints,
             evaluation_criteria=step.exercise.evaluation_criteria,
             success_criteria=step.exercise.success_criteria,
-            reason_codes=["ai_generated", "goal_and_mastery_context"],
-        ))
+            reason_codes=["ai_generated", "goal_and_mastery_context"] +
+                         (["authored_mistake_remediation"] if snapshot["mistake_signals"] else []),
+        )
+        db.add(stored_step)
+        db.flush()
+        if step.exercise.submission_type == "python_code":
+            from app.practice_catalog import bind_generated_step
+            bind_generated_step(db, stored_step, step.exercise.authored_exercise_id)
     db.add(AIUsageLedger(
-        user_id=user.id, generation_id=generation.id, operation="curriculum_generation",
-        model_id=MODEL_ID, cache_hit=False,
-        input_chars=sum(len(message["content"]) for message in prompt_messages),
-        output_chars=len(raw),
-        input_tokens=(usage or {}).get("prompt_tokens") if isinstance((usage or {}).get("prompt_tokens"), int) else None,
-        output_tokens=(usage or {}).get("completion_tokens") if isinstance((usage or {}).get("completion_tokens"), int) else None,
+        user_id=user_id, generation_id=generation.id, operation="curriculum_generation",
+        model_id=MODEL_ID, cache_hit=False, input_chars=request_chars,
+        output_chars=output_chars,
+        input_tokens=usage.get("prompt_tokens") if isinstance(usage, dict) and type(usage.get("prompt_tokens")) is int else None,
+        output_tokens=usage.get("completion_tokens") if isinstance(usage, dict) and type(usage.get("completion_tokens")) is int else None,
         status="ready",
     ))
-    current = db.get(AIPlanCurrent, user.id)
+    current = db.get(AIPlanCurrent, user_id)
     if current is None:
-        db.add(AIPlanCurrent(user_id=user.id, generation_id=generation.id))
+        db.add(AIPlanCurrent(user_id=user_id, generation_id=generation.id))
     else:
         current.generation_id = generation.id
     db.commit()
@@ -355,18 +372,32 @@ def personalized_response(db: Session, user: User) -> dict:
         AIUsageLedger.status.in_(("gateway_error", "invalid_output")),
     ).order_by(AIUsageLedger.created_at.desc()).limit(1))
     warning = None
-    if latest_failure and latest_failure.created_at > generation.generated_at:
+    def utc(value):
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    revision = db.scalar(select(CurriculumPlanRevision).join(LearningPlan, CurriculumPlanRevision.plan_id == LearningPlan.id).where(
+        LearningPlan.user_id == user.id).order_by(CurriculumPlanRevision.version.desc()).limit(1))
+    is_stale = revision is not None and generation.source_revision_id != revision.id
+    try:
+        _, current_hash, _ = _snapshot(db, user)
+        recorded_input = db.get(AIGenerationInput, generation.id)
+        is_stale = is_stale or current_hash != (recorded_input.input_hash if recorded_input else generation.input_hash)
+    except ValueError:
+        is_stale = True
+    if latest_failure and utc(latest_failure.created_at) > utc(generation.generated_at):
         warning = "Последний запрос AI не удался; показан предыдущий план. Можно повторить генерацию."
+    elif is_stale:
+        warning = "Прогресс изменился; обновите индивидуальный план."
     steps = db.scalars(select(AIPlanStep).where(AIPlanStep.generation_id == generation.id).order_by(AIPlanStep.position)).all()
     return {
         "status": "ready", "generation_id": str(generation.id), "generated_at": generation.generated_at,
-        "model_id": generation.model_id, "total_minutes": generation.total_minutes, "warning": warning,
+        "model_id": generation.model_id, "total_minutes": generation.total_minutes, "warning": warning, "is_stale": is_stale,
         "steps": [{
-            "position": step.position, "skill_id": step.skill_id, "kind": step.kind,
+            "step_id": str(step.id), "position": step.position, "skill_id": step.skill_id, "kind": step.kind,
             "duration_minutes": step.duration_minutes, "title": step.title,
             "explanation": step.explanation, "example_code": step.example_code,
             "exercise": {"prompt": step.exercise_prompt, "submission_type": step.submission_type,
                          "starter_code": step.starter_code, "constraints": step.constraints,
+                         "expected_result": step.expected_result, "success_criteria": step.success_criteria,
                          "runner_status": "unavailable" if step.submission_type == "python_code" else None},
             "reason_codes": step.reason_codes,
         } for step in steps],

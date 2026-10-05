@@ -1,0 +1,27 @@
+[Unit]
+Description=Private AI tutor Python execution service
+Requires=ai-tutor-reaper.service
+After=network.target ai-tutor-reaper.service
+
+[Service]
+Type=simple
+User=tutor-runner
+Group=tutor-runner
+WorkingDirectory=/opt/ai-tutor-runner
+EnvironmentFile=/etc/ai-tutor-runner/environment
+ExecStart=/opt/ai-tutor-runner/venv/bin/ai-tutor-runner
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ai-tutor-runner
+UMask=0077
+TasksMax=64
+MemoryMax=256M
+CPUQuota=100%
+LimitNOFILE=128
+
+[Install]
+WantedBy=multi-user.target

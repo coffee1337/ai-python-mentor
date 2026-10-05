@@ -25,6 +25,7 @@ type LessonPracticeProps = {
   onSubmit: (event: FormEvent) => void;
   busy: boolean;
   disabled?: boolean;
+  executionConfigured?: boolean;
 };
 
 /**
@@ -39,6 +40,7 @@ export default function LessonPractice({
   onSubmit,
   busy,
   disabled = false,
+  executionConfigured = false,
 }: LessonPracticeProps) {
   return (
     <form onSubmit={onSubmit} className="lesson-practice">
@@ -51,14 +53,15 @@ export default function LessonPractice({
         maxLength={SOURCE_LIMIT}
         disabled={busy || disabled}
         describedBy="runner-status-note"
-        hint="Отступы 4 пробела. С клавиатуры: Tab и Shift+Tab меняют отступ, Esc возвращает фокус на страницу."
+        hint="Отступы 4 пробела. С клавиатуры: Tab и Shift+Tab меняют отступ, Esc, затем Tab — выйти из редактора."
       />
       <p className="muted" id="runner-status-note">
-        Runner закрыт: код сохранится как попытка, но выполняться не будет. Правильность
-        решения определяет сервер после отправки.
+        {executionConfigured
+          ? "Код будет отправлен в изолированную очередь проверки. Результат определяет сервер; возможны ограничения времени и ресурсов."
+          : "Исполнение кода недоступно. Попытка сохранится без оценки правильности и без credit за освоение."}
       </p>
       <button type="submit" className="form-button" disabled={disabled || busy || !source.trim()}>
-        {busy ? "Сохраняем…" : "Сохранить попытку"}
+        {busy ? "Сохраняем…" : executionConfigured ? "Отправить на проверку" : "Сохранить попытку"}
       </button>
     </form>
   );

@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=75,<83"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-tutor-runner"
+version = "0.1.0"
+description = "Private Python execution orchestrator and independent watchdog"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+ai-tutor-runner = "runner_worker.server:main"
+ai-tutor-reaper = "runner_worker.reaper:main"

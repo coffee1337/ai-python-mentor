@@ -20,6 +20,14 @@ from app.ai_curriculum_api import router as ai_curriculum_router
 from app.exercise_hints import router as exercise_hints_router
 from app.mistake_memory_api import router as mistake_memory_router
 from app.reviews_api import router as reviews_router
+from app.reflections_api import router as reflections_router
+from app.accounts_api import router as accounts_router
+from app.vacancies import router as vacancies_router
+from app.projects import router as projects_router
+from app.generated_practice import router as generated_practice_router
+from app.jobs_api import router as jobs_router
+from app.health_api import router as health_router
+from app.http_limits import RequestSizeLimit
 from app.db.session import engine
 
 logger = logging.getLogger("mentor.startup")
@@ -32,11 +40,12 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="AI-наставник API", version="0.1.0", lifespan=lifespan)
+app.add_middleware(RequestSizeLimit)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in os.getenv("WEB_ORIGINS", "http://localhost:3000").split(",") if origin.strip()],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "X-CSRF-Token", "Idempotency-Key"],
 )
 app.include_router(auth_router)
@@ -52,6 +61,13 @@ app.include_router(ai_curriculum_router)
 app.include_router(exercise_hints_router)
 app.include_router(mistake_memory_router)
 app.include_router(reviews_router)
+app.include_router(reflections_router)
+app.include_router(accounts_router)
+app.include_router(vacancies_router)
+app.include_router(projects_router)
+app.include_router(generated_practice_router)
+app.include_router(jobs_router)
+app.include_router(health_router)
 
 
 def report_gateway_status() -> None:
@@ -78,3 +94,22 @@ def health() -> dict[str, str]:
     except SQLAlchemyError as exc:
         raise HTTPException(status_code=503, detail="Database is unavailable") from exc
     return {"status": "ok", "database": "ok"}
+
+
+@app.middleware("http")
+async def request_observation(request, call_next):
+    from uuid import uuid4
+    from time import monotonic
+    from starlette.responses import JSONResponse
+    request_id = str(uuid4())
+    started = monotonic()
+    try:
+        response = await call_next(request)
+    except Exception as error:
+        # Exception text/SQL/body may contain learner source, tokens or PII.
+        logging.getLogger("mentor.request").error("request_failed id=%s type=%s", request_id, type(error).__name__)
+        response = JSONResponse({"detail":"Service is temporarily unavailable","request_id":request_id},status_code=503 if isinstance(error, SQLAlchemyError) else 500)
+    response.headers["X-Request-ID"] = request_id
+    route = getattr(request.scope.get("route"), "path", "unmatched")
+    logging.getLogger("mentor.request").info("request_finished id=%s method=%s route=%s status=%s duration_ms=%d",request_id,request.method,route,response.status_code,int((monotonic()-started)*1000))
+    return response

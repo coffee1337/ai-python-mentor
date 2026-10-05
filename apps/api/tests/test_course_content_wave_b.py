@@ -1,3 +1,5 @@
+from content_helpers import public_question_identity
+from content_helpers import authored_answer, authored_wrong_answer
 from sqlalchemy import select
 
 from app.assessment_content import MAX_QUESTIONS
@@ -55,7 +57,7 @@ def finish_assessment(test_client) -> None:
             headers={"X-CSRF-Token": csrf(test_client)},
             json={
                 "question_id": question["id"],
-                "answer": question["choices"][0],
+                "answer": authored_answer(question["id"]),
             },
         )
         assert response.status_code == 200
@@ -151,14 +153,14 @@ def test_wave_b_checks_hints_and_snapshots_are_exact_and_non_leaking(client):
             f"/learning/lessons/{lesson_id}/knowledge-check"
         )
         assert check_response.status_code == 200
-        assert check_response.json() == [
+        assert public_question_identity(check_response.json()) == public_question_identity([
             {
                 "id": question["id"],
                 "prompt": question["prompt"],
                 "choices": question["choices"],
             }
             for question in questions
-        ]
+        ])
 
         for level, kind, text in ladder["hints"]:
             hint_response = client.post(

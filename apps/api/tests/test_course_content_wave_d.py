@@ -1,3 +1,5 @@
+from content_helpers import public_question_identity
+from content_helpers import authored_answer, authored_wrong_answer
 from collections import defaultdict
 from copy import deepcopy
 
@@ -8,7 +10,8 @@ from app.db.models import ExerciseHint, ExerciseVersion, User, UserSkill
 from app.db.session import get_db
 from app.exercise_hints import _seed_exercise
 from app.knowledge_check_content import CHECKS
-from app.learning_content import EXERCISE_HINT_LADDERS, LESSONS
+from app.learning_content import EXERCISE_HINT_LADDERS, LESSONS_BY_ID
+LESSONS = tuple(LESSONS_BY_ID.values())
 from app.main import app
 from test_auth import client, csrf
 
@@ -90,7 +93,7 @@ def finish_assessment(test_client) -> None:
             headers={"X-CSRF-Token": csrf(test_client)},
             json={
                 "question_id": question["id"],
-                "answer": question["choices"][0],
+                "answer": authored_answer(question["id"]),
             },
         )
         assert response.status_code == 200
@@ -181,14 +184,14 @@ def test_wave_d_checks_choice_feedback_hints_and_schema_two_snapshots(client):
             f"/learning/lessons/{lesson_id}/knowledge-check"
         )
         assert check_response.status_code == 200
-        assert check_response.json() == [
+        assert public_question_identity(check_response.json()) == public_question_identity([
             {
                 "id": question["id"],
                 "prompt": question["prompt"],
                 "choices": question["choices"],
             }
             for question in questions
-        ]
+        ])
 
         ladder = EXERCISE_HINT_LADDERS[lesson_id]
         assert ladder["lesson_id"] == lesson_id

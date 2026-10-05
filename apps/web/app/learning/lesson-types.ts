@@ -30,6 +30,7 @@ export type Lesson = {
   prerequisites?: string[];
   difficulty?: number | null;
   version?: string | null;
+  practice_submission_type?: "text" | "python_code";
 };
 
 export type Attempt = {
@@ -72,8 +73,12 @@ export type Curriculum = {
 
 export type AIPlan = {
   status: string;
+  warning?: string | null;
+  generated_at?: string;
+  generation_id?: string;
   model_id?: string;
   steps: {
+    id?: string;
     position: number;
     skill_id: string;
     kind: string;

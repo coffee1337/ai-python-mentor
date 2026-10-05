@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timedelta, timezone
-from threading import Lock
-from time import monotonic
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import AuthSession, Goal, Profile, User
 from app.db.session import get_db
 from app.schemas import AuthResponse, LoginRequest, OnboardingRequest, OnboardingResponse, ProfilePatch, RegisterRequest, UserResponse
 from app.security import hash_password, new_token, token_digest, verify_password
+from app.account_services import throttle
 
 SESSION_COOKIE = "mentor_session"
 CSRF_COOKIE = "mentor_csrf"
@@ -20,27 +20,23 @@ SESSION_TTL = timedelta(days=30)
 AUTH_RATE_LIMIT = 20
 AUTH_RATE_WINDOW_SECONDS = 60.0
 _attempts: dict[str, list[float]] = {}
-_attempts_lock = Lock()
 router = APIRouter(tags=["auth"])
 
 
 def _cookie_secure() -> bool:
-    default = "true" if os.getenv("APP_ENV", "development").casefold() == "production" else "false"
-    return os.getenv("COOKIE_SECURE", default).casefold() == "true"
+    if os.getenv("APP_ENV", "development").casefold() == "production":
+        return True
+    return os.getenv("COOKIE_SECURE", "false").casefold() == "true"
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _rate_limit(request: Request) -> None:
+def _rate_limit(request: Request, db: Session, email: str) -> None:
     address = request.client.host if request.client else "unknown"
-    now = monotonic()
-    with _attempts_lock:
-        recent = [stamp for stamp in _attempts.get(address, []) if now - stamp < AUTH_RATE_WINDOW_SECONDS]
-        if len(recent) >= AUTH_RATE_LIMIT:
-            raise HTTPException(status_code=429, detail="Too many authentication attempts")
-        _attempts[address] = recent + [now]
+    throttle(db, scope="auth_ip", subject=address, limit=AUTH_RATE_LIMIT)
+    throttle(db, scope="auth_account", subject=email, limit=AUTH_RATE_LIMIT)
 
 
 def _set_auth_cookies(response: Response, session_token: str, csrf_token: str) -> None:
@@ -82,7 +78,10 @@ def _find_session(request: Request, db: Session) -> tuple[User, AuthSession]:
 
 
 def current_auth(request: Request, db: Session = Depends(get_db)) -> tuple[User, AuthSession]:
-    return _find_session(request, db)
+    auth = _find_session(request, db)
+    # Session inventory must reflect successful GETs as well as write endpoints.
+    db.commit()
+    return auth
 
 
 def csrf_protected(request: Request, auth: tuple[User, AuthSession] = Depends(current_auth), x_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token")) -> tuple[User, AuthSession]:
@@ -95,12 +94,16 @@ def csrf_protected(request: Request, auth: tuple[User, AuthSession] = Depends(cu
 
 @router.post("/auth/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterRequest, response: Response, request: Request, db: Session = Depends(get_db)) -> AuthResponse:
-    _rate_limit(request)
+    _rate_limit(request, db, payload.email)
     if db.scalar(select(User).where(User.email == payload.email)) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Unable to create account")
     user = User(email=payload.email, password_hash=hash_password(payload.password))
     db.add(user)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Unable to create account") from None
     session_token, csrf_token = _create_session(db, user)
     db.commit()
     db.refresh(user)
@@ -110,7 +113,7 @@ def register(payload: RegisterRequest, response: Response, request: Request, db:
 
 @router.post("/auth/login", response_model=AuthResponse)
 def login(payload: LoginRequest, response: Response, request: Request, db: Session = Depends(get_db)) -> AuthResponse:
-    _rate_limit(request)
+    _rate_limit(request, db, payload.email)
     user = db.scalar(select(User).where(User.email == payload.email))
     if user is None or not verify_password(payload.password, user.password_hash) or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")

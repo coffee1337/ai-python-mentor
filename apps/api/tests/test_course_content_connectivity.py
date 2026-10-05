@@ -1,3 +1,5 @@
+from content_helpers import public_question_identity
+from content_helpers import authored_answer, authored_wrong_answer
 from collections import defaultdict
 
 from sqlalchemy import select
@@ -60,7 +62,7 @@ def finish_assessment(test_client):
             headers={"X-CSRF-Token": csrf(test_client)},
             json={
                 "question_id": question["id"],
-                "answer": question["choices"][0],
+                "answer": authored_answer(question["id"]),
             },
         )
         assert response.status_code == 200
@@ -122,22 +124,22 @@ def test_each_active_lesson_has_exact_check_hint_ladder_and_published_version(cl
     grant_full_graph_mastery()
 
     active_lessons = {lesson["id"]: lesson for lesson in LESSONS}
-    assert set(CHECKS) == set(active_lessons)
-    assert set(EXERCISE_HINT_LADDERS) == set(active_lessons)
+    assert set(active_lessons) <= set(CHECKS)
+    assert set(active_lessons) <= set(EXERCISE_HINT_LADDERS)
 
     for lesson_id, lesson in active_lessons.items():
         check_response = client.get(
             f"/learning/lessons/{lesson_id}/knowledge-check"
         )
         assert check_response.status_code == 200
-        assert check_response.json() == [
+        assert public_question_identity(check_response.json()) == public_question_identity([
             {
                 "id": question["id"],
                 "prompt": question["prompt"],
                 "choices": question["choices"],
             }
             for question in CHECKS[lesson_id]
-        ]
+        ])
 
         ladder = EXERCISE_HINT_LADDERS[lesson_id]
         for level, kind, text in ladder["hints"]:

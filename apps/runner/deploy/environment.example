@@ -1,0 +1,13 @@
+# Dedicated execution host only; it must have no production DB or AI credentials.
+RUNNER_STATE_DIR=/var/lib/ai-tutor-runner
+RUNNER_CATALOG_FILE=/etc/ai-tutor-runner/catalog.json
+RUNNER_HOST_ATTESTATION_FILE=/etc/ai-tutor-runner/reviewed-host.json
+SANDBOX_SECCOMP_FILE=/etc/ai-tutor-runner/seccomp.json
+SANDBOX_IMAGE=registry.example.invalid/python-sandbox@sha256:REPLACE_WITH_REVIEWED_DIGEST
+RUNNER_BIND=127.0.0.1
+RUNNER_PORT=8443
+RUNNER_ALLOWED_API_IDENTITIES=spiffe://ai-tutor/api
+RUNNER_AUTH_TOKEN=REPLACE_WITH_ROTATED_SECRET
+RUNNER_CLIENT_CA_FILE=/etc/ai-tutor-runner/client-ca.pem
+RUNNER_SERVER_CERT_FILE=/etc/ai-tutor-runner/server.pem
+RUNNER_SERVER_KEY_FILE=/etc/ai-tutor-runner/server-key.pem

@@ -17,6 +17,7 @@ from app.skill_evidence import derive_assistance, record_evidence
 from app.mistake_memory import record_response_mistake
 from app.curriculum import build_curriculum
 from app.ai_curriculum import generate_personalized_plan
+from app.choice_order import ordered_choices
 
 router=APIRouter(prefix="/learning", tags=["knowledge-check"])
 PASS_SCORE=0.75
@@ -42,10 +43,10 @@ class CheckResponse(BaseModel):
     recommended_lesson_id: str | None = None
 class AnswersRequest(BaseModel):
     model_config=ConfigDict(extra="forbid")
-    answers:dict[str, str]
+    answers:dict[str, str] = Field(max_length=20)
 
-def _questions(questions):
-    return [CheckQuestion(id=q["id"],prompt=q["prompt"],choices=q["choices"]) for q in questions]
+def _questions(questions, session_id):
+    return [CheckQuestion(id=q["id"],prompt=q["prompt"],choices=ordered_choices(q["choices"],session_id=session_id,question_id=q["id"])) for q in questions]
 
 
 def _snapshot_content(version, lesson_id: str):
@@ -146,12 +147,15 @@ def get_check(lesson_id:str,auth:tuple[User,AuthSession]=Depends(current_auth),d
                 raise HTTPException(409, "Knowledge-check session could not be created")
             version = _session_version(db, session, lesson_id)
             _, questions = _snapshot_content(version, lesson_id)
-    return _questions(questions)
+    return _questions(questions, session.id)
 
 @router.post("/lessons/{lesson_id}/knowledge-check",response_model=CheckResponse,status_code=201)
 def submit_check(lesson_id:str,payload:AnswersRequest,auth:tuple[User,AuthSession]=Depends(csrf_protected),db:Session=Depends(get_db)):
     user,_=auth
     require_onboarding(user)
+    # Serialize consuming a pending session across API workers. This lock is
+    # released before personalized-plan gateway calls below.
+    db.execute(select(User.id).where(User.id == user.id).with_for_update()).scalar_one()
     session = _pending_session(db, user.id, lesson_id)
     if session is None:
         raise HTTPException(409, "Get the knowledge-check questions before submitting")

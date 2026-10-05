@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from app.ai_gateway import GatewayError
 from app.ai_embeddings import EmbeddingConfig, EmbeddingError
 from app.ai_embeddings import embed as embed_inputs
-from app.ai_embeddings import embedding_configuration, pack, unpack
+from app.ai_embeddings import embedding_configuration, pack, unpack, local_embedding, LOCAL_EMBEDDING_MODEL
 from app.db.models import ExerciseVersion, KnowledgeChunk
 from app.exercise_snapshots import snapshot_skill_id
 
@@ -106,21 +106,16 @@ def snapshot_texts(snapshot: dict, exercise_id: str) -> list[tuple[str, str]]:
     pairs: list[tuple[str, str]] = []
     for section in INDEXABLE_SECTIONS:
         value = lesson.get(section)
-        if not isinstance(value, str) or not value.strip():
-            continue
-        pairs.append((section, value.strip()))
-        if section == "checkpoint" and isinstance(lesson.get("checkpoint"), dict):
-            nested = lesson["checkpoint"]
-            for key in ("prompt",):
-                text = nested.get(key)
+        if isinstance(value, str) and value.strip():
+            pairs.append((section, value.strip()))
+        elif section in {"checkpoint", "misconception_check"} and isinstance(value, dict):
+            # Formative prompts and authored misconception descriptions are
+            # references; choices, answers and grading keys stay excluded.
+            allowed = ("prompt",) if section == "checkpoint" else ("misconception", "prompt")
+            for key in allowed:
+                text = value.get(key)
                 if isinstance(text, str) and text.strip():
-                    pairs.append((f"checkpoint_{key}", text.strip()))
-        if section == "misconception_check" and isinstance(lesson.get("misconception_check"), dict):
-            nested = lesson["misconception_check"]
-            for key in ("misconception", "prompt"):
-                text = nested.get(key)
-                if isinstance(text, str) and text.strip():
-                    pairs.append((f"misconception_{key}", text.strip()))
+                    pairs.append((section, text.strip()))
     return pairs
 
 
@@ -138,6 +133,7 @@ def index_version(
     db: Session,
     version: ExerciseVersion,
     config: EmbeddingConfig | None = None,
+    *, use_remote: bool = True, rebuild_embeddings: bool = False,
 ) -> tuple[int, bool]:
     """Rebuild chunks for one immutable version. Returns (count, embedded).
 
@@ -145,7 +141,7 @@ def index_version(
     does not re-embed the whole course. An unavailable embedding service
     degrades to text-only chunks rather than raising.
     """
-    if config is None:
+    if config is None and use_remote:
         try:
             config = embedding_configuration()
         except DEGRADED_ERRORS:
@@ -163,6 +159,7 @@ def index_version(
         )
     }
     planned_keys = {(section, ordinal) for section, ordinal, _ in planned}
+    target_model = config.model if config is not None else LOCAL_EMBEDDING_MODEL
     for key in set(existing) - planned_keys:
         db.delete(existing[key])
 
@@ -171,6 +168,7 @@ def index_version(
         index for index, (section, ordinal, piece) in enumerate(planned)
         if (section, ordinal) not in existing
         or existing[(section, ordinal)].content_digest != _digest(piece)
+        or rebuild_embeddings and existing[(section, ordinal)].embedding_model != target_model
     ]
     for index in dirty:
         chunk = existing.get((planned[index][0], planned[index][1]))
@@ -191,6 +189,11 @@ def index_version(
             if len(collected) == len(inputs):
                 vectors = dict(zip(dirty, collected))
 
+    remote_embedded = bool(vectors)
+    if not vectors:
+        vectors = {index: local_embedding(planned[index][2]) for index in dirty}
+        target_model = LOCAL_EMBEDDING_MODEL
+
     for position, (section, ordinal, piece) in enumerate(planned):
         if position not in dirty:
             # Unchanged chunk already holds the right text and embedding;
@@ -207,12 +210,12 @@ def index_version(
             char_count=len(piece),
             embedding=pack(vector) if vector is not None else None,
             embedding_dim=len(vector) if vector is not None else None,
-            embedding_model=config.model if vector is not None else None,
+            embedding_model=target_model if vector is not None else None,
             embedding_digest=_digest(",".join(f"{value:.6f}" for value in vector))
             if vector is not None else None,
         ))
     db.flush()
-    return len(planned), bool(vectors)
+    return len(planned), remote_embedded
 
 
 def _cosine(left: list[float], right: list[float]) -> float:
@@ -237,6 +240,7 @@ def retrieve(
     """Return chunks for one skill and one content version, best first."""
     if limit < 1:
         raise ValueError("Invalid retrieval limit")
+    limit = min(limit, MAX_RETRIEVAL_CHUNKS)
     candidates = list(db.scalars(
         select(KnowledgeChunk)
         .where(KnowledgeChunk.exercise_version_id == exercise_version_id,
@@ -333,3 +337,26 @@ def retrieval_messages(
             + json.dumps(payload, ensure_ascii=False)
         ),
     }]
+
+
+def main() -> None:
+    """Explicit index maintenance; local by default, paid embeddings opt-in."""
+    import argparse
+    from app.db.session import SessionLocal
+    parser = argparse.ArgumentParser(description="Index immutable lesson versions")
+    parser.add_argument("--remote", action="store_true", help="Use configured paid embeddings")
+    parser.add_argument("--rebuild-embeddings", action="store_true")
+    args = parser.parse_args()
+    versions, chunks = 0, 0
+    with SessionLocal() as db:
+        for version in db.scalars(select(ExerciseVersion).order_by(ExerciseVersion.created_at)).all():
+            if isinstance(version.content_snapshot, dict) and isinstance(version.content_snapshot.get("lesson"), dict):
+                count, _ = index_version(db, version, use_remote=args.remote, rebuild_embeddings=args.rebuild_embeddings)
+                versions += 1
+                chunks += count
+                db.commit()
+    print(f"Indexed {versions} immutable versions and {chunks} chunks")
+
+
+if __name__ == "__main__":
+    main()

@@ -22,3 +22,10 @@ out/
 *.dump.partial
 *.backup
 *.pgpass
+
+# Compiler/test caches and accidental Windows host cache directories
+*.tsbuildinfo
+pytest-of-*/
+%SystemDrive%/
+runner-state/
+certificates/

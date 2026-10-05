@@ -137,10 +137,10 @@ def prerequisite_state(db: Session, user_id) -> PrerequisiteState:
     ):
         prerequisites.setdefault(edge.to_skill_id, set()).add(edge.from_skill_id)
 
+    completed_ids = {completion.lesson_id for completion in completions}
+    completed_ids.update(new for old, new in {"imports-v1": "imports-v2", "fixtures-v1": "fixtures-v2"}.items() if old in completed_ids)
     return PrerequisiteState(
-        completed_lesson_ids=frozenset(
-            completion.lesson_id for completion in completions
-        ),
+        completed_lesson_ids=frozenset(completed_ids),
         completed_primary_skills=frozenset(completed_skills),
         prerequisites={
             skill_id: frozenset(required)

@@ -14,7 +14,15 @@ function formatDate(value: string): string {
 const STATUS_LABELS: Record<string, string> = {
   saved: "Сохранена",
   pending: "В очереди",
-  failed: "Не обработана",
+  failed: "Тесты не пройдены",
+  unavailable: "Сохранена без исполнения",
+  passed: "Тесты пройдены",
+  timeout: "Превышено время",
+  resource_violation: "Превышен лимит ресурсов",
+  runner_error: "Ошибка обработки",
+  queued: "В очереди",
+  running: "Выполняется",
+  cancelled: "Отменена",
 };
 
 /**
@@ -36,6 +44,7 @@ export default function AttemptHistory({ attempts }: AttemptHistoryProps) {
               <time dateTime={attempt.created_at}>{formatDate(attempt.created_at)}</time>
               {" · "}
               {attempt.result.message ?? "Попытка сохранена"}
+              {typeof attempt.result.tests_total === "number" && attempt.result.tests_total > 0 && <p>Тесты: {attempt.result.tests_passed} из {attempt.result.tests_total}.</p>}
             </li>
           ))}
         </ol>

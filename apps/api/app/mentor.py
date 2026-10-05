@@ -20,6 +20,8 @@ from app.knowledge_base import (
     retrieve,
 )
 from app.learning import accessible_lesson
+from app.ai_admission import reserve_ai_call, finish_ai_call
+from app.ai_embeddings import local_embedding, LOCAL_EMBEDDING_MODEL
 from app.mentor_prompts import context_messages
 
 router = APIRouter(prefix="/learning", tags=["mentor"])
@@ -89,7 +91,7 @@ def _cached_model_id() -> str:
         return "unconfigured"
 
 
-def _retrieval_context(db: Session, lesson_id: str, message: str) -> list[dict[str, str]]:
+def _retrieval_context(db: Session, lesson_id: str, message: str, *, user: User | None = None) -> list[dict[str, str]]:
     """Build the knowledge-base message for one turn, or nothing.
 
     Retrieval is scoped to the exact exercise version the learner is being
@@ -98,26 +100,51 @@ def _retrieval_context(db: Session, lesson_id: str, message: str) -> list[dict[s
     retrieved text is ever treated as an instruction.
     """
     try:
-        from app.learning import _persisted_lesson_version
+        from app.learning import _persisted_lesson_version, _pending_lesson_session, _pending_knowledge_check_session
+        from app.db.models import ExerciseVersion, KnowledgeChunk
+        from app.knowledge_base import index_version
 
-        version = _persisted_lesson_version(lesson_id, db)
+        version = None
+        if user is not None:
+            pending = _pending_lesson_session(db, user.id, lesson_id)
+            check = _pending_knowledge_check_session(db, user.id, lesson_id)
+            ids = {row.exercise_version_id for row in (pending, check) if row is not None}
+            if len(ids) > 1:
+                return []
+            if ids:
+                version = db.get(ExerciseVersion, ids.pop())
+                if version is None:
+                    return []
+        if version is None:
+            version = _persisted_lesson_version(lesson_id, db)
         snapshot = version.content_snapshot
         if not isinstance(snapshot, dict):
             return []
         skill_id = snapshot_skill_id(
             snapshot, exercise_id=lesson_id, version=version.version,
         )
-        vector = query_embedding(message)
+        version_id = version.id
+        models = list(db.scalars(select(KnowledgeChunk.embedding_model).where(KnowledgeChunk.exercise_version_id == version_id)))
+        if not models:
+            # On-demand indexing uses local hashing only: a fresh installation
+            # has useful retrieval without a startup-wide paid embedding job.
+            index_version(db, version, use_remote=False)
+            models = [LOCAL_EMBEDDING_MODEL]
+        db.commit()  # No transaction or lock remains during embedding I/O.
+        vector = local_embedding(message) if all(model == LOCAL_EMBEDDING_MODEL for model in models) else query_embedding(message)
         chunks = retrieve(
             db,
-            exercise_version_id=version.id,
+            exercise_version_id=version_id,
             skill_id=skill_id,
             query_vector=vector,
         )
-        return retrieval_messages(chunks, skill_id=skill_id)
+        result = retrieval_messages(chunks, skill_id=skill_id)
+        db.commit()
+        return result
     except (HTTPException, KnowledgeBaseError, DEGRADED_ERRORS, SQLAlchemyError):
         # Degraded mode: retrieval is an enhancement, never a dependency. The
         # learner still gets a mentor answer, just without retrieved excerpts.
+        db.rollback()
         return []
 
 
@@ -139,8 +166,11 @@ def chat(lesson_id: str, payload: ChatRequest,
          auth: tuple[User, AuthSession] = Depends(csrf_protected), db: Session = Depends(get_db)):
     user, _ = auth
     lesson = accessible_lesson(lesson_id, db, user)
-    # Serialize per-user sends across PostgreSQL workers, including explicit retries.
-    db.execute(select(User.id).where(User.id == user.id).with_for_update()).scalar_one()
+    user_id = user.id
+    level = user.profile.experience_level
+    # The user lock protects conversation creation/cache lookup only. Admission
+    # commits this transaction before embeddings or completion requests.
+    db.execute(select(User.id).where(User.id == user_id).with_for_update()).scalar_one()
     conversation = owned_conversation(db, user, lesson_id)
     existing = db.get(MentorMessage, payload.request_id)
     if existing:
@@ -150,25 +180,14 @@ def chat(lesson_id: str, payload: ChatRequest,
             raise HTTPException(409, "Request ID already used for another message")
         if existing.status == "completed":
             assistant = db.scalar(select(MentorMessage).where(MentorMessage.reply_to_id == existing.id))
-            _record_usage(
-                db,
-                user,
-                model_id=_cached_model_id(),
-                messages=[{"role": "user", "content": payload.message}],
-                output=assistant.content,
-                usage=None,
-                cache_hit=True,
-                status="cache_hit",
-            )
+            if assistant is None:
+                raise HTTPException(409, "Saved mentor reply is unavailable")
+            _record_usage(db, user, model_id=_cached_model_id(),
+                          messages=[{"role": "user", "content": payload.message}],
+                          output=assistant.content, usage=None, cache_hit=True, status="cache_hit")
             db.commit()
             return assistant
     now = datetime.now(timezone.utc)
-    count = db.scalar(select(func.coalesce(func.sum(MentorMessage.attempt_count), 0))
-        .join(MentorConversation, MentorMessage.conversation_id == MentorConversation.id)
-        .where(MentorConversation.user_id == user.id,
-               MentorMessage.last_attempt_at >= now - timedelta(minutes=1)))
-    if count >= 5:
-        raise HTTPException(429, "Too many mentor messages; retry in one minute", headers={"Retry-After": "60"})
     if conversation is None:
         conversation = MentorConversation(user_id=user.id, lesson_id=lesson_id)
         db.add(conversation)
@@ -186,17 +205,37 @@ def chat(lesson_id: str, payload: ChatRequest,
         MentorMessage.status == "completed",
         MentorMessage.id != existing.id,
     ).order_by(MentorMessage.created_at.desc()).limit(6)))))
-    messages = context_messages(lesson, user.profile.experience_level)
+    messages = context_messages(lesson, level)
     messages += [{"role": message.role, "content": message.content} for message in prior]
     messages.append({"role": "user", "content": payload.message})
-    # Reference material goes in as data after the learner turn, never as
-    # instructions and never with another skill's or another version's text.
-    messages[2:2] = _retrieval_context(db, lesson_id, payload.message)
+    conversation_id = conversation.id
+    # Authored mistake memory is a possible signal, not a diagnosis or grade.
+    from app.db.models import UserMistake, MisconceptionVersion
+    mistake_rows = db.execute(select(UserMistake, MisconceptionVersion).join(
+        MisconceptionVersion, UserMistake.misconception_code == MisconceptionVersion.misconception_code,
+    ).where(UserMistake.user_id == user_id, UserMistake.skill_id == lesson["skill_id"],
+            MisconceptionVersion.version == 1).order_by(UserMistake.last_seen_at.desc()).limit(3)).all()
+    if mistake_rows:
+        import json
+        messages.insert(2, {"role": "user", "content": "Untrusted authored learning signals; possible misconceptions, never diagnoses:\n" + json.dumps([
+            {"description": concept.error_text[:240], "remediation": concept.remediation_text[:400], "count": row.occurrence_count}
+            for row, concept in mistake_rows], ensure_ascii=False)})
+    try:
+        reservation = reserve_ai_call(db, user_id, "mentor_chat", str(payload.request_id),
+            limit=5, window_seconds=60, input_chars=sum(len(message["content"]) for message in messages))
+    except ai_gateway.GatewayError as exc:
+        _record_usage(db, user, model_id=_cached_model_id(), messages=messages, output="", usage=None,
+                      cache_hit=False, status="admission_denied")
+        db.commit()
+        raise HTTPException(exc.status, exc.detail, headers={"Retry-After": "60"} if exc.status == 429 else None) from None
+    messages[2:2] = _retrieval_context(db, lesson_id, payload.message, user=user)
+    db.commit()
     config = None
     try:
         config = ai_gateway.configuration()
         answer, usage = ai_gateway.generate_with_usage(config, messages)
     except ai_gateway.GatewayError as exc:
+        finish_ai_call(db, reservation, status="gateway_error")
         existing.status = "failed"
         _record_usage(
             db,
@@ -210,6 +249,7 @@ def chat(lesson_id: str, payload: ChatRequest,
         )
         db.commit()
         raise HTTPException(exc.status, exc.detail) from None
+    finish_ai_call(db, reservation, status="completed", usage=usage, model_id=config.model)
     _record_usage(
         db,
         user,
@@ -221,7 +261,7 @@ def chat(lesson_id: str, payload: ChatRequest,
         status="completed",
     )
     existing.status = "completed"
-    assistant = MentorMessage(conversation_id=conversation.id, role="assistant", content=answer,
+    assistant = MentorMessage(conversation_id=conversation_id, role="assistant", content=answer,
                               status="completed", reply_to_id=existing.id,
                               created_at=datetime.now(timezone.utc))
     db.add(assistant)

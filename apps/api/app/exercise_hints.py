@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import csrf_protected
+from app.auth import csrf_protected, current_auth
 from app.db.models import AuthSession, ExerciseHint, ExerciseVersion, HintReveal, KnowledgeCheckSession, LessonSession, User
 from app.db.session import get_db
 from app.exercise_snapshots import authored_snapshot, snapshot_hints
@@ -230,21 +230,14 @@ def _ensure_snapshot_hints(db: Session, version: ExerciseVersion) -> None:
     db.flush()
 
 
-@router.post(
-    "/{exercise_id}/hints",
-    response_model=HintResponse,
-    status_code=status.HTTP_200_OK,
-)
-def reveal_hint(
-    exercise_id: str,
-    payload: HintRequest,
-    headers: HintHeaders = Depends(parse_hint_headers),
-    auth: tuple[User, AuthSession] = Depends(csrf_protected),
-    db: Session = Depends(get_db),
-) -> HintResponse:
-    user, _ = auth
+def _hint_version(db: Session, user: User, exercise_id: str) -> ExerciseVersion:
     if exercise_id not in EXERCISE_HINT_LADDERS:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Exercise not found")
+        from app.coding_exercises import resolve_coding_exercise
+        _, version = resolve_coding_exercise(db, user, exercise_id)
+        if not snapshot_hints(version.content_snapshot):
+            raise HTTPException(status.HTTP_409_CONFLICT, "Exercise hints are unavailable")
+        _ensure_snapshot_hints(db, version)
+        return version
     pending_versions = set(db.scalars(
         select(LessonSession.exercise_version_id).where(
             LessonSession.user_id == user.id,
@@ -269,6 +262,53 @@ def reveal_hint(
     else:
         accessible_lesson(exercise_id, db, user)
         version = _seed_exercise(db, exercise_id)
+    return version
+
+
+class HintState(BaseModel):
+    exercise_version: str
+    revealed: list[HintResponse]
+    next_level: int | None
+
+
+@router.get("/{exercise_id}/hints", response_model=HintState)
+def get_hints(
+    exercise_id: str,
+    auth: tuple[User, AuthSession] = Depends(current_auth),
+    db: Session = Depends(get_db),
+) -> HintState:
+    user, _ = auth
+    version = _hint_version(db, user, exercise_id)
+    rows = db.scalars(
+        select(ExerciseHint).join(HintReveal, HintReveal.hint_id == ExerciseHint.id).where(
+            HintReveal.user_id == user.id,
+            HintReveal.exercise_version_id == version.id,
+            ExerciseHint.exercise_version_id == version.id,
+        ).order_by(ExerciseHint.level)
+    ).all()
+    revealed = [HintResponse(level=row.level, kind=row.kind, text=row.content) for row in rows]
+    highest = max((row.level for row in rows), default=0)
+    db.commit()
+    return HintState(
+        exercise_version=f"{exercise_id}:{version.version}", revealed=revealed,
+        next_level=highest + 1 if highest < 5 else None,
+    )
+
+
+@router.post(
+    "/{exercise_id}/hints",
+    response_model=HintResponse,
+    status_code=status.HTTP_200_OK,
+)
+def reveal_hint(
+    exercise_id: str,
+    payload: HintRequest,
+    headers: HintHeaders = Depends(parse_hint_headers),
+    auth: tuple[User, AuthSession] = Depends(csrf_protected),
+    db: Session = Depends(get_db),
+) -> HintResponse:
+    user, _ = auth
+    version = _hint_version(db, user, exercise_id)
     persisted_idempotency_key = _persisted_idempotency_key(version.id, headers.idempotency_key)
 
     existing_for_key = db.scalar(

@@ -1,3 +1,4 @@
+from content_helpers import authored_answer, authored_wrong_answer
 from sqlalchemy import select
 from app.db.models import AssessmentResponse, AssessmentRun, ExerciseVersion, HintReveal, SkillEvidence
 from app.db.session import get_db
@@ -33,7 +34,7 @@ def test_assessment_adapts_persists_and_completes(client):
     assert response.json()["state"]["question"]["difficulty"] > q["difficulty"]
     q=response.json()["state"]["question"]
     for _ in range(MAX_QUESTIONS-1):
-        response=client.post("/assessment/answers",headers=headers,json={"question_id":q["id"],"answer":q["choices"][0]})
+        response=client.post("/assessment/answers",headers=headers,json={"question_id":q["id"],"answer":authored_answer(q["id"])})
         if response.json()["state"]["question"] is not None: q=response.json()["state"]["question"]
     assert response.json()["state"]["completed"] is True
     assert client.get("/assessment").json()["status"] == "completed"
@@ -64,7 +65,7 @@ def test_hint_revealed_after_assessment_response_does_not_assist_that_response(c
     state = client.post(
         "/assessment/answers",
         headers=headers,
-        json={"question_id": first["id"], "answer": first["choices"][0]},
+        json={"question_id": first["id"], "answer": authored_answer(first["id"])},
     ).json()["state"]
     assert client.post(
         "/learning/exercises/variables-v1/hints",
@@ -77,7 +78,7 @@ def test_hint_revealed_after_assessment_response_does_not_assist_that_response(c
         state = client.post(
             "/assessment/answers",
             headers=headers,
-            json={"question_id": question["id"], "answer": question["choices"][0]},
+            json={"question_id": question["id"], "answer": authored_answer(question["id"])},
         ).json()["state"]
     assert state["completed"] is True
 
@@ -133,7 +134,7 @@ def test_assessment_uses_bound_snapshot_after_authored_content_changes(client, m
             version = db.get(ExerciseVersion, response.exercise_version_id)
             assert version is not None
             assert version.content_snapshot["assessment"]["prompt"] == first["prompt"]
-            assert version.content_snapshot["assessment"]["choices"] == first["choices"]
+            assert set(version.content_snapshot["assessment"]["choices"]) == set(first["choices"])
     finally:
         monkeypatch.setitem(EXERCISE_HINT_LADDERS["variables-v1"], "version", original)
 
@@ -218,5 +219,5 @@ def test_assessment_rejects_legacy_in_progress_run_without_snapshot(client):
     assert client.post(
         "/assessment/answers",
         headers={"X-CSRF-Token": csrf(client)},
-        json={"question_id": first["id"], "answer": first["choices"][0]},
+        json={"question_id": first["id"], "answer": authored_answer(first["id"])},
     ).status_code == 409

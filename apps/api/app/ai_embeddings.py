@@ -6,6 +6,9 @@ one learner turn costs one call, never one call per chunk.
 """
 import json
 import os
+import hashlib
+import math
+import re
 import struct
 from dataclasses import dataclass
 from urllib.parse import urlsplit
@@ -105,7 +108,9 @@ def embed(config: EmbeddingConfig, inputs: list[str]) -> list[list[float]]:
         vector = [value for value in datum.embedding if isinstance(value, (int, float))]
         if len(vector) != len(datum.embedding) or not vector:
             raise EmbeddingError(502, "AI embeddings are temporarily unavailable")
-        if len(vector) != config.dimension:
+        if any(not math.isfinite(value) for value in vector) or len(vector) != config.dimension:
+            raise EmbeddingError(502, "AI embeddings are temporarily unavailable")
+        if datum.index in by_index:
             raise EmbeddingError(502, "AI embeddings are temporarily unavailable")
         by_index[datum.index] = vector
     if sorted(by_index) != list(range(len(inputs))):
@@ -121,3 +126,17 @@ def unpack(blob: bytes, dimension: int) -> list[float]:
     if len(blob) != dimension * 4:
         raise ValueError("Stored embedding does not match its dimension")
     return list(struct.unpack(f"<{dimension}f", blob))
+
+
+LOCAL_EMBEDDING_MODEL = "local-hash-v1"
+LOCAL_EMBEDDING_DIMENSION = 256
+
+
+def local_embedding(text: str) -> list[float]:
+    """Stable, private token hashing fallback; no provider call or paid usage."""
+    vector = [0.0] * LOCAL_EMBEDDING_DIMENSION
+    for token in re.findall(r"[\w]+", text.lower())[:4000]:
+        digest = hashlib.sha256(token.encode("utf-8")).digest()
+        vector[int.from_bytes(digest[:2], "big") % len(vector)] += 1.0
+    norm = math.sqrt(sum(value * value for value in vector))
+    return [value / norm for value in vector] if norm else vector
