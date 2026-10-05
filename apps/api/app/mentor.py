@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -21,7 +21,7 @@ from app.knowledge_base import (
 )
 from app.learning import accessible_lesson
 from app.ai_admission import reserve_ai_call, finish_ai_call
-from app.ai_embeddings import local_embedding, LOCAL_EMBEDDING_MODEL
+from app.ai_embeddings import local_embedding, LOCAL_EMBEDDING_MODEL, embedding_configuration
 from app.mentor_prompts import context_messages
 
 router = APIRouter(prefix="/learning", tags=["mentor"])
@@ -91,7 +91,24 @@ def _cached_model_id() -> str:
         return "unconfigured"
 
 
-def _retrieval_context(db: Session, lesson_id: str, message: str, *, user: User | None = None) -> list[dict[str, str]]:
+def _metered_query_embedding(db: Session, message: str, user: User, request_key: str) -> list[float] | None:
+    config = embedding_configuration()
+    reservation = reserve_ai_call(db, user.id, "mentor_embedding", request_key,
+        limit=5, window_seconds=60, input_chars=len(message))
+    vector = query_embedding(message)
+    status = "completed" if vector is not None else "gateway_error"
+    # Embedding telemetry is unavailable: retain the reserved estimate rather
+    # than attributing this separate provider call to exact chat token usage.
+    finish_ai_call(db, reservation, status=status, model_id=config.model)
+    db.add(AIUsageLedger(user_id=user.id, generation_id=None, operation="mentor_embedding",
+        model_id=config.model, cache_hit=False, input_chars=len(message), output_chars=0,
+        input_tokens=None, output_tokens=None, status=status))
+    db.commit()
+    return vector
+
+
+def _retrieval_context(db: Session, lesson_id: str, message: str, *, user: User | None = None,
+                       request_key: str | None = None) -> list[dict[str, str]]:
     """Build the knowledge-base message for one turn, or nothing.
 
     Retrieval is scoped to the exact exercise version the learner is being
@@ -131,7 +148,12 @@ def _retrieval_context(db: Session, lesson_id: str, message: str, *, user: User 
             index_version(db, version, use_remote=False)
             models = [LOCAL_EMBEDDING_MODEL]
         db.commit()  # No transaction or lock remains during embedding I/O.
-        vector = local_embedding(message) if all(model == LOCAL_EMBEDDING_MODEL for model in models) else query_embedding(message)
+        if all(model == LOCAL_EMBEDDING_MODEL for model in models):
+            vector = local_embedding(message)
+        elif user is not None:
+            vector = _metered_query_embedding(db, message, user, request_key or str(uuid4()))
+        else:
+            vector = query_embedding(message)
         chunks = retrieve(
             db,
             exercise_version_id=version_id,
@@ -141,7 +163,7 @@ def _retrieval_context(db: Session, lesson_id: str, message: str, *, user: User 
         result = retrieval_messages(chunks, skill_id=skill_id)
         db.commit()
         return result
-    except (HTTPException, KnowledgeBaseError, DEGRADED_ERRORS, SQLAlchemyError):
+    except (HTTPException, KnowledgeBaseError, *DEGRADED_ERRORS, SQLAlchemyError):
         # Degraded mode: retrieval is an enhancement, never a dependency. The
         # learner still gets a mentor answer, just without retrieved excerpts.
         db.rollback()
@@ -228,7 +250,7 @@ def chat(lesson_id: str, payload: ChatRequest,
                       cache_hit=False, status="admission_denied")
         db.commit()
         raise HTTPException(exc.status, exc.detail, headers={"Retry-After": "60"} if exc.status == 429 else None) from None
-    messages[2:2] = _retrieval_context(db, lesson_id, payload.message, user=user)
+    messages[2:2] = _retrieval_context(db, lesson_id, payload.message, user=user, request_key=str(payload.request_id))
     db.commit()
     config = None
     try:

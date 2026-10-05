@@ -85,15 +85,18 @@ def embed(config: EmbeddingConfig, inputs: list[str]) -> list[list[float]]:
         import httpx
 
         with httpx.Client(timeout=config.timeout, follow_redirects=False, trust_env=False) as client:
-            response = client.post(
+            with client.stream(
+                "POST",
                 config.url,
                 headers={"Authorization": f"Bearer {config.key}"},
                 json={"model": config.model, "input": inputs},
-            )
-            response.raise_for_status()
-            raw = response.content
-            if len(raw) > 262144:
-                raise ValueError("Response too large")
+            ) as response:
+                response.raise_for_status()
+                raw = bytearray()
+                for chunk in response.iter_bytes():
+                    raw.extend(chunk)
+                    if len(raw) > 262144:
+                        raise ValueError("Response too large")
             parsed = EmbeddingResponse.model_validate(json.loads(raw))
     except httpx.TimeoutException:
         raise EmbeddingError(504, "AI embeddings timed out") from None

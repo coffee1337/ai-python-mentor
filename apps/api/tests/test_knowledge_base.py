@@ -8,7 +8,7 @@ from sqlalchemy import select, text
 
 from app import ai_embeddings, ai_gateway, knowledge_base
 from app.ai_embeddings import EmbeddingConfig
-from app.db.models import ExerciseVersion, KnowledgeChunk
+from app.db.models import ExerciseVersion, KnowledgeChunk, AIUsageLedger, User
 from app.db.session import get_db
 from app.exercise_hints import _seed_exercise
 from app.main import app
@@ -23,6 +23,23 @@ DIM = 4
 def embed_config() -> EmbeddingConfig:
     return EmbeddingConfig("https://provider.example/v1/embeddings", "test-embed",
                            "secret-test-key", 20.0, DIM)
+
+
+def test_embedding_stream_stops_at_response_limit(monkeypatch):
+    seen = []
+    class OversizedStream(httpx.SyncByteStream):
+        def __iter__(self):
+            for index in range(4):
+                seen.append(index)
+                if index == 3:
+                    raise AssertionError("Response was read beyond the bounded limit")
+                yield b"x" * 131072
+    real_client = httpx.Client
+    monkeypatch.setattr(httpx, "Client", lambda **kwargs: real_client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, stream=OversizedStream())), **kwargs))
+    with pytest.raises(ai_embeddings.EmbeddingError) as error:
+        ai_embeddings.embed(embed_config(), ["bounded input"])
+    assert error.value.status == 502 and seen == [0, 1, 2]
 
 
 @pytest.fixture
@@ -140,6 +157,36 @@ def test_retrieved_version_matches_the_lesson_version_the_learner_sees(client, g
         live = _seed_exercise(db, "variables-v1", seed_hints=False)
         assert str(live.id) == str(version_id)
         assert live.version == version_number
+
+
+def test_paid_query_embedding_has_separate_quota_and_usage(client, gateway):
+    from app.db.domain_models import AICallReservation
+    register(client); onboard(client)
+    version_id, _ = seeded_version(client)
+    with next(app.dependency_overrides[get_db]()) as db:
+        knowledge_base.index_version(db, db.get(ExerciseVersion, version_id))
+        db.commit()
+        calls_before = len(gateway[1]["embed"])
+        user = db.scalar(select(User))
+        assert _retrieval_context(db, "variables-v1", "тип значения", user=user, request_key="query-test")
+        rows = db.scalars(select(AIUsageLedger)).all()
+        assert len(rows) == 1 and rows[0].operation == "mentor_embedding"
+        reservation = db.scalar(select(AICallReservation))
+        assert reservation.status == "completed" and reservation.cost_is_estimate is True
+    assert len(gateway[1]["embed"]) == calls_before + 1
+
+
+def test_paid_embedding_denial_degrades_without_provider_call(client, gateway, monkeypatch):
+    register(client); onboard(client)
+    version_id, _ = seeded_version(client)
+    with next(app.dependency_overrides[get_db]()) as db:
+        knowledge_base.index_version(db, db.get(ExerciseVersion, version_id))
+        db.commit()
+        user = db.scalar(select(User))
+        calls_before = len(gateway[1]["embed"])
+        monkeypatch.setenv("AI_DAILY_CALL_LIMIT", "0")
+        assert _retrieval_context(db, "variables-v1", "тип значения", user=user, request_key="denied-query") == []
+    assert len(gateway[1]["embed"]) == calls_before
 
 
 def test_assessed_material_is_never_indexed(client, gateway):
