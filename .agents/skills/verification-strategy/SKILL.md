@@ -13,40 +13,29 @@ API: `cd apps/api && python -m pytest -q`. Текущая фикстура `clie
 
 Добавляй тест, который падает до правки и проходит после; тест, зеркалящий реализацию, не считается проверкой. Доменные инварианты проверяй целевыми тестами: evidence ownership, assisted/independent, CSRF на изменяющих запросах, отсутствие ключей в ответе, валидация ответа AI схемой, rate limit, таймауты и fallback gateway.
 
-## Локальный PostgreSQL
+## PostgreSQL
 
-PostgreSQL 17 теперь установлен локально и должен быть запущен как служба. Перед отчётом о PostgreSQL-проверке обязательно докажи фактический dialect и базу через SQLAlchemy/SQL, а не по одной переменной окружения:
+Не предполагай наличие или состояние локальной службы по историческому отчёту. PostgreSQL-only тесты требуют явных `RUN_POSTGRES_TESTS=1` и `DATABASE_URL`; обычная client-фикстура остаётся SQLite. Проверяй только выделенную тестовую базу, не production.
 
-```powershell
+Докажи фактический dialect/driver/database через SQLAlchemy и `SELECT current_database()`. Не печатай DATABASE_URL или пароль. Фикстура `tests/test_postgres_specific.py` уже выводит это доказательство и отказывается выдавать SQLite за PostgreSQL.
+
+```sh
 cd apps/api
-$env:DATABASE_URL = "<локальное значение DATABASE_URL; пароль не печатать>"
-python -c "from sqlalchemy import create_engine,text; import os; e=create_engine(os.environ['DATABASE_URL']); c=e.connect(); print('dialect='+c.dialect.name); print('driver='+c.dialect.driver); print('database='+str(c.execute(text('select current_database()')).scalar_one())); print('server_version='+str(c.execute(text('show server_version')).scalar_one()))"
+RUN_POSTGRES_TESTS=1 python -m pytest -q -s tests/test_postgres_specific.py
+alembic upgrade head
+alembic check
 ```
 
-Обязателен Alembic round trip на этой же базе: сохранить sentinel/счётчики существующих данных, затем выполнить `python -m alembic upgrade head`, `python -m alembic check`, `python -m alembic downgrade 0001_initial`, `python -m alembic upgrade head` и снова подтвердить сохранность данных. Отчёт «round trip пройден» допустим только если все команды успешны и доказаны обе ревизии и данные; `alembic check` обязателен и ловит расхождение моделей с миграциями.
+CI использует PostgreSQL 17. Полный round trip до `0001_initial` проводится **только на пустой одноразовой базе** до создания sentinel: исторический downgrade удаляет прикладные таблицы и не может сохранять учебные данные.
 
-На 4 октября 2026 года PostgreSQL 17.11 локально имеет состояние службы `Running/Automatic`. Фактическое подключение подтверждено: `dialect=postgresql`, `driver=psycopg`, `database=mentor`. После исправления `0018_assessment_run_exercise_version` команды `upgrade head`, `alembic check`, `downgrade 0001_initial` и повторный `upgrade head` завершились с exit 0; Alembic round trip считается пройденным.
+Сохранность существующих данных проверяется отдельно: `scripts/migration-sentinel.py create`, downgrade только до baseline новой волны (`0031_knowledge_chunks`), повторный upgrade/check, затем `migration-sentinel.py verify`. Sentinel включает аккаунт и completion с точной immutable ExerciseVersion. Отдельный проход проверяет откат последней ревизии. Никогда не используй полный destructive downgrade как доказательство сохранности данных.
 
-PostgreSQL-only проверки находятся в `apps/api/tests/test_postgres_specific.py` и намеренно не используют общую `client`-фикстуру SQLite. Gate требует одновременно явные `RUN_POSTGRES_TESTS=1` и `DATABASE_URL`; без `RUN_POSTGRES_TESTS=1` файл пропускается, а `DATABASE_URL` сам по себе не переключает обычный API-suite. Из `apps/api` запускай файл отдельно:
-
-```powershell
-$env:RUN_POSTGRES_TESTS = "1"
-$env:DATABASE_URL = "<локальное значение DATABASE_URL; пароль не печатать>"
-python -m pytest -q -s tests/test_postgres_specific.py
-```
-
-Отдельный тест запускается тем же способом с node id, например:
-
-```powershell
-python -m pytest -q -s tests/test_postgres_specific.py::test_parallel_skill_evidence_updates_are_serialized
-```
-
-Фикстура печатает только доказательство фактических `dialect`, `driver` и `database` (например, `dialect=postgresql driver=psycopg database=mentor`); `DATABASE_URL` и пароль в вывод не попадают. На 4 октября 2026 года с `RUN_POSTGRES_TESTS=1` получено `3 passed`, а без gate — `3 skipped`.
+В отчёте различай локальный SQLite, фактически проверенный PostgreSQL в CI и непроверенный target host. Исторические результаты запусков не доказывают состояние текущей ревизии.
 
 ## Остальные проверки
 
 Фронтенд: `cd apps/web && npm run lint` (это `tsc --noEmit`) и `npm run build`. Линтер здесь — только типы; визуальные и поведенческие дефекты он не ловит.
 
-Честно разделяй подтверждённое и непроверенное. Runner и его изоляция, end-to-end браузер и Docker/Compose остаются непроверенными; CI не запускался. Называй их непроверенными, а не «должно работать».
+Честно разделяй подтверждённое и непроверенное. Проверки orchestration worker не доказывают фактическую изоляцию Runner host. End-to-end браузер и Docker/Compose называй проверенными только после их реального запуска. CI status читай для точного head SHA текущего PR.
 
 Не запускай повторно то, что уже зелёное без причины: каждый прогон стоит времени. При падении сначала отличи дефект продукта от дефекта теста и не меняй ожидаемое значение без основания.

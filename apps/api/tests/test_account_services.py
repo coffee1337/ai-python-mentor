@@ -205,6 +205,7 @@ def signed_event(client, secret, event, *, timestamp=None):
 def test_billing_is_fail_closed_signed_idempotent_and_expiring(client, monkeypatch):
     user_id = register(client)
     assert client.get("/me/billing").json()["plan_id"] == "free"
+
     assert post(client, "/billing/checkout", {"plan_id": "pro"}).status_code == 503
     assert client.post("/webhooks/billing", json={}).status_code == 503
     secret = "b" * 40
@@ -224,6 +225,17 @@ def test_billing_is_fail_closed_signed_idempotent_and_expiring(client, monkeypat
         db.get(AccountSubscription, user_id).period_end = now - timedelta(seconds=1)
         db.commit()
     assert client.get("/me/billing").json()["plan_id"] == "free"
+
+
+def test_billing_usage_counts_reserved_calls_without_assuming_free_provider(client):
+    user_id = register(client)
+    from app.ai_admission import reserve_ai_call
+    with session() as db:
+        reserve_ai_call(db, user_id, "mentor_chat", "usage-test", limit=5, window_seconds=60, input_chars=10)
+    usage = client.get("/me/billing").json()["usage"]
+    assert usage["ai_calls_today"] == 1
+    assert usage["estimated_cost_micro_usd"] is None
+    assert usage["cost_is_estimate"] is True
 
 
 def test_outbox_preferences_and_idempotency_prevent_unwanted_delivery(client, monkeypatch):
