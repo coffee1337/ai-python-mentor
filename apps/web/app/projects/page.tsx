@@ -119,6 +119,13 @@ function preferredMilestone(project: Project): string | null {
   return milestone?.id ?? null;
 }
 
+function rememberProject(projectId: string | null) {
+  const url = new URL(window.location.href);
+  if (projectId) url.searchParams.set("project", projectId);
+  else url.searchParams.delete("project");
+  window.history.replaceState(window.history.state, "", url);
+}
+
 function MilestoneEditor({
   userId, project, milestone, busy, setBusy, onSubmitted, onNext,
 }: {
@@ -391,6 +398,8 @@ export default function ProjectsPage() {
 
   const load = useCallback(async () => {
     setLoadBusy(true);
+    setCurrent(null);
+    setActiveMilestone(null);
     setError("");
     try {
       const [catalog, saved] = await Promise.all([
@@ -399,6 +408,12 @@ export default function ProjectsPage() {
       ]);
       setTemplates(catalog);
       setProjects(saved);
+      const requested = new URLSearchParams(window.location.search).get("project");
+      if (requested) {
+        const selected = await api<Project>(`/projects/${encodeURIComponent(requested)}`);
+        setCurrent(selected);
+        setActiveMilestone(preferredMilestone(selected));
+      }
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -411,7 +426,7 @@ export default function ProjectsPage() {
   }, [user, load]);
 
   async function action(operation: () => Promise<void>) {
-    if (busy) return;
+    if (busy || loadBusy) return;
     setBusy(true);
     setError("");
     setStatus("");
@@ -428,6 +443,7 @@ export default function ProjectsPage() {
     const project = await api<Project>(`/projects/${encodeURIComponent(id)}`);
     setCurrent(project);
     setActiveMilestone(preferredMilestone(project));
+    rememberProject(project.id);
   }
 
   function createProject(template: Template) {
@@ -438,6 +454,7 @@ export default function ProjectsPage() {
       });
       setCurrent(project);
       setActiveMilestone(preferredMilestone(project));
+      rememberProject(project.id);
       await load();
       setStatus(
         "Проект создан. Откройте первый этап и начните с описания задачи.",
@@ -602,7 +619,7 @@ export default function ProjectsPage() {
                   <button
                     className={`panel project-saved-card ${current?.id === project.id ? "is-selected" : ""}`}
                     key={project.id}
-                    disabled={busy}
+                    disabled={busy || loadBusy}
                     aria-pressed={current?.id === project.id}
                     onClick={() =>
                       void action(() => refreshCurrent(project.id))
@@ -709,7 +726,7 @@ export default function ProjectsPage() {
                           userId={user.id}
                           project={current}
                           milestone={milestone}
-                          busy={busy}
+                          busy={busy || loadBusy}
                           setBusy={setBusy}
                           onSubmitted={recordSubmission}
                           onNext={goToMilestone}
@@ -743,7 +760,7 @@ export default function ProjectsPage() {
                     key={`portfolio.${current.id}`}
                     onSubmit={savePortfolio}
                   >
-                    <fieldset disabled={busy}>
+                    <fieldset disabled={busy || loadBusy}>
                       <div className="product-form-columns">
                         <label>
                           Название проекта
@@ -794,7 +811,7 @@ export default function ProjectsPage() {
                       </label>
                     </fieldset>
                     <div className="product-action-row">
-                      <button className="button" disabled={busy}>
+                      <button className="button" disabled={busy || loadBusy}>
                         {busy ? "Сохраняем…" : "Сохранить портфолио"}
                       </button>
                       {current.portfolio?.published &&
@@ -822,7 +839,7 @@ export default function ProjectsPage() {
                   </p>
                   <button
                     className="button product-danger-button"
-                    disabled={busy}
+                    disabled={busy || loadBusy}
                     onClick={() =>
                       void action(async () => {
                         await api<void>(
@@ -831,6 +848,7 @@ export default function ProjectsPage() {
                         );
                         clearProjectDrafts(user.id, current.id);
                         setCurrent(null);
+                        rememberProject(null);
                         await load();
                         setStatus("Проект удалён.");
                       })
@@ -887,7 +905,7 @@ export default function ProjectsPage() {
                     </p>
                     <button
                       className="button button-secondary"
-                      disabled={busy}
+                      disabled={busy || loadBusy}
                       onClick={() => createProject(template)}
                     >
                       Создать проект <span aria-hidden="true">→</span>
