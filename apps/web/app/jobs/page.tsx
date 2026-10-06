@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import AppHeader from "../components/app-header";
 import { api, errorMessage } from "../lib/api";
 import { useUser } from "../lib/use-user";
@@ -26,6 +26,11 @@ type Vacancy = VacancySummary & {
     inferred_prerequisite: boolean;
     observation: "observed" | "not_assessed";
     ready: boolean;
+    lesson_id: string | null;
+    lesson_title: string | null;
+    lesson_status: "completed" | "available" | "locked" | null;
+    prerequisite_lesson_id: string | null;
+    prerequisite_lesson_title: string | null;
   }[];
   notice: string;
 };
@@ -33,6 +38,11 @@ const LEVELS = {
   required: "Обязательно",
   preferred: "Желательно",
   mentioned: "Упомянуто",
+};
+const LESSON_STATUSES = {
+  completed: "Урок пройден",
+  available: "Можно приступить",
+  locked: "Сначала изучите основы",
 };
 
 function RoadmapItem({
@@ -55,13 +65,30 @@ function RoadmapItem({
             : "Навык из вакансии"}
         </p>
         <span className="badge">
-          {step.ready ? "Можно приступить" : "Сначала изучите основы"}
+          {step.lesson_status ? LESSON_STATUSES[step.lesson_status] : "Урок ещё не опубликован"}
         </span>
         <small>
           {step.observation === "not_assessed"
             ? "Навык ещё не проверяли в обучении."
             : "Есть учебные наблюдения; это не оценка профессионального уровня."}
         </small>
+        {(step.lesson_status === "available" || step.lesson_status === "completed") && step.lesson_id && (
+          <a
+            className="product-inline-link jobs-roadmap-action"
+            href={`/learning?lesson=${encodeURIComponent(step.lesson_id)}`}
+          >
+            {step.lesson_status === "completed" ? "Повторить" : "Открыть урок"}: {step.lesson_title}
+          </a>
+        )}
+        {step.lesson_status === "locked" && (step.prerequisite_lesson_id ? (
+          <a
+            className="product-inline-link jobs-roadmap-action"
+            href={`/learning?lesson=${encodeURIComponent(step.prerequisite_lesson_id)}`}
+          >
+            Начать с основы: {step.prerequisite_lesson_title}
+          </a>
+        ) : <p className="product-field-hint">Нужные основы пока недоступны. Проверьте опубликованные темы в учебном пути.</p>)}
+        {step.lesson_status === null && <p className="product-field-hint">Тема сохранена в ориентире. Ссылка появится после публикации урока.</p>}
       </div>
     </li>
   );
@@ -75,28 +102,55 @@ export default function JobsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const [resultError, setResultError] = useState("");
+  const [plan, setPlan] = useState<{ version?: number; as_of: string | null } | null>(null);
+  const resultHeading = useRef<HTMLHeadingElement>(null);
+  const listGeneration = useRef(0);
+  const viewGeneration = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (restoreSelected = false) => {
+    const listRequest = ++listGeneration.current;
+    const viewRequest = viewGeneration.current;
+    const isCurrent = () => listRequest === listGeneration.current && viewRequest === viewGeneration.current;
     setLoadBusy(true);
     setError("");
     try {
-      setItems(await api<VacancySummary[]>("/vacancies"));
+      if (restoreSelected) {
+        const [history, selected] = await Promise.all([
+          api<VacancySummary[]>("/vacancies"),
+          api<Vacancy | { selected: false }>("/vacancies/current"),
+        ]);
+        if (isCurrent()) {
+          setItems(history);
+          if ("id" in selected) setCurrent(selected);
+        }
+      } else {
+        const history = await api<VacancySummary[]>("/vacancies");
+        if (isCurrent()) setItems(history);
+      }
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (isCurrent()) setError(errorMessage(reason));
     } finally {
-      setLoadBusy(false);
+      if (listRequest === listGeneration.current) setLoadBusy(false);
     }
   }, []);
 
   useEffect(() => {
-    if (user) void load();
+    if (user) void load(true);
   }, [user, load]);
 
+  useEffect(() => {
+    if (current) resultHeading.current?.focus();
+  }, [current?.id]);
+
   async function open(id: string) {
-    if (busy) return;
+    if (busy || loadBusy) return;
+    viewGeneration.current += 1;
     setBusy(true);
     setError("");
     setStatus("");
+    setResultError("");
+    setPlan(null);
     try {
       setCurrent(await api<Vacancy>(`/vacancies/${encodeURIComponent(id)}`));
     } catch (reason) {
@@ -108,11 +162,14 @@ export default function JobsPage() {
 
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || loadBusy) return;
+    viewGeneration.current += 1;
     const data = new FormData(event.currentTarget);
     setBusy(true);
     setError("");
     setStatus("");
+    setResultError("");
+    setPlan(null);
     try {
       const result = await api<Vacancy>("/vacancies", {
         method: "POST",
@@ -135,26 +192,35 @@ export default function JobsPage() {
   }
 
   async function target() {
-    if (!current || busy) return;
+    if (!current || busy || loadBusy) return;
+    viewGeneration.current += 1;
     setBusy(true);
-    setError("");
+    setResultError("");
     setStatus("");
     try {
-      await api(`/vacancies/${encodeURIComponent(current.id)}/target`, {
-        method: "POST",
-      });
-      setCurrent({ ...current, selected: true });
-      await load();
+      const selected = await api<Vacancy>(
+        `/vacancies/${encodeURIComponent(current.id)}/target`,
+        { method: "POST" },
+      );
+      setCurrent(selected);
       setStatus("Вакансия выбрана как ориентир обучения.");
+      await load();
+      try {
+        setPlan(await api<{ version?: number; as_of: string | null }>("/learning/curriculum"));
+      } catch (reason) {
+        setResultError(`${errorMessage(reason)} Ориентир выбран; сведения об учебном плане можно загрузить повторно.`);
+      }
+      resultHeading.current?.focus();
     } catch (reason) {
-      setError(errorMessage(reason));
+      setResultError(errorMessage(reason));
     } finally {
       setBusy(false);
     }
   }
 
   async function remove() {
-    if (!current || busy) return;
+    if (!current || busy || loadBusy) return;
+    viewGeneration.current += 1;
     setBusy(true);
     setError("");
     setStatus("");
@@ -211,13 +277,13 @@ export default function JobsPage() {
             <button
               className="button button-secondary"
               disabled={busy || loadBusy}
-              onClick={() => void load()}
+              onClick={() => void load(true)}
             >
               Обновить список
             </button>
           </div>
         )}
-        {status && (
+        {status && !current && (
           <p className="status-message product-success" role="status">
             {status}
           </p>
@@ -278,7 +344,7 @@ export default function JobsPage() {
                       </span>
                     </label>
                   </fieldset>
-                  <button className="button" disabled={busy}>
+                  <button className="button" disabled={busy || loadBusy}>
                     {busy ? "Обрабатываем запрос…" : "Разобрать требования"}
                   </button>
                 </form>
@@ -310,7 +376,7 @@ export default function JobsPage() {
                     <li key={item.id}>
                       <button
                         className={`product-selection-button ${current?.id === item.id ? "is-selected" : ""}`}
-                        disabled={busy}
+                        disabled={busy || loadBusy}
                         onClick={() => void open(item.id)}
                         aria-pressed={current?.id === item.id}
                       >
@@ -348,7 +414,9 @@ export default function JobsPage() {
                 <div className="panel-heading">
                   <div>
                     <p className="page-kicker">Шаг 2 · Результат анализа</p>
-                    <h2 id="vacancy-title">{current.title}</h2>
+                    <h2 id="vacancy-title" ref={resultHeading} tabIndex={-1}>
+                      {current.title}
+                    </h2>
                   </div>
                   {current.selected && (
                     <span className="badge product-badge-positive">
@@ -357,11 +425,39 @@ export default function JobsPage() {
                   )}
                 </div>
                 <p className="product-section-intro">{current.notice}</p>
+                {status && (
+                  <p className="status-message product-success" role="status">{status}</p>
+                )}
+                {plan?.version && (
+                  <p className="product-field-hint">
+                    Учебный план обновлён: версия {plan.version}{plan.as_of ? ` от ${new Date(plan.as_of).toLocaleDateString("ru-RU")}` : ""}.
+                  </p>
+                )}
+                {resultError && (
+                  <div className="status-message product-error" role="alert">
+                    <p>{resultError}</p>
+                    <button
+                      className="button button-secondary"
+                      disabled={busy}
+                      onClick={() => {
+                        if (!current.selected) void target();
+                        else void api<{ version?: number; as_of: string | null }>("/learning/curriculum")
+                          .then((result) => {
+                            setPlan(result);
+                            setResultError("");
+                          })
+                          .catch((reason) => setResultError(errorMessage(reason)));
+                      }}
+                    >
+                      Повторить загрузку
+                    </button>
+                  </div>
+                )}
                 <div className="product-action-row">
                   {!current.selected && (
                     <button
                       className="button"
-                      disabled={busy}
+                      disabled={busy || loadBusy || current.requirements.length === 0}
                       onClick={() => void target()}
                     >
                       Выбрать ориентиром обучения
@@ -460,7 +556,7 @@ export default function JobsPage() {
                   </p>
                   <button
                     className="button product-danger-button"
-                    disabled={busy}
+                    disabled={busy || loadBusy}
                     onClick={() => void remove()}
                   >
                     Удалить анализ вакансии

@@ -10,6 +10,8 @@ const navigation: { href: string; label: string; icon: IconName }[] = [
   { href: "/dashboard", label: "Моё обучение", icon: "home" },
   { href: "/learning/path", label: "Программа курса", icon: "route" },
   { href: "/learning", label: "Текущий урок", icon: "book" },
+  { href: "/learning/progress", label: "Мой прогресс", icon: "route" },
+  { href: "/learning/reviews", label: "Повторения", icon: "check" },
   { href: "/projects", label: "Мои проекты", icon: "folder" },
   { href: "/jobs", label: "Карьерная цель", icon: "briefcase" },
 ];
@@ -31,18 +33,47 @@ export default function AppHeader() {
   );
 
   useEffect(() => {
-    if (!open) return;
-    if (window.matchMedia("(max-width: 900px)").matches) {
-      sidebar.current?.querySelector<HTMLAnchorElement>("a")?.focus();
-    }
+    if (!open || !sidebar.current) return;
+    const media = window.matchMedia("(max-width: 900px)");
+    if (!media.matches) { setOpen(false); return; }
+    const panel = sidebar.current;
+    const siblings = Array.from(panel.parentElement?.children ?? [])
+      .filter((node): node is HTMLElement => node instanceof HTMLElement && node !== panel && !node.classList.contains("sidebar-backdrop"));
+    const previousInert = siblings.map((node) => node.inert);
+    const previousOverflow = document.body.style.overflow;
+    siblings.forEach((node) => { node.inert = true; });
+    document.body.style.overflow = "hidden";
+    const focusable = () => Array.from(panel.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), [tabindex="0"]',
+    )).filter((node) => node.getClientRects().length > 0);
+    focusable()[0]?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
         setOpen(false);
-        menuButton.current?.focus();
+      }
+      if (event.key === "Tab") {
+        const elements = focusable();
+        const first = elements[0];
+        const last = elements[elements.length - 1];
+        if (!first) return;
+        if (event.shiftKey && (document.activeElement === first || !panel.contains(document.activeElement))) {
+          event.preventDefault(); last?.focus();
+        } else if (!event.shiftKey && (document.activeElement === last || !panel.contains(document.activeElement))) {
+          event.preventDefault(); first.focus();
+        }
       }
     };
+    const onResize = () => { if (!media.matches) setOpen(false); };
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    media.addEventListener("change", onResize);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      media.removeEventListener("change", onResize);
+      siblings.forEach((node, index) => { node.inert = previousInert[index]; });
+      document.body.style.overflow = previousOverflow;
+      if (menuButton.current?.isConnected && media.matches) menuButton.current.focus();
+    };
   }, [open]);
 
   async function logout() {
@@ -85,6 +116,7 @@ export default function AppHeader() {
           className="sidebar-backdrop"
           type="button"
           aria-label="Закрыть навигацию"
+          tabIndex={-1}
           onClick={() => setOpen(false)}
         />
       )}
@@ -98,10 +130,7 @@ export default function AppHeader() {
           className="sidebar-close"
           type="button"
           aria-label="Свернуть навигацию"
-          onClick={() => {
-            setOpen(false);
-            menuButton.current?.focus();
-          }}
+          onClick={() => setOpen(false)}
         >
           <AppIcon name="close" size={18} />
         </button>

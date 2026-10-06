@@ -5577,3 +5577,395 @@ small {
 .jobs-roadmap-disclosure {
   margin-top: 16px;
 }
+
+/* Daily study, observed progress and safe draft recovery. */
+.today-focus  {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.today-focus .panel-heading  {
+  margin: 0;
+}
+
+.today-primary-action  {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.today-primary-action h3  {
+  margin: .45rem 0;
+}
+
+.today-primary-action p  {
+  margin-bottom: 0;
+}
+
+.today-review-summary  {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .75rem 1rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.today-review-summary h3, .today-review-summary p  {
+  margin: 0;
+}
+
+.today-review-list  {
+  grid-column: 1 / -1;
+  list-style: none;
+  padding: 0;
+  margin: .25rem 0 0;
+  display: grid;
+  gap: .6rem;
+}
+
+.today-review-list li  {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: .35rem 1rem;
+  font-size: .875rem;
+}
+
+.today-session  {
+  margin: 0;
+}
+
+.today-focus-list  {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: .75rem;
+}
+
+.today-focus-list li  {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: .75rem;
+  padding: .75rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.today-focus-list strong, .today-focus-list .muted  {
+  display: block;
+}
+
+.study-page  {
+  min-width: 0;
+}
+
+.study-reviews-panel  {
+  min-width: 0;
+}
+
+.study-reviews-panel .reviews-section  {
+  margin: 0;
+}
+
+.study-period-bar  {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.study-period-controls  {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.study-period-controls legend  {
+  margin-bottom: .6rem;
+  color: var(--muted);
+  font-size: .875rem;
+}
+
+.study-summary-grid  {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0;
+}
+
+.study-summary-card  {
+  margin: 0;
+}
+
+.study-summary-card dt  {
+  color: var(--muted);
+  font-size: .875rem;
+}
+
+.study-summary-card dd  {
+  margin: .75rem 0 0;
+  font-size: 1.5rem;
+  font-weight: 650;
+}
+
+.study-evidence-grid  {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  padding: 1rem 0;
+}
+
+.study-evidence-grid dt  {
+  color: var(--muted);
+  font-size: .875rem;
+}
+
+.study-evidence-grid dd  {
+  margin: .45rem 0 0;
+  font-size: 1.375rem;
+  font-weight: 650;
+}
+
+.study-day-grid  {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: .75rem;
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.study-day  {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+  font-size: .8125rem;
+}
+
+.study-day ul  {
+  padding-left: 1rem;
+  margin-bottom: 0;
+}
+
+.study-day p  {
+  margin-bottom: 0;
+}
+
+.study-skill-controls, .course-search-controls  {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+
+.study-table-wrap  {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.study-skill-table  {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: .875rem;
+}
+
+.study-skill-table th, .study-skill-table td  {
+  border-bottom: 1px solid var(--line);
+  padding: 1rem .75rem;
+  vertical-align: top;
+}
+
+.study-skill-table thead  {
+  color: var(--muted);
+  background: var(--surface-soft);
+}
+
+.study-skill-table th > .muted  {
+  display: block;
+  font-weight: 400;
+  margin-top: .25rem;
+}
+
+.study-model-details  {
+  margin-top: .75rem;
+  font-size: .8125rem;
+}
+
+.study-model-details summary  {
+  cursor: pointer;
+  color: var(--green-deep);
+}
+
+.study-model-details dl  {
+  margin: .75rem 0;
+}
+
+.study-model-details dd  {
+  margin: 0 0 .5rem;
+}
+
+.study-material-cell  {
+  min-width: 130px;
+}
+
+.study-material-cell a, .study-material-cell .badge  {
+  display: block;
+  margin-bottom: .5rem;
+}
+
+.study-activity-list  {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.study-activity-list > li  {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .75rem 1rem;
+  border-top: 1px solid var(--line);
+  padding: 1rem 0;
+}
+
+.study-activity-main  {
+  min-width: 0;
+}
+
+.study-activity-main h3  {
+  margin: .5rem 0;
+}
+
+.study-activity-notes  {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+  font-size: .8125rem;
+  color: var(--muted);
+}
+
+.study-activity-meta  {
+  display: grid;
+  align-content: start;
+  gap: .35rem;
+  text-align: right;
+  font-size: .8125rem;
+  color: var(--muted);
+}
+
+.lesson-draft-note, .project-draft-note  {
+  color: var(--muted);
+  font-size: .875rem;
+  margin: 0 0 1rem;
+}
+
+.project-history-panel  {
+  display: grid;
+  gap: .75rem;
+  margin: 1.25rem 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.project-history-panel select  {
+  width: 100%;
+  min-width: 0;
+}
+
+.project-source-preview, .attempt-source-preview  {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 400px;
+  overflow-y: auto;
+  font-family: var(--mono);
+  font-size: .8125rem;
+  line-height: 1.65;
+}
+
+.project-restore-confirm  {
+  padding: 1rem;
+  border: 1px solid var(--green-deep);
+  background: var(--accent-soft);
+  border-radius: var(--radius);
+  margin: 1rem 0;
+}
+
+.attempt-source-actions  {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .75rem;
+  margin: .75rem 0;
+}
+
+.jobs-roadmap-action  {
+  display: grid;
+  gap: .5rem;
+  margin-top: .75rem;
+}
+
+@media (max-width: 700px)  {
+  .study-summary-grid, .study-evidence-grid  {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .study-summary-card  {
+    padding: 1rem;
+  }
+  .study-summary-card dd  {
+    font-size: 1.25rem;
+  }
+  .study-skill-controls, .course-search-controls, .today-review-summary, .study-activity-list > li  {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .study-activity-meta  {
+    text-align: left;
+  }
+  .today-focus-list li  {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .today-focus-list li > a  {
+    grid-column: 2;
+  }
+  .today-review-list li  {
+    display: grid;
+  }
+  .study-skill-table thead  {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .study-skill-table, .study-skill-table tbody, .study-skill-table tr  {
+    display: block;
+  }
+  .study-skill-table tr  {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    margin-bottom: 1rem;
+    padding: .75rem;
+  }
+  .study-skill-table th, .study-skill-table td  {
+    display: block;
+    border: 0;
+    padding: .5rem;
+  }
+  .study-skill-table td::before  {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: .75rem;
+    margin-bottom: .25rem;
+  }
+}

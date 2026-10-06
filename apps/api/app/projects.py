@@ -2,9 +2,10 @@
 import hashlib
 import json
 import secrets
+from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -113,13 +114,20 @@ def _submission_response(row):
 
 
 def _project_response(db, project):
-    submissions = db.scalars(select(ProjectSubmission).where(ProjectSubmission.project_id == project.id).order_by(ProjectSubmission.created_at.desc()).limit(100)).all()
+    submissions = db.scalars(select(ProjectSubmission).where(ProjectSubmission.project_id == project.id).order_by(ProjectSubmission.created_at.desc(), ProjectSubmission.id.desc()).limit(100)).all()
+    # A prolific revision history for one milestone must not hide completed
+    # work on another milestone. History is bounded independently of progress.
     latest = {}
-    for submission in submissions:
-        latest.setdefault(submission.milestone_id, _submission_response(submission))
+    for milestone in project.template_snapshot["milestones"]:
+        row = db.scalar(select(ProjectSubmission).where(
+            ProjectSubmission.project_id == project.id, ProjectSubmission.milestone_id == milestone["id"],
+        ).order_by(ProjectSubmission.created_at.desc(), ProjectSubmission.id.desc()).limit(1))
+        if row is not None:
+            latest[milestone["id"]] = _submission_response(row)
     portfolio = db.scalar(select(PortfolioEntry).where(PortfolioEntry.project_id == project.id))
     return {"id": str(project.id), "template": project.template_snapshot, "milestones": [
         {**item, "latest_submission": latest.get(item["id"])} for item in project.template_snapshot["milestones"]],
+        "submissions": [_submission_response(row) for row in submissions],
         "created_at": project.created_at, "portfolio": None if portfolio is None else {
             "published": portfolio.published, "title": portfolio.title, "summary": portfolio.summary,
             "repository_url": portfolio.repository_url, "public_path": f"/portfolio/{portfolio.public_token}" if portfolio.published else None},
@@ -163,6 +171,19 @@ def detail(project_id: UUID, auth: tuple[User, AuthSession] = Depends(current_au
     return _project_response(db, _owned(db, auth[0], project_id))
 
 
+@router.get("/projects/{project_id}/submissions/{submission_id}")
+def submission_source(project_id: UUID, submission_id: UUID, response: Response, auth: tuple[User, AuthSession] = Depends(current_auth), db: Session = Depends(get_db)):
+    project = _owned(db, auth[0], project_id)
+    row = db.scalar(select(ProjectSubmission).where(
+        ProjectSubmission.id == submission_id, ProjectSubmission.project_id == project.id,
+    ))
+    if row is None:
+        raise HTTPException(404, "Project submission not found")
+    response.headers["Cache-Control"] = "no-store"
+    # Source is private, read-only, and never part of a history or portfolio.
+    return {**_submission_response(row), "artifact_text": row.artifact_text}
+
+
 @router.post("/projects/{project_id}/milestones/{milestone_id}/submissions", status_code=201)
 def submit(project_id: UUID, milestone_id: str, payload: MilestoneSubmission, auth: tuple[User, AuthSession] = Depends(csrf_protected), db: Session = Depends(get_db)):
     project = _owned(db, auth[0], project_id)
@@ -181,7 +202,8 @@ def submit(project_id: UUID, milestone_id: str, payload: MilestoneSubmission, au
                   "execution_status": "not_executed", "mastery_credit": False,
                   "message": "Добавьте обязательные разделы." if missing else "Артефакт принят. Полнота разделов проверена; корректность кода требует отдельной проверки."}
     row = ProjectSubmission(project_id=project_id, milestone_id=milestone_id, idempotency_key=payload.idempotency_key,
-                            payload_hash=digest, artifact_text=payload.artifact_text, repository_url=payload.repository_url, validation=validation)
+                            payload_hash=digest, artifact_text=payload.artifact_text, repository_url=payload.repository_url,
+                            validation=validation, created_at=datetime.now(timezone.utc))
     db.add(row)
     try:
         db.commit()
