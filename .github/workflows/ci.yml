@@ -161,3 +161,22 @@ jobs:
       - run: python -m pip install -r apps/api/requirements.lock
       - run: python -X utf8=0 -m pytest -q tests/test_platform_encoding.py
         working-directory: apps/api
+  windows-native:
+    name: Windows PowerShell native startup (no Docker)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/requirements.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      # The test itself invokes Windows PowerShell 5.1, creates a venv,
+      # installs both lockfiles and starts the real API and Next.js proxy.
+      - run: python scripts/check-windows-startup.py

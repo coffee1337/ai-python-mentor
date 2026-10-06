@@ -17,7 +17,68 @@ Next.js 15 / React 19, FastAPI, SQLAlchemy, Alembic и PostgreSQL. Модуль�
 
 ## Запуск
 
-Требуются Docker Compose либо Python 3.12, Node 22 и PostgreSQL 17.
+### Windows без Docker
+
+Для локального запуска нужны **Python 3.12 и Node.js 22**. PostgreSQL необязателен: можно явно выбрать SQLite, которая хранит данные в файле `apps/api/mentor-local.db`.
+
+Если нужные версии ещё не установлены, выполните в PowerShell:
+
+```powershell
+winget install --exact --id Python.Python.3.12 --source winget
+winget install --exact --id OpenJS.NodeJS.22 --source winget
+```
+
+Затем закройте PowerShell и откройте заново. Если `winget` отсутствует, установите [Python 3.12 для Windows](https://www.python.org/downloads/release/python-31210/) и [Node.js 22](https://nodejs.org/en/download/archive/v22) через официальные установщики.
+
+Из корня скачанного проекта запустите API:
+
+```powershell
+cd C:\ai_bot_ai-main
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-api.ps1 -UseSqlite
+```
+
+Скрипт проверит Python, создаст `apps/api/.venv`, установит `requirements.lock`, проверит соединение с выбранной базой, выполнит миграции и запустит API. Активация окружения и отдельная команда `alembic` не нужны. При любой ошибке следующий этап не запускается. Параметр `-ExecutionPolicy Bypass` относится только к запущенному процессу; настройки политики системы не изменяются.
+
+В **другом окне PowerShell** запустите frontend:
+
+```powershell
+cd C:\ai_bot_ai-main
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-web.ps1
+```
+
+Откройте http://localhost:3000. API: http://127.0.0.1:8000/docs. Проверка готовности: http://127.0.0.1:8000/ready. Оба сервера доступны только с этого компьютера; `Ctrl+C` останавливает соответствующий сервер. Frontend обращается к API через `/api`, а proxy использует `127.0.0.1`, чтобы не зависеть от разрешения `localhost` в IPv6.
+
+`-UseSqlite` — явный выбор отдельной файловой базы. Аккаунты и история из PostgreSQL остаются там и автоматически не переносятся. Повторный запуск сохраняет файл и аккаунты. Не удаляйте `mentor-local.db`, если хотите сохранить прогресс; для резервной копии остановите API и скопируйте файл.
+
+Для AI и других интеграций можно создать `.env` в корне по образцу `.env.example`. API читает его до миграций; переменные текущего процесса имеют приоритет. Секреты из этого файла не загружаются скриптом frontend. Без настроенного AI Gateway обучение по авторским материалам работает, AI-чат показывает недоступность. Исполнение кода требует отдельно развёрнутого защищённого Runner и при обычном локальном запуске отключено.
+
+Если хотите использовать **свою установленную службу PostgreSQL**, задайте её `DATABASE_URL` в корневом `.env` или в текущем PowerShell и запустите API **без** `-UseSqlite`:
+
+```powershell
+cd C:\ai_bot_ai-main
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-api.ps1
+```
+
+При недоступном PostgreSQL скрипт остановится и предложит проверить `DATABASE_URL`, службу (`Get-Service *postgres*`) и порт. Автоматического перехода на другую базу нет. Не используйте этот launcher для production: он рассчитан на локальную разработку и HTTP; `APP_ENV=production` отклоняется.
+
+Дополнительные параметры: `-SkipInstall` пропускает установку уже установленных зависимостей; `-PrepareOnly` проверяет окружение и выполняет подготовку без запуска сервера. У API есть `-PythonPath 'C:\путь\к\python.exe'`, если Python 3.12 не находится через launcher/PATH. Неполное окружение или `.venv` другой версии сохраняется: переименуйте его и повторите запуск, чтобы создать новое.
+
+### Linux/macOS без Docker
+
+Требуются Python 3.12, Node.js 22 и установленный PostgreSQL либо явный выбор SQLite:
+
+```sh
+cd apps/api
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.lock
+.venv/bin/python ../../scripts/local-api.py --use-sqlite
+```
+
+Без `--use-sqlite` используется `DATABASE_URL` из окружения или корневого `.env`. В другом терминале из `apps/web`: `npm ci`, затем `API_INTERNAL_URL=http://127.0.0.1:8000 NEXT_PUBLIC_API_URL=/api npm run dev`.
+
+### Docker Compose
+
+Этот способ запуска независим от нативного; PostgreSQL здесь запускается отдельным сервисом.
 
 ```sh
 cp .env.example .env
@@ -29,18 +90,6 @@ docker compose up -d api web
 ```
 
 Web: http://localhost:3000. API: http://localhost:8000/docs. `/health` проверяет соединение с БД; `/ready` дополнительно требует актуальную ревизию схемы. Frontend использует `/api` через Next.js proxy, поэтому удалённый браузер не обращается к своему localhost. Миграции запускаются явно. `docker compose down` сохраняет volume БД; `down -v` удаляет данные.
-
-Для нативной разработки:
-
-```sh
-cd apps/api
-python -m pip install -r requirements.lock
-# Экспортируйте DATABASE_URL из вашего .env перед командой Alembic.
-alembic upgrade head
-uvicorn app.main:app --env-file ../../.env --reload
-```
-
-В другом терминале из `apps/web`: `npm ci && npm run dev`. `API_INTERNAL_URL` по умолчанию указывает на http://localhost:8000. Копирование `.env` само по себе не экспортирует переменные в shell.
 
 ## Настройка интеграций
 
@@ -73,6 +122,8 @@ npm run build
 ```
 
 Браузерный CI проверяет путь новичка и основные экраны при 1440×900 и 390×844. Снимки страниц и отчёт доступны в артефакте `browser-ui-desktop-mobile`. Дополнительная QA-зависимость Playwright изолирована в `scripts/ui-smoke`; в bundle приложения она не попадает.
+
+Windows CI отдельно проверяет нативные launcher-ы под **Windows PowerShell 5.1**: отсутствие Python, неполное окружение, ошибку pip, недоступный PostgreSQL без fallback, отказ в production, миграции SQLite в каталоге с пробелами, реальный запуск API и Next.js, регистрацию через `/api`, cookie-сессию и сохранение аккаунта при повторной подготовке. Docker в этом job не используется. Локально на Windows проверку можно повторить командой `py -3.12 scripts/check-windows-startup.py`; она использует временную тестовую базу и порты 8000/3000, поэтому сначала остановите локальные серверы.
 
 Из корня: `python -m unittest discover -s apps/runner/tests -v`. CI отдельно выполняет PostgreSQL migration round trip с sentinel-данными, `alembic check`, PG-specific tests, API tests, frontend types/build и worker policy/journal tests. Оркестрационные тесты worker не подтверждают фактическую изоляцию deployment host.
 
