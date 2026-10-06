@@ -71,6 +71,10 @@ jobs:
       - run: python -m pip install -r apps/api/requirements.lock
       - run: python -m alembic upgrade head
         working-directory: apps/api
+      - name: Prepare experienced learners for coding recovery
+        run: python scripts/ui-smoke/seed-recovery.py
+        env:
+          RUN_BROWSER_FIXTURES: "1"
       - run: npm ci
         working-directory: apps/web
       - run: npm run build

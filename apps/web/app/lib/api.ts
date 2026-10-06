@@ -100,7 +100,7 @@ export function newRequestId(): string {
 export function clearLocalDrafts(): void {
   try {
     for (const key of Object.keys(window.localStorage)) {
-      if (key.startsWith("mentor.lesson.draft") || key.startsWith("mentor.generated.draft")) window.localStorage.removeItem(key);
+      if (key.startsWith("mentor.lesson.draft") || key.startsWith("mentor.generated.draft") || key.startsWith("mentor.project.draft")) window.localStorage.removeItem(key);
     }
   } catch { /* Browser storage may be unavailable. */ }
 }

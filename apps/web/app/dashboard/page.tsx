@@ -4,6 +4,7 @@ import CoursePath from "../learning/course-path";
 import { useUser } from "../lib/use-user";
 import AppHeader from "../components/app-header";
 import AppIcon from "../components/app-icon";
+import TodayFocus from "./today-focus";
 
 const milestones = [
   {
@@ -86,6 +87,7 @@ export default function DashboardPage() {
             ) : (
               <div className="dashboard-grid">
                 <div className="dashboard-main">
+                  <TodayFocus />
                   <CoursePath variant="dashboard" />
                   <section className="panel">
                     <div className="panel-heading">

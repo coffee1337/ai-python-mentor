@@ -200,3 +200,9 @@ Backend-уроки почти всегда про чужой код. Runner fail
 в них — чтение фрагмента, предсказание вывода и поиск ошибки, а задания вида
 «напишите FastAPI-приложение» запрещены. Текстовый вывод примера сверяется с
 реальным запуском: `example_output` обязан совпадать с выводом `example`.
+
+## Read-only прогресс и восстановление работы
+
+`/learning/progress` и `/learning/today` — owned read projections существующих источников: не создавай evidence, completion, контентные версии, grading sessions или CurriculumSession при просмотре. Используй общую PrerequisiteState policy и immutable snapshot identity; acquisition и retention разделяй. Активность без evidence не выдавай за освоение; неизвестную оценку возвращай null. Календарные агрегаты с фиксированным offset должны работать на SQLite и настоящем PostgreSQL независимо от timezone соединения.
+
+Source GET попыток/проектов требует owner до поиска связанных версий. Не возвращай hidden tests/answer keys/hash/idempotency или source в публичном portfolio. Preview/restore не submit/run/grade. Код восстанавливается лишь при exact exercise/public version/language/mode; legacy unknown bindings доступны только для просмотра. Не теряй исходный черновик при замене, смене шага урока или недоступном browser storage. Локальные drafts user/version scoped и удаляются при logout/account deletion; step/answer draft не является серверным результатом проверки. Latest milestone submission не выводи из глобально обрезанной истории проекта.
