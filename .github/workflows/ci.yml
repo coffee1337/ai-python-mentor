@@ -117,7 +117,8 @@ jobs:
       - name: Upgrade and downgrade on real PostgreSQL
         working-directory: apps/api
         env:
-          DATABASE_URL: postgresql+psycopg://mentor:mentor_local_only@localhost:5432/mentor
+          # URL-encoded credentials must survive Alembic's ConfigParser layer.
+          DATABASE_URL: postgresql+psycopg://mentor:m%65ntor_local_only@localhost:5432/mentor
         run: |
           alembic upgrade head
           alembic check

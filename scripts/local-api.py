@@ -12,6 +12,9 @@ API_ROOT = ROOT / "apps" / "api"
 
 
 def main() -> int:
+    # A redirected legacy Windows console may not encode a Unicode project path.
+    sys.stdout.reconfigure(errors="backslashreplace")
+    sys.stderr.reconfigure(errors="backslashreplace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--use-sqlite", action="store_true")
     parser.add_argument("--prepare-only", action="store_true")

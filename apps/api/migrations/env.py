@@ -10,7 +10,10 @@ from app.db import models  # noqa: F401 — import model modules before autogene
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url")))
+database_url = os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
+# ConfigParser interpolates percent signs; SQLAlchemy must receive the original
+# URL, including encoded credentials and literal percent signs in SQLite paths.
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 target_metadata = Base.metadata
 
 

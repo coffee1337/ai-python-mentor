@@ -65,7 +65,7 @@ def main() -> None:
         env.pop(name, None)
     with tempfile.TemporaryDirectory(prefix="mentor native ") as temporary:
         work = Path(temporary)
-        project = work / "project with spaces"
+        project = work / "project with spaces тест"
         api = project / "apps" / "api"
         shutil.copytree(ROOT / "apps" / "api", api,
                         ignore=shutil.ignore_patterns(".venv", "__pycache__", ".pytest_cache", "*.db", "*.sqlite3"))
