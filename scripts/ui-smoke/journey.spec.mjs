@@ -366,7 +366,7 @@ test("beginner learns before questions and uses the personal workspace", async (
   await page.reload();
   await expect(page.locator(".jobs-result-panel")).toContainText("Ваш ориентир");
   await expect(page.getByRole("heading", { name: "Учебная вакансия Python Backend", exact: true })).toBeVisible();
-  await expect(page.locator(".jobs-roadmap-action a").first()).toBeVisible();
+  await expect(page.locator("a.jobs-roadmap-action").first()).toBeVisible();
   await capture(page, testInfo, "27-career-restored", true);
 
   await openWorkspace(
