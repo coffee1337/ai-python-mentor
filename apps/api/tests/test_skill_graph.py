@@ -19,7 +19,7 @@ def test_authored_graph_has_valid_references_and_acyclic_prerequisites():
     assert all(source in ids and target in ids for source, target, _ in EDGES)
     assert all(skill in ids for _, skill in LESSON_SKILLS)
     assert ("variables-v1", "python.data_types") not in LESSON_SKILLS
-    assert ("variables-v1", "python.variables") in LESSON_SKILLS
+    assert ("variables-v2", "python.variables") in LESSON_SKILLS
 
     original = EDGES[:]
     try:
@@ -56,7 +56,7 @@ def test_learning_path_uses_prerequisite_evidence(client):
     response = client.post("/learning/lessons/variables-v1/complete",
                            headers={"X-CSRF-Token": csrf(client)}, json={"answer": "6"})
     assert response.status_code == 200
-    assert response.json()["path"]["next_lesson_id"] == "data-types-v1"
+    assert response.json()["path"]["next_lesson_id"] == "data-types-v2"
     assert client.get("/learning/lessons/conditions-v1").status_code == 409
 
 
@@ -78,7 +78,7 @@ def test_legacy_secondary_lesson_skill_link_does_not_bypass_types_prerequisite(c
         db.commit()
     path = client.get("/learning/path")
     assert path.status_code == 200
-    assert path.json()["next_lesson_id"] == "data-types-v1"
+    assert path.json()["next_lesson_id"] == "data-types-v2"
     assert client.get("/learning/lessons/conditions-v1").status_code == 409
 
 
@@ -117,7 +117,7 @@ def test_mastery_fallback_is_consistent_across_path_plan_and_curriculum(client):
 
     path = client.get("/learning/path")
     assert path.status_code == 200
-    assert path.json()["next_lesson_id"] == "data-types-v1"
+    assert path.json()["next_lesson_id"] == "data-types-v2"
     assert client.get("/learning/lessons/data-types-v1").status_code == 200
 
     from app.learning_plan import generate_plan
@@ -133,15 +133,15 @@ def test_mastery_fallback_is_consistent_across_path_plan_and_curriculum(client):
         build_curriculum(db, user)
         db.commit()
     plan = client.get("/learning/plan").json()
-    assert plan["recommended_lesson_id"] == "data-types-v1"
-    assert next(item for item in plan["items"] if item["lesson_id"] == "data-types-v1")["status"] == "recommended"
+    assert plan["recommended_lesson_id"] == "data-types-v2"
+    assert next(item for item in plan["items"] if item["lesson_id"] == "data-types-v2")["status"] == "recommended"
     curriculum = client.get("/learning/curriculum").json()
     activities = [
         activity
         for session in curriculum["sessions"]
         for activity in session["activities"]
     ]
-    assert any(activity["lesson_id"] == "data-types-v1" for activity in activities)
+    assert any(activity["lesson_id"] == "data-types-v2" for activity in activities)
 
     # A previously built curriculum revision remains immutable, while the live
     # response must not present its now-locked item as available.
@@ -149,19 +149,19 @@ def test_mastery_fallback_is_consistent_across_path_plan_and_curriculum(client):
         db.query(UserSkill).filter(UserSkill.user_id == user_id).delete()
         db.commit()
     locked_path = client.get("/learning/path").json()
-    assert locked_path["next_lesson_id"] == "data-types-v1"
+    assert locked_path["next_lesson_id"] == "data-types-v2"
     locked_plan = client.get("/learning/plan").json()
-    assert locked_plan["recommended_lesson_id"] == "data-types-v1"
+    assert locked_plan["recommended_lesson_id"] == "data-types-v2"
     assert next(
         item for item in locked_plan["items"]
-        if item["lesson_id"] == "data-types-v1"
+        if item["lesson_id"] == "data-types-v2"
     )["status"] == "recommended"
     locked_curriculum = client.get("/learning/curriculum").json()
     old_condition = next(
         activity
         for session in locked_curriculum["sessions"]
         for activity in session["activities"]
-        if activity["lesson_id"] == "conditions-v1"
+        if activity["lesson_id"] == "conditions-v2"
     )
     assert old_condition["availability"] == "locked"
 

@@ -1,15 +1,22 @@
 "use client";
-
 import { useEffect, useState } from "react";
-import { api } from "../lib/api";
-
+import { api, errorMessage } from "../lib/api";
 type LessonStatus = "completed" | "available" | "locked";
-
+type PhaseSummary = {
+  id: number;
+  title: string;
+  summary: string;
+  status: LessonStatus;
+  completed: number;
+  total: number;
+  next_lesson_id: string | null;
+};
 type LearningPathResponse = {
   title: string;
   completed: number;
   total: number;
   next_lesson_id: string | null;
+  resume_lesson_id?: string | null;
   phases: PhaseSummary[];
   lessons: {
     id: string;
@@ -20,21 +27,13 @@ type LearningPathResponse = {
     phase: number | null;
   }[];
 };
-
-type PhaseSummary = {
-  id: number;
-  title: string;
-  summary: string;
-  status: LessonStatus;
-  completed: number;
-  total: number;
-  next_lesson_id: string | null;
-};
-
 type LearningPlanResponse = {
   status: "ready" | "assessment_required";
   recommendation: string;
   recommended_lesson_id: string | null;
+  learning_mode?: "starter" | "assessed";
+  assessment_optional?: boolean;
+  resume_lesson_id?: string | null;
   items: {
     lesson_id: string;
     title: string;
@@ -42,286 +41,364 @@ type LearningPlanResponse = {
     rationale: string;
   }[];
 };
-
-type CoursePathProps = {
+const STATUS_LABELS: Record<LessonStatus, string> = {
+  completed: "Пройден",
+  available: "Доступен",
+  locked: "Позже",
+};
+export default function CoursePath({
+  variant,
+}: {
   variant: "dashboard" | "full";
-};
-
-const PHASE_LABELS: Record<string, string> = {
-  completed: "Пройдена",
-  available: "Открыта",
-  locked: "Пока закрыта",
-};
-
-function PhaseOverview({ phases }: { phases: PhaseSummary[] }) {
-  const published = phases.filter((phase) => phase.total > 0);
-  if (published.length === 0) return null;
-
-  return (
-    <section className="course-phases" aria-labelledby="phases-title">
-      <h3 id="phases-title" className="course-phases-title">
-        Этапы курса
-      </h3>
-      <p className="course-path-intro">
-        Этапы открываются по мере прохождения предыдущих. Процент mastery не
-        показываем: видно, сколько уроков этапа уже закрыто.
-      </p>
-      <ol className="course-phases-list">
-        {published.map((phase) => (
-          <li
-            className={`course-phase-item course-phase-item-${phase.status}`}
-            key={phase.id}
-          >
-            <div className="course-phase-item-heading">
-              <span className="course-phase-index" aria-hidden="true">
-                {String(phase.id).padStart(2, "0")}
-              </span>
-              <div>
-                <h4>{phase.title}</h4>
-                <p className="muted">{phase.summary}</p>
-              </div>
-              <span className={`course-phase-status course-phase-status-${phase.status}`}>
-                {phase.status === "completed" ? <span aria-hidden="true">✓ </span> : null}
-                {PHASE_LABELS[phase.status]}
-              </span>
-            </div>
-            <p className="course-phase-count">
-              Закрыто уроков: {phase.completed} из {phase.total}
-            </p>
-            {phase.status === "available" && phase.next_lesson_id ? (
-              <a href={`/learning?lesson=${encodeURIComponent(phase.next_lesson_id)}`}>
-                Начать этап <span aria-hidden="true">→</span>
-              </a>
-            ) : null}
-            {phase.status === "locked" ? (
-              <p className="course-path-lock-note">
-                Этап откроется после прохождения предыдущего.
-              </p>
-            ) : null}
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
-function CoursePath({ variant }: CoursePathProps) {
+}) {
   const [path, setPath] = useState<LearningPathResponse | null>(null);
   const [plan, setPlan] = useState<LearningPlanResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
+  const [error, setError] = useState("");
   const [requestNumber, setRequestNumber] = useState(0);
+  const [activePhase, setActivePhase] = useState<number | null>(null);
+  const compact = variant === "dashboard";
 
   useEffect(() => {
-    let current = true;
+    const controller = new AbortController();
     setLoading(true);
-    setHasError(false);
-
+    setError("");
     void Promise.all([
-      api<LearningPathResponse>("/learning/path"),
-      api<LearningPlanResponse>("/learning/plan"),
+      api<LearningPathResponse>("/learning/path", {
+        signal: controller.signal,
+      }),
+      api<LearningPlanResponse>("/learning/plan", {
+        signal: controller.signal,
+      }),
     ])
       .then(([nextPath, nextPlan]) => {
-        if (!current) return;
+        if (controller.signal.aborted) return;
         setPath(nextPath);
         setPlan(nextPlan);
+        const next = nextPath.lessons.find(
+          (lesson) => lesson.id === nextPath.next_lesson_id,
+        );
+        setActivePhase(
+          next?.phase ??
+            nextPath.phases?.find((phase) => phase.status === "available")
+              ?.id ??
+            null,
+        );
       })
-      .catch(() => {
-        if (current) setHasError(true);
+      .catch((reason) => {
+        if (!controller.signal.aborted) setError(errorMessage(reason));
       })
       .finally(() => {
-        if (current) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       });
-
-    return () => {
-      current = false;
-    };
+    return () => controller.abort();
   }, [requestNumber]);
 
-  function retry() {
-    setRequestNumber((number) => number + 1);
-  }
-
-  const compact = variant === "dashboard";
   const nextLesson =
     path?.lessons.find(
-      (lesson) => lesson.id === path.next_lesson_id && lesson.status === "available",
-    ) ?? null;
-  const nextPlanItem = nextLesson
-    ? plan?.items.find((item) => item.lesson_id === nextLesson.id)
-    : null;
-  const hasLessons = Boolean(path && path.lessons.length > 0);
-
-  if (loading) {
-    return (
-      <section className="course-path" aria-labelledby={compact ? "continue-title" : "path-title"}>
-        {compact ? <h2 id="continue-title">Продолжить обучение</h2> : <h1 id="path-title">Учебный путь Python</h1>}
-        <p role="status" aria-live="polite">Загружаем учебный путь…</p>
-      </section>
+      (lesson) =>
+        lesson.id === (plan?.recommended_lesson_id ?? path.next_lesson_id) &&
+        lesson.status !== "locked",
+    ) ??
+    path?.lessons.find(
+      (lesson) =>
+        lesson.id === path.next_lesson_id && lesson.status === "available",
     );
-  }
-
-  if (hasError || !path || !plan) {
-    return (
-      <section className="course-path" aria-labelledby={compact ? "continue-title" : "path-title"}>
-        {compact ? <h2 id="continue-title">Продолжить обучение</h2> : <h1 id="path-title">Учебный путь Python</h1>}
-        <div className="course-path-state" role="alert">
-          <p className="form-error">Не удалось загрузить учебный путь. Попробуйте ещё раз.</p>
-          <button className="text-button" type="button" onClick={retry}>
-            Повторить
-          </button>
-        </div>
-      </section>
-    );
-  }
-
-  const routeSummary =
-    path.total > 0 ? (
-      <p className="course-path-summary">
-        Завершено {path.completed} из {path.total} уроков
-      </p>
-    ) : null;
-
-  if (compact) {
-    return (
-      <section className="course-path course-path-compact" aria-labelledby="continue-title">
-        <div className="course-path-heading">
-          <div>
-            <span className="eyebrow"><i aria-hidden="true" /> ВАШ УЧЕБНЫЙ ПУТЬ</span>
-            <h2 id="continue-title">Продолжить обучение</h2>
-          </div>
-          {routeSummary}
-        </div>
-
-        {!hasLessons ? (
-          <div className="course-path-state">
-            <p role="status">В учебном пути пока нет опубликованных уроков.</p>
-            {plan.status === "assessment_required" && (
-              <a className="primary-button" href="/assessment">
-                Начать диагностику <span aria-hidden="true">↗</span>
-              </a>
-            )}
-          </div>
-        ) : plan.status === "assessment_required" ? (
-          <div className="course-path-recommendation">
-            <p>{plan.recommendation}</p>
-            <a className="primary-button" href="/assessment">
-              Начать диагностику <span aria-hidden="true">↗</span>
-            </a>
-          </div>
-        ) : nextLesson ? (
-          <div className="course-path-recommendation">
-            <p className="course-path-next-label">СЛЕДУЮЩИЙ ДОСТУПНЫЙ УРОК</p>
-            <h3>{nextLesson.title}</h3>
-            {nextPlanItem?.rationale ? (
-              <p className="muted">{nextPlanItem.rationale}</p>
-            ) : (
-              <p className="muted">Следующий доступный урок в вашем маршруте.</p>
-            )}
-            <p className="course-path-duration">{nextLesson.minutes} мин</p>
-            <a className="primary-button" href={`/learning?lesson=${encodeURIComponent(nextLesson.id)}`}>
-              Продолжить <span aria-hidden="true">↗</span>
-            </a>
-          </div>
-        ) : (
-          <p className="course-path-state" role="status">
-            {path.lessons.every((lesson) => lesson.status === "completed")
-              ? plan.recommendation
-              : "Сейчас нет доступного урока; подробная причина блокировки не передана сервером."}
-          </p>
-        )}
-
-        <PhaseOverview phases={path.phases ?? []} />
-
-        <a className="course-path-all-link" href="/learning/path">
-          Весь учебный путь <span aria-hidden="true">→</span>
-        </a>
-      </section>
-    );
-  }
+  const nextPlanItem = plan?.items.find(
+    (item) => item.lesson_id === nextLesson?.id,
+  );
+  const phases = path?.phases?.filter((phase) => phase.total > 0) ?? [];
+  const visibleLessons =
+    path?.lessons.filter(
+      (lesson) => activePhase === null || lesson.phase === activePhase,
+    ) ?? [];
 
   return (
-    <section className="course-path" aria-labelledby="path-title">
-      <span className="eyebrow"><i aria-hidden="true" /> ВАШ МАРШРУТ</span>
-      <h1 id="path-title">Учебный путь Python</h1>
-      {routeSummary}
-      <p className="course-path-intro">
-        Уроки показаны в порядке маршрута. Следующий шаг откроется после необходимых основ.
-      </p>
-
-      <PhaseOverview phases={path.phases ?? []} />
-
-      {plan.status === "assessment_required" && (
-        <aside className="course-path-notice">
-          <p>{plan.recommendation}</p>
-          <a href="/assessment">Перейти к диагностике →</a>
-        </aside>
-      )}
-
-      {!hasLessons ? (
-        <p className="course-path-state" role="status">
-          В учебном пути пока нет опубликованных уроков.
+    <section
+      className={
+        compact
+          ? "panel course-path course-path-compact"
+          : "course-path course-path-full"
+      }
+      aria-labelledby={compact ? "continue-title" : "path-title"}
+      aria-busy={loading}
+    >
+      <header className={compact ? "panel-heading" : "page-heading"}>
+        <div>
+          <p className="page-kicker">
+            {compact ? "Ваш следующий шаг" : "Python → Python Backend"}
+          </p>
+          {compact ? (
+            <h2 id="continue-title">Продолжить обучение</h2>
+          ) : (
+            <h1 id="path-title">Ваш учебный путь</h1>
+          )}
+        </div>
+        {!compact && (
+          <p className="page-subtitle">
+            Начните с того, как читать программу. Затем научитесь писать свой
+            код, работать с данными и создавать backend — часть приложения,
+            которая отвечает на запросы и хранит данные.
+          </p>
+        )}
+      </header>
+      {loading && (
+        <p className="status-message" role="status">
+          Загружаем учебный путь…
         </p>
-      ) : (
-        <ol className="course-path-list" aria-label="Уроки в порядке прохождения">
-          {path.lessons.map((lesson, index) => {
-            const isNext = lesson.id === path.next_lesson_id;
-            return (
-              <li
-                className={`course-path-item course-path-item-${lesson.status}${isNext ? " course-path-item-next" : ""}`}
-                key={lesson.id}
-                aria-posinset={index + 1}
-                aria-setsize={path.lessons.length}
+      )}
+      {error && (
+        <div className="status-message" role="alert">
+          <p>{error}</p>
+          <button
+            className="button-secondary"
+            type="button"
+            onClick={() => setRequestNumber((number) => number + 1)}
+          >
+            Повторить загрузку
+          </button>
+          <a href="/auth">Войти в аккаунт</a>
+        </div>
+      )}
+      {!loading && !error && path && plan && (
+        <>
+          {path.total > 0 && (
+            <div className="path-progress">
+              <span>
+                Пройдено{" "}
+                <strong>
+                  {path.completed} из {path.total}
+                </strong>{" "}
+                уроков
+              </span>
+              <progress
+                aria-label="Пройденные уроки"
+                value={path.completed}
+                max={path.total}
+              />
+            </div>
+          )}
+          {(path.resume_lesson_id ?? plan.resume_lesson_id) ? (
+            <div className="course-next-lesson">
+              <div>
+                <span className="badge">Начатый ранее урок</span>
+                <h3>Продолжить открытый урок</h3>
+                <p>
+                  У вас сохранён урок предыдущей версии. Продолжите тот же
+                  материал и проверку. Сохранённые попытки и открытые подсказки
+                  останутся в истории этого урока.
+                </p>
+              </div>
+              <a
+                className="button"
+                href={`/learning?lesson=${encodeURIComponent((path.resume_lesson_id ?? plan.resume_lesson_id)!)}`}
               >
-                <span className="course-path-number" aria-hidden="true">
-                  {String(index + 1).padStart(2, "0")}
+                Продолжить начатое →
+              </a>
+            </div>
+          ) : nextLesson ? (
+            <div className="course-next-lesson">
+              <div>
+                <span className="badge">
+                  {path.completed === 0
+                    ? "Начните здесь"
+                    : "Рекомендуемый урок"}
                 </span>
-                <div className="course-path-item-content">
-                  <div className="course-path-item-heading">
-                    <h2>{lesson.title}</h2>
-                    <span className={`course-path-status course-path-status-${lesson.status}`}>
-                      {lesson.status === "completed" && <span aria-hidden="true">✓ </span>}
-                      {lesson.status === "completed"
-                        ? "Завершён"
-                        : lesson.status === "available"
-                          ? "Доступен"
-                          : "Пока закрыт"}
-                    </span>
-                  </div>
-                  <p className="course-path-duration">{lesson.minutes} мин</p>
-                  {lesson.status === "locked" ? (
-                    <p className="course-path-lock-note">
-                      Урок пока недоступен по текущим условиям маршрута.
-                    </p>
-                  ) : (
-                    <a
-                      className={isNext ? "course-path-action course-path-action-primary" : "course-path-action"}
-                      href={`/learning?lesson=${encodeURIComponent(lesson.id)}`}
-                    >
-                      {lesson.status === "completed"
-                        ? "Повторить урок"
-                        : isNext
-                          ? "Начать урок"
-                          : "Открыть урок"}
-                      <span aria-hidden="true"> →</span>
-                    </a>
-                  )}
+                <h3>{nextLesson.title}</h3>
+                <p>
+                  {nextPlanItem?.rationale ||
+                    plan.recommendation ||
+                    "Сначала прочитайте объяснение и пример, затем ответьте на небольшие вопросы."}
+                </p>
+                <p className="muted">
+                  Около {nextLesson.minutes} минут ·{" "}
+                  {plan.learning_mode === "starter"
+                    ? "Маршрут с нуля"
+                    : "Основной курс"}
+                </p>
+              </div>
+              <a
+                className="button"
+                href={`/learning?lesson=${encodeURIComponent(nextLesson.id)}`}
+              >
+                {path.completed === 0
+                  ? "Открыть первый урок"
+                  : "Продолжить урок"}{" "}
+                →
+              </a>
+            </div>
+          ) : (
+            <div className="empty-state">
+              <h3>
+                {path.lessons.length === 0
+                  ? "Уроки пока не опубликованы"
+                  : path.lessons.every(
+                        (lesson) => lesson.status === "completed",
+                      )
+                    ? "Все доступные уроки пройдены"
+                    : "Следующий урок пока закрыт"}
+              </h3>
+              <p>
+                {path.lessons.length === 0
+                  ? "Здесь появятся материалы курса после публикации."
+                  : plan.recommendation}
+              </p>
+              {plan.status === "assessment_required" && (
+                <a className="button-secondary" href="/assessment">
+                  Уточнить маршрут
+                </a>
+              )}
+            </div>
+          )}
+          {compact ? (
+            <div className="course-path-bottom">
+              <p className="muted">
+                Основы Python → работа с данными → backend и проекты. Никаких
+                знаний для первого урока не требуется.
+              </p>
+              <a className="text-button" href="/learning/path">
+                Посмотреть весь маршрут →
+              </a>
+            </div>
+          ) : (
+            <>
+              {plan.learning_mode === "starter" && (
+                <div className="course-starter-notice">
+                  <strong>Можно учиться без диагностики</strong>
+                  <p>
+                    Начальный маршрут объясняет всё с нуля. Если вы уже пишете
+                    код, необязательная диагностика поможет выбрать подходящую
+                    точку старта.
+                  </p>
+                  <a href="/assessment">Уточнить, что я уже знаю →</a>
                 </div>
-              </li>
-            );
-          })}
-        </ol>
-      )}
-
-      {hasLessons && plan.status === "ready" && !path.next_lesson_id && (
-        <p className="course-path-state" role="status">
-          {path.lessons.every((lesson) => lesson.status === "completed")
-            ? plan.recommendation
-            : "Сейчас нет доступного урока; подробная причина блокировки не передана сервером."}
-        </p>
+              )}
+              {phases.length > 0 && (
+                <section
+                  className="course-phases"
+                  aria-labelledby="phases-title"
+                >
+                  <div className="panel-heading">
+                    <h2 id="phases-title">Этапы обучения</h2>
+                    <button
+                      className="button-secondary"
+                      type="button"
+                      aria-pressed={activePhase === null}
+                      onClick={() => setActivePhase(null)}
+                    >
+                      Все уроки
+                    </button>
+                  </div>
+                  <div className="course-phase-grid">
+                    {phases.map((phase) => (
+                      <button
+                        type="button"
+                        key={phase.id}
+                        className={
+                          activePhase === phase.id
+                            ? "course-phase-card course-phase-card-active"
+                            : "course-phase-card"
+                        }
+                        aria-pressed={activePhase === phase.id}
+                        onClick={() => setActivePhase(phase.id)}
+                      >
+                        <span className="course-phase-top">
+                          <span className="course-phase-index">
+                            {String(phase.id).padStart(2, "0")}
+                          </span>
+                          <span className="badge">
+                            {phase.status === "completed"
+                              ? "Пройден"
+                              : phase.status === "available"
+                                ? "Открыт"
+                                : "Позже"}
+                          </span>
+                        </span>
+                        <strong>{phase.title}</strong>
+                        <span className="course-phase-description">
+                          {phase.summary}
+                        </span>
+                        <span className="course-phase-count">
+                          {phase.completed} из {phase.total} уроков пройдено
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+              <section
+                className="panel path-lessons-panel"
+                aria-labelledby="path-lessons-title"
+              >
+                <div className="panel-heading">
+                  <div>
+                    <h2 id="path-lessons-title">
+                      {activePhase === null
+                        ? "Все уроки курса"
+                        : (phases.find((phase) => phase.id === activePhase)
+                            ?.title ?? "Уроки этапа")}
+                    </h2>
+                    <p className="muted">
+                      Уроки открываются после необходимых основ. Пройденный
+                      материал можно повторить.
+                    </p>
+                  </div>
+                  <span className="badge">{visibleLessons.length} уроков</span>
+                </div>
+                {visibleLessons.length === 0 ? (
+                  <p className="empty-state">
+                    В этом этапе пока нет опубликованных уроков.
+                  </p>
+                ) : (
+                  <ol className="course-path-list">
+                    {visibleLessons.map((lesson) => (
+                      <li
+                        className={`course-path-item course-path-item-${lesson.status}`}
+                        key={lesson.id}
+                      >
+                        <span className="course-path-number" aria-hidden="true">
+                          {lesson.status === "completed"
+                            ? "✓"
+                            : String(
+                                path.lessons.findIndex(
+                                  (item) => item.id === lesson.id,
+                                ) + 1,
+                              ).padStart(2, "0")}
+                        </span>
+                        <div className="course-path-item-content">
+                          <h3>{lesson.title}</h3>
+                          <p className="muted">
+                            Около {lesson.minutes} минут
+                            {lesson.status === "locked"
+                              ? " · сначала пройдите предыдущие основы"
+                              : " · объяснение, пример и проверка"}
+                          </p>
+                        </div>
+                        <span
+                          className={`badge path-status path-status-${lesson.status}`}
+                        >
+                          {STATUS_LABELS[lesson.status]}
+                        </span>
+                        {lesson.status !== "locked" && (
+                          <a
+                            className="button-secondary"
+                            href={`/learning?lesson=${encodeURIComponent(lesson.id)}`}
+                          >
+                            {lesson.status === "completed"
+                              ? "Повторить"
+                              : "Открыть"}
+                            <span className="sr-only">: {lesson.title}</span>
+                          </a>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
+            </>
+          )}
+        </>
       )}
     </section>
   );
 }
-
-export default CoursePath;

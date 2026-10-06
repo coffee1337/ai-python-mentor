@@ -1,14 +1,13 @@
 "use client";
-
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
-
+import { skillLabel } from "./skill-labels";
+import { InlineText } from "./rich-text";
 type ReviewQuestion = {
   id: string;
   prompt: string;
   choices: string[];
 };
-
 type ReviewItem = {
   review_token: string;
   skill_id: string;
@@ -16,12 +15,10 @@ type ReviewItem = {
   overdue_days: number;
   questions: ReviewQuestion[];
 };
-
 type ReviewsResponse = {
   as_of: string;
   items: ReviewItem[];
 };
-
 type ReviewResult = {
   status: "recorded" | "replayed";
   outcome: "correct" | "partial" | "incorrect";
@@ -29,49 +26,52 @@ type ReviewResult = {
   same_day: boolean;
   next_review_at: string | null;
 };
-
 type ReviewTodayProps = {
   onReviewPlanChanged?: () => void;
 };
-
 function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "дата недоступна";
   return date.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
 }
-
 function formatCalendarDate(value: string): string {
   const [year, month, day] = value.split("-").map(Number);
   if (!year || !month || !day) return "дата недоступна";
-  return new Date(year, month - 1, day).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+  return new Date(year, month - 1, day).toLocaleDateString("ru-RU", {
+    day: "numeric",
+    month: "long",
+  });
 }
-
 function dayWord(days: number): string {
   if (days % 10 === 1 && days % 100 !== 11) return "день";
-  if (days % 10 >= 2 && days % 10 <= 4 && (days % 100 < 10 || days % 100 >= 20)) return "дня";
+  if (days % 10 >= 2 && days % 10 <= 4 && (days % 100 < 10 || days % 100 >= 20))
+    return "дня";
   return "дней";
 }
-
 function outcomeCopy(outcome: ReviewResult["outcome"]): string {
   if (outcome === "correct") return "Получилось восстановить решение.";
-  if (outcome === "partial") return "Часть решения восстановилась. Можно вернуться к теме ещё раз.";
+  if (outcome === "partial")
+    return "Часть решения восстановилась. Можно вернуться к теме ещё раз.";
   return "Сегодня решение не вспомнилось. Это не штраф; материал можно освежить и попробовать позже.";
 }
-
 function newIdempotencyKey(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto)
+    return crypto.randomUUID();
   return `review-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
-
 export default function ReviewToday({ onReviewPlanChanged }: ReviewTodayProps) {
   const [items, setItems] = useState<ReviewItem[] | null>(null);
-  const [answers, setAnswers] = useState<Record<string, Record<string, string>>>({});
+  const [answers, setAnswers] = useState<
+    Record<string, Record<string, string>>
+  >({});
   const [results, setResults] = useState<Record<string, ReviewResult>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [submitError, setSubmitError] = useState(false);
   const [submitting, setSubmitting] = useState<string | null>(null);
-  const [lastCompletedSkill, setLastCompletedSkill] = useState<string | null>(null);
+  const [lastCompletedSkill, setLastCompletedSkill] = useState<string | null>(
+    null,
+  );
   const resultRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const idempotencyKeys = useRef<Record<string, string>>({});
 
@@ -107,23 +107,31 @@ export default function ReviewToday({ onReviewPlanChanged }: ReviewTodayProps) {
     }));
   }
 
-  async function submitReview(event: FormEvent<HTMLFormElement>, item: ReviewItem) {
+  async function submitReview(
+    event: FormEvent<HTMLFormElement>,
+    item: ReviewItem,
+  ) {
     event.preventDefault();
     if (submitting || results[item.skill_id]) return;
 
     setSubmitting(item.skill_id);
     setSubmitError(false);
     try {
-      const result = await api<ReviewResult>("/learning/reviews/today/complete", {
-        method: "POST",
-        headers: {
-          "Idempotency-Key": idempotencyKeys.current[item.skill_id] ?? (idempotencyKeys.current[item.skill_id] = newIdempotencyKey()),
+      const result = await api<ReviewResult>(
+        "/learning/reviews/today/complete",
+        {
+          method: "POST",
+          headers: {
+            "Idempotency-Key":
+              idempotencyKeys.current[item.skill_id] ??
+              (idempotencyKeys.current[item.skill_id] = newIdempotencyKey()),
+          },
+          body: JSON.stringify({
+            review_token: item.review_token,
+            answers: answers[item.skill_id] ?? {},
+          }),
         },
-        body: JSON.stringify({
-          review_token: item.review_token,
-          answers: answers[item.skill_id] ?? {},
-        }),
-      });
+      );
       setResults((current) => ({ ...current, [item.skill_id]: result }));
       setLastCompletedSkill(item.skill_id);
       onReviewPlanChanged?.();
@@ -135,15 +143,21 @@ export default function ReviewToday({ onReviewPlanChanged }: ReviewTodayProps) {
   }
 
   return (
-    <section className="review-today" id="reviews-today" aria-labelledby="reviews-today-heading" aria-busy={loading}>
+    <section
+      className="review-today"
+      id="reviews-today"
+      aria-labelledby="reviews-today-heading"
+      aria-busy={loading}
+    >
       <div className="review-today-heading">
         <div>
-          <p className="eyebrow">ПОВТОРЕНИЕ</p>
+          <p className="page-kicker">Повторение</p>
           <h2 id="reviews-today-heading">Повторить сегодня</h2>
         </div>
         <p className="review-today-note">
-          Это короткая проверка уже знакомого навыка после паузы. Она помогает понять, что сохранилось, а что стоит
-          освежить. Это не новый урок и не оценка вас.
+          Это короткая проверка уже знакомого навыка после паузы. Она помогает
+          понять, что сохранилось, а что стоит освежить. Это не новый урок и не
+          оценка вас.
         </p>
       </div>
 
@@ -155,8 +169,14 @@ export default function ReviewToday({ onReviewPlanChanged }: ReviewTodayProps) {
 
       {!loading && loadError && (
         <div className="review-state" role="alert">
-          <p>Не удалось загрузить или сохранить повторение. Попробуйте ещё раз.</p>
-          <button className="text-button" type="button" onClick={() => void loadReviews()}>
+          <p>
+            Не удалось загрузить или сохранить повторение. Попробуйте ещё раз.
+          </p>
+          <button
+            className="text-button"
+            type="button"
+            onClick={() => void loadReviews()}
+          >
             Повторить загрузку
           </button>
         </div>
@@ -164,7 +184,8 @@ export default function ReviewToday({ onReviewPlanChanged }: ReviewTodayProps) {
 
       {!loading && !loadError && items?.length === 0 && (
         <p className="review-state" role="status" aria-live="polite">
-          На сегодня повторений нет. Можно продолжить новый материал или вернуться позже.
+          На сегодня повторений нет. Можно продолжить новый материал или
+          вернуться позже.
         </p>
       )}
 
@@ -172,14 +193,19 @@ export default function ReviewToday({ onReviewPlanChanged }: ReviewTodayProps) {
         <div className="review-list">
           {submitError && (
             <div className="review-state" role="alert">
-              <p>Не удалось сохранить ответ. Ваши ответы остались в форме — попробуйте ещё раз.</p>
+              <p>
+                Не удалось сохранить ответ. Ваши ответы остались в форме —
+                попробуйте ещё раз.
+              </p>
             </div>
           )}
           {items.map((item) => {
             const result = results[item.skill_id];
             const itemAnswers = answers[item.skill_id] ?? {};
             const isSubmitting = submitting === item.skill_id;
-            const hasAllAnswers = item.questions.every((question) => itemAnswers[question.id]);
+            const hasAllAnswers = item.questions.every(
+              (question) => itemAnswers[question.id],
+            );
             const isOverdue = item.overdue_days > 0;
 
             return (
@@ -187,10 +213,16 @@ export default function ReviewToday({ onReviewPlanChanged }: ReviewTodayProps) {
                 <div className="review-card-header">
                   <div>
                     <p className="review-kind">Повторение</p>
-                    <h3>Тема, к которой стоит вернуться</h3>
+                    <h3>{skillLabel(item.skill_id)}</h3>
                   </div>
-                  <span className={isOverdue ? "review-due review-due-overdue" : "review-due"}>
-                    {isOverdue ? "Позже запланированного" : "Пора вернуться к теме"}
+                  <span
+                    className={
+                      isOverdue ? "review-due review-due-overdue" : "review-due"
+                    }
+                  >
+                    {isOverdue
+                      ? "Позже запланированного"
+                      : "Пора вернуться к теме"}
                   </span>
                 </div>
 
@@ -213,15 +245,20 @@ export default function ReviewToday({ onReviewPlanChanged }: ReviewTodayProps) {
                     <strong>Повторение записано.</strong>
                     <p>{outcomeCopy(result.outcome)}</p>
                     <p>
-                      Повторение показывает сохранность ранее изученного навыка. Оно не заменяет проверку нового
-                      материала и не добавляет credit за освоение новой темы.
+                      Повторение показывает сохранность ранее изученного навыка.
+                      Оно не заменяет проверку нового материала и не
+                      подтверждает освоение новой темы.
                     </p>
                     {result.same_day && !result.schedule_applied ? (
                       <p>
-                        Сегодняшний ориентир уже был обновлён, поэтому следующая дата не изменилась.
+                        Сегодняшний ориентир уже был обновлён, поэтому следующая
+                        дата не изменилась.
                       </p>
                     ) : result.next_review_at ? (
-                      <p>Следующий ориентир: примерно {formatDate(result.next_review_at)}.</p>
+                      <p>
+                        Следующий ориентир: примерно{" "}
+                        {formatDate(result.next_review_at)}.
+                      </p>
                     ) : null}
                   </div>
                 ) : (
@@ -229,29 +266,50 @@ export default function ReviewToday({ onReviewPlanChanged }: ReviewTodayProps) {
                     {item.questions.map((question, questionIndex) => {
                       const inputGroup = `${item.skill_id}-${question.id}`;
                       return (
-                        <fieldset className="review-question" key={question.id} disabled={isSubmitting}>
+                        <fieldset
+                          className="review-question"
+                          key={question.id}
+                          disabled={isSubmitting}
+                        >
                           <legend>
-                            {questionIndex + 1}. {question.prompt}
+                            {questionIndex + 1}.{" "}
+                            <InlineText text={question.prompt} />
                           </legend>
                           <div className="review-choices">
                             {question.choices.map((choice) => (
-                              <label className="review-choice" key={choice} htmlFor={`${inputGroup}-${choice}`}>
+                              <label
+                                className="review-choice"
+                                key={choice}
+                                htmlFor={`${inputGroup}-${choice}`}
+                              >
                                 <input
                                   id={`${inputGroup}-${choice}`}
                                   name={inputGroup}
                                   type="radio"
                                   value={choice}
                                   checked={itemAnswers[question.id] === choice}
-                                  onChange={() => updateAnswer(item.skill_id, question.id, choice)}
+                                  onChange={() =>
+                                    updateAnswer(
+                                      item.skill_id,
+                                      question.id,
+                                      choice,
+                                    )
+                                  }
                                 />
-                                <span>{choice}</span>
+                                <span>
+                                  <InlineText text={choice} />
+                                </span>
                               </label>
                             ))}
                           </div>
                         </fieldset>
                       );
                     })}
-                    <button className="review-submit" type="submit" disabled={isSubmitting || !hasAllAnswers}>
+                    <button
+                      className="button"
+                      type="submit"
+                      disabled={submitting !== null || !hasAllAnswers}
+                    >
                       {isSubmitting ? "Сохраняем…" : "Сохранить ответы"}
                     </button>
                   </form>

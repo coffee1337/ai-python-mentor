@@ -7,7 +7,7 @@ from app.learning import LessonResponse
 from app.learning_content import LESSONS
 from app.runner_exercise_content import RUNNER_EXERCISES
 from app.skill_graph import SKILLS
-from app.db.models import SkillEvidence, User
+from app.db.models import SkillEvidence, User, UserSkill
 from app.db.account_models import NotificationOutbox, TelegramBinding
 from app.db.session import get_db
 from app.main import app
@@ -19,7 +19,14 @@ def test_all_graph_skills_have_valid_lesson_and_trusted_practice():
     assert {l['skill_id'] for l in LESSONS}=={s['id'] for s in SKILLS}
     for lesson in LESSONS:
         LessonResponse.model_validate(lesson)
-        exercise=RUNNER_EXERCISES[lesson['id']+'-code']
+        if lesson.get('practice_submission_type') == 'guided_reading':
+            # The first topics teach reading before functions and JSON. Their
+            # historical coding contracts stay published separately.
+            assert lesson['practice_steps'] and lesson['example_walkthrough']
+            assert lesson['id']+'-code' not in RUNNER_EXERCISES
+            exercise=RUNNER_EXERCISES[lesson['id'].replace('-v2','-v1')+'-code']
+        else:
+            exercise=RUNNER_EXERCISES[lesson['id']+'-code']
         assert exercise['skill_id']==lesson['skill_id']
         assert {c['visibility'] for c in exercise['cases']}=={'public','hidden'}
         assert [h[0] for h in exercise['hints']]==[1,2,3,4,5]
@@ -44,6 +51,16 @@ def register(c):
 
 def test_coding_specification_hides_keys_and_jobs_are_idempotent_without_runner(client):
     register(client)
+    assert client.get('/learning/exercises/variables-v1/coding-specification').status_code == 409
+    # A persisted assessed foundation enables the existing function contract.
+    # Novice users are verified separately to receive guided reading instead.
+    from app.learning import CODING_INTERFACE_SKILLS
+    with next(app.dependency_overrides[get_db]()) as db:
+        user = db.scalar(select(User))
+        db.add_all(UserSkill(user_id=user.id, skill_id=skill, evidence_count=1,
+            knowledge_score=1, independent_score=1, practice_score=1)
+            for skill in CODING_INTERFACE_SKILLS)
+        db.commit()
     response=client.get('/learning/exercises/variables-v1/coding-specification')
     assert response.status_code==200
     assert 'solution' not in response.json() and 'hints' not in response.json()

@@ -5,15 +5,35 @@ import AppHeader from "../components/app-header";
 import { api, errorMessage } from "../lib/api";
 import { useUser } from "../lib/use-user";
 
-type VacancySummary = { id: string; title: string; selected: boolean; created_at: string };
+type VacancySummary = {
+  id: string;
+  title: string;
+  selected: boolean;
+  created_at: string;
+};
 type Vacancy = VacancySummary & {
   text: string;
   source_url: string | null;
-  requirements: { skill_id: string; level: "required" | "preferred" | "mentioned"; evidence: string; start: number; end: number; match_method: string }[];
-  roadmap: { skill_id: string; name: string; inferred_prerequisite: boolean; observation: "observed" | "not_assessed"; mastery_signal: number | null; gap: number | null; ready: boolean }[];
+  requirements: {
+    skill_id: string;
+    level: "required" | "preferred" | "mentioned";
+    evidence: string;
+  }[];
+  roadmap: {
+    skill_id: string;
+    name: string;
+    inferred_prerequisite: boolean;
+    observation: "observed" | "not_assessed";
+    ready: boolean;
+  }[];
   notice: string;
 };
-const LEVELS = { required: "Требование", preferred: "Желательно", mentioned: "Упомянуто" };
+const LEVELS = {
+  required: "Обязательно",
+  preferred: "Желательно",
+  mentioned: "Упомянуто",
+};
+
 export default function JobsPage() {
   const { user, loading, error: userError, reload } = useUser(true);
   const [items, setItems] = useState<VacancySummary[]>([]);
@@ -22,48 +42,411 @@ export default function JobsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+
   const load = useCallback(async () => {
-    setLoadBusy(true); setError("");
-    try { setItems(await api<VacancySummary[]>("/vacancies")); }
-    catch (reason) { setError(errorMessage(reason)); }
-    finally { setLoadBusy(false); }
+    setLoadBusy(true);
+    setError("");
+    try {
+      setItems(await api<VacancySummary[]>("/vacancies"));
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setLoadBusy(false);
+    }
   }, []);
-  useEffect(() => { if (user) void load(); }, [user, load]);
+
+  useEffect(() => {
+    if (user) void load();
+  }, [user, load]);
+
   async function open(id: string) {
-    setBusy(true); setError("");
-    try { setCurrent(await api<Vacancy>(`/vacancies/${encodeURIComponent(id)}`)); }
-    catch (reason) { setError(errorMessage(reason)); }
-    finally { setBusy(false); }
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    setStatus("");
+    try {
+      setCurrent(await api<Vacancy>(`/vacancies/${encodeURIComponent(id)}`));
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
   }
+
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
     const data = new FormData(event.currentTarget);
-    setBusy(true); setError(""); setStatus("");
-    try { const result = await api<Vacancy>("/vacancies", { method: "POST", body: JSON.stringify({ title: data.get("title"), text: data.get("text"), source_url: data.get("source_url") || null }) }); setCurrent(result); await load(); setStatus("Текст вакансии проанализирован."); }
-    catch (reason) { setError(errorMessage(reason)); }
-    finally { setBusy(false); }
+    setBusy(true);
+    setError("");
+    setStatus("");
+    try {
+      const result = await api<Vacancy>("/vacancies", {
+        method: "POST",
+        body: JSON.stringify({
+          title: data.get("title"),
+          text: data.get("text"),
+          source_url: data.get("source_url") || null,
+        }),
+      });
+      setCurrent(result);
+      await load();
+      setStatus(
+        "Текст проанализирован. Требования и темы для подготовки — ниже.",
+      );
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
   }
+
   async function target() {
     if (!current || busy) return;
-    setBusy(true); setError("");
-    try { await api<unknown>(`/vacancies/${encodeURIComponent(current.id)}/target`, { method: "POST" }); setCurrent({ ...current, selected: true }); await load(); setStatus("Вакансия выбрана как ориентир обучения."); }
-    catch (reason) { setError(errorMessage(reason)); }
-    finally { setBusy(false); }
+    setBusy(true);
+    setError("");
+    setStatus("");
+    try {
+      await api(`/vacancies/${encodeURIComponent(current.id)}/target`, {
+        method: "POST",
+      });
+      setCurrent({ ...current, selected: true });
+      await load();
+      setStatus("Вакансия выбрана как ориентир обучения.");
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
   }
+
   async function remove() {
     if (!current || busy) return;
-    setBusy(true); setError("");
-    try { await api<void>(`/vacancies/${encodeURIComponent(current.id)}`, { method: "DELETE" }); setCurrent(null); await load(); setStatus("Анализ вакансии удалён."); }
-    catch (reason) { setError(errorMessage(reason)); }
-    finally { setBusy(false); }
+    setBusy(true);
+    setError("");
+    setStatus("");
+    try {
+      await api<void>(`/vacancies/${encodeURIComponent(current.id)}`, {
+        method: "DELETE",
+      });
+      setCurrent(null);
+      await load();
+      setStatus("Анализ вакансии удалён.");
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
   }
-  return <main className="dashboard-shell"><AppHeader /><section className="dashboard-card"><h1>Маршрут под вакансию</h1><p className="auth-lead">Вставьте текст вакансии. Мы сопоставим упомянутые навыки с учебным графом и покажем темы для изучения. Ссылка служит источником; содержимое сайта автоматически не загружается.</p>
-    {loading && <p role="status">Проверяем аккаунт…</p>}{userError && <div role="alert"><p>{userError}</p><button className="text-button" onClick={() => void reload()}>Повторить</button></div>}
-    {error && <div role="alert"><p className="form-error">{error}</p><button className="text-button" disabled={busy || loadBusy} onClick={() => void load()}>Обновить список</button></div>}{status && <p role="status">{status}</p>}
-    {user && <><form className="settings-form" onSubmit={create}><fieldset disabled={busy}><label>Название<input name="title" required minLength={2} maxLength={160} placeholder="Python Backend Developer" /></label><label>Ссылка на источник, необязательно<input name="source_url" type="url" maxLength={2000} pattern="https://.*" placeholder="https://…" /></label><label>Текст вакансии<textarea name="text" required minLength={20} maxLength={25000} rows={9} placeholder="Обязанности, требования и желательные навыки…" /></label></fieldset><button className="form-button" disabled={busy}>{busy ? "Обрабатываем…" : "Проанализировать текст"}</button></form>
-      <section className="lesson-subsection"><h2>Сохранённые вакансии</h2>{loadBusy && <p role="status">Загружаем вакансии…</p>}{!loadBusy && items.length === 0 && !error && <p>Пока нет сохранённых вакансий.</p>}<ul>{items.map((item) => <li key={item.id}><button className="text-button" disabled={busy} onClick={() => void open(item.id)}>{item.title}{item.selected ? " · текущий ориентир" : ""}</button></li>)}</ul></section>
-      {current && <section className="lesson-subsection" aria-labelledby="vacancy-title"><h2 id="vacancy-title">{current.title}</h2><p className="muted">{current.notice}</p>{current.source_url && <p><a href={current.source_url} target="_blank" rel="noopener noreferrer">Источник вакансии</a></p>}<details><summary>Исходный текст</summary><p className="preserve-lines">{current.text}</p></details><h3>Найденные требования</h3>{current.requirements.length === 0 && <p>Совпадений с опубликованным графом навыков не найдено.</p>}<ul>{current.requirements.map((item, index) => <li className="saved-item" key={`${item.skill_id}.${index}`}><strong>{current.roadmap.find((step) => step.skill_id === item.skill_id)?.name ?? item.skill_id}</strong><p>{LEVELS[item.level]} · фрагмент вакансии: «{item.evidence}»</p></li>)}</ul><h3>Темы для подготовки</h3><ol>{current.roadmap.map((step) => <li className="saved-item" key={step.skill_id}><strong>{step.name}</strong><p>{step.inferred_prerequisite ? "Предварительная основа для требуемого навыка." : "Навык из вакансии."}</p><p>{step.observation === "not_assessed" ? "Пока не проверяли этот навык — пробел не измерен." : "Есть наблюдения из обучения; они не являются оценкой профессионального уровня."}</p><p>{step.ready ? "Основы позволяют приступить к теме." : "Сначала понадобятся предыдущие основы."}</p></li>)}</ol>{current.selected ? <p role="status">Текущий ориентир обучения.</p> : <button className="primary-button" disabled={busy} onClick={() => void target()}>Выбрать как ориентир</button>}<p><a href="/learning/path">Открыть учебный путь</a></p><details><summary>Удалить анализ</summary><p>Сохранённый текст и анализ этой вакансии будут удалены.</p><button className="text-button" disabled={busy} onClick={() => void remove()}>Удалить эту вакансию</button></details></section>}
-    </>}
-  </section></main>;
+
+  return (
+    <main className="dashboard-shell">
+      <AppHeader />
+      <div className="product-page">
+        <header className="page-heading">
+          <div>
+            <p className="page-kicker">Карьерный ориентир</p>
+            <h1>Чему учиться для вакансии</h1>
+            <p className="page-subtitle">
+              Разберите требования к работе и свяжите их с темами своего
+              учебного маршрута.
+            </p>
+          </div>
+          <a className="button button-secondary" href="/learning/path">
+            Мой учебный путь
+          </a>
+        </header>
+        {loading && (
+          <div className="panel product-loading" role="status">
+            Проверяем аккаунт…
+          </div>
+        )}
+        {userError && (
+          <div className="status-message product-error" role="alert">
+            <p>{userError}</p>
+            <button
+              className="button button-secondary"
+              onClick={() => void reload()}
+            >
+              Повторить загрузку
+            </button>
+          </div>
+        )}
+        {error && (
+          <div className="status-message product-error" role="alert">
+            <p>{error}</p>
+            <button
+              className="button button-secondary"
+              disabled={busy || loadBusy}
+              onClick={() => void load()}
+            >
+              Обновить список
+            </button>
+          </div>
+        )}
+        {status && (
+          <p className="status-message product-success" role="status">
+            {status}
+          </p>
+        )}
+
+        {user && (
+          <>
+            <div className="jobs-input-grid">
+              <section className="panel" aria-labelledby="add-vacancy-title">
+                <div className="panel-heading">
+                  <div>
+                    <p className="page-kicker">Шаг 1</p>
+                    <h2 id="add-vacancy-title">Добавьте текст вакансии</h2>
+                  </div>
+                </div>
+                <p className="product-section-intro">
+                  Скопируйте обязанности и требования с сайта вакансий.
+                  Указывать ссылку необязательно: анализируется вставленный
+                  текст.
+                </p>
+                <form className="settings-form" onSubmit={create}>
+                  <fieldset disabled={busy}>
+                    <div className="product-form-columns">
+                      <label>
+                        Название вакансии
+                        <input
+                          name="title"
+                          required
+                          minLength={2}
+                          maxLength={160}
+                          placeholder="Например, Junior Python Backend Developer"
+                        />
+                      </label>
+                      <label>
+                        Ссылка на источник{" "}
+                        <span className="optional">необязательно</span>
+                        <input
+                          name="source_url"
+                          type="url"
+                          maxLength={2000}
+                          pattern="https://.*"
+                          placeholder="https://…"
+                        />
+                      </label>
+                    </div>
+                    <label>
+                      Обязанности и требования
+                      <textarea
+                        name="text"
+                        required
+                        minLength={20}
+                        maxLength={25000}
+                        rows={8}
+                        placeholder="Вставьте текст вакансии: задачи, необходимые знания и желательные навыки…"
+                      />
+                      <span className="product-field-hint">
+                        Сайт по ссылке автоматически не загружается.
+                      </span>
+                    </label>
+                  </fieldset>
+                  <button className="button" disabled={busy}>
+                    {busy ? "Обрабатываем запрос…" : "Разобрать требования"}
+                  </button>
+                </form>
+              </section>
+
+              <section
+                className="panel jobs-history-panel"
+                aria-labelledby="vacancies-history-title"
+              >
+                <div className="panel-heading">
+                  <h2 id="vacancies-history-title">Сохранённые вакансии</h2>
+                  <span className="badge">{items.length}</span>
+                </div>
+                {loadBusy && <p role="status">Загружаем список…</p>}
+                {!loadBusy && items.length === 0 && !error && (
+                  <div className="empty-state">
+                    <span className="product-empty-icon" aria-hidden="true">
+                      ↗
+                    </span>
+                    <h3>Пока нет вакансий</h3>
+                    <p>
+                      Добавьте первую слева. Разберём знакомые учебному маршруту
+                      навыки и покажем темы для подготовки.
+                    </p>
+                  </div>
+                )}
+                <ul className="product-selection-list">
+                  {items.map((item) => (
+                    <li key={item.id}>
+                      <button
+                        className={`product-selection-button ${current?.id === item.id ? "is-selected" : ""}`}
+                        disabled={busy}
+                        onClick={() => void open(item.id)}
+                        aria-pressed={current?.id === item.id}
+                      >
+                        <span>
+                          <strong>{item.title}</strong>
+                          <small>
+                            {new Date(item.created_at).toLocaleDateString(
+                              "ru-RU",
+                            )}
+                          </small>
+                        </span>
+                        {item.selected ? (
+                          <span className="badge product-badge-positive">
+                            Ориентир
+                          </span>
+                        ) : (
+                          <span aria-hidden="true">→</span>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <p className="product-field-hint">
+                  Анализ не оценивает готовность к трудоустройству. Даже если вы
+                  начинаете с нуля, вакансия может быть ориентиром на будущее.
+                </p>
+              </section>
+            </div>
+
+            {current && (
+              <section
+                className="panel jobs-result-panel"
+                aria-labelledby="vacancy-title"
+              >
+                <div className="panel-heading">
+                  <div>
+                    <p className="page-kicker">Шаг 2 · Результат анализа</p>
+                    <h2 id="vacancy-title">{current.title}</h2>
+                  </div>
+                  {current.selected && (
+                    <span className="badge product-badge-positive">
+                      Ваш ориентир
+                    </span>
+                  )}
+                </div>
+                <p className="product-section-intro">{current.notice}</p>
+                <div className="product-action-row">
+                  {!current.selected && (
+                    <button
+                      className="button"
+                      disabled={busy}
+                      onClick={() => void target()}
+                    >
+                      Выбрать ориентиром обучения
+                    </button>
+                  )}
+                  <a className="button button-secondary" href="/learning/path">
+                    Открыть учебный путь
+                  </a>
+                  {current.source_url && (
+                    <a
+                      className="product-inline-link"
+                      href={current.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Источник вакансии ↗
+                    </a>
+                  )}
+                </div>
+
+                <div className="jobs-analysis-grid">
+                  <div>
+                    <h3>Что требуется в вакансии</h3>
+                    <p className="product-field-hint">
+                      У каждого совпадения есть фрагмент исходного текста.
+                    </p>
+                    {current.requirements.length === 0 && (
+                      <div className="empty-state">
+                        <h3>Совпадений пока нет</h3>
+                        <p>
+                          В опубликованном учебном графе не найдены навыки из
+                          этого текста. Попробуйте добавить более полный список
+                          требований.
+                        </p>
+                      </div>
+                    )}
+                    <ul className="jobs-requirement-list">
+                      {current.requirements.map((item, index) => (
+                        <li key={`${item.skill_id}.${index}`}>
+                          <div className="product-inline-heading">
+                            <strong>
+                              {current.roadmap.find(
+                                (step) => step.skill_id === item.skill_id,
+                              )?.name ?? item.skill_id}
+                            </strong>
+                            <span className="badge">{LEVELS[item.level]}</span>
+                          </div>
+                          <blockquote>{item.evidence}</blockquote>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h3>В каком порядке готовиться</h3>
+                    <p className="product-field-hint">
+                      Сначала основы, затем навыки из вакансии.
+                    </p>
+                    {current.roadmap.length === 0 && (
+                      <p className="product-section-intro">
+                        Темы появятся, когда в тексте найдутся знакомые навыки.
+                      </p>
+                    )}
+                    <ol className="jobs-roadmap-list">
+                      {current.roadmap.map((step, index) => (
+                        <li key={step.skill_id}>
+                          <span
+                            className="product-step-number"
+                            aria-hidden="true"
+                          >
+                            {index + 1}
+                          </span>
+                          <div>
+                            <strong>{step.name}</strong>
+                            <p>
+                              {step.inferred_prerequisite
+                                ? "Основа для следующих тем"
+                                : "Навык из вакансии"}
+                            </p>
+                            <span className="badge">
+                              {step.ready
+                                ? "Можно приступить"
+                                : "Сначала изучите основы"}
+                            </span>
+                            <small>
+                              {step.observation === "not_assessed"
+                                ? "Навык ещё не проверяли в обучении."
+                                : "Есть учебные наблюдения; это не оценка профессионального уровня."}
+                            </small>
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                </div>
+
+                <details className="product-disclosure">
+                  <summary>Посмотреть исходный текст</summary>
+                  <p className="product-preserve-lines">{current.text}</p>
+                </details>
+                <details className="product-disclosure product-delete-disclosure">
+                  <summary>Удалить этот анализ</summary>
+                  <p>
+                    Сохранённый текст и анализ этой вакансии будут удалены.
+                    История обучения сохранится.
+                  </p>
+                  <button
+                    className="button product-danger-button"
+                    disabled={busy}
+                    onClick={() => void remove()}
+                  >
+                    Удалить анализ вакансии
+                  </button>
+                </details>
+              </section>
+            )}
+          </>
+        )}
+      </div>
+    </main>
+  );
 }

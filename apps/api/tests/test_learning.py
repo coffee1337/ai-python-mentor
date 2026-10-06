@@ -5,7 +5,7 @@ from app.db.models import ExerciseHint, ExerciseVersion, HintReveal, LessonCompl
 from app.db.session import get_db
 from app.exercise_hints import _persisted_idempotency_key, _seed_exercise
 from app.main import app
-from app.learning_content import EXERCISE_HINT_LADDERS, LESSONS
+from app.learning_content import EXERCISE_HINT_LADDERS, LESSONS, LESSONS_BY_ID
 from content_helpers import enable_choice_feedback
 from test_auth import client, csrf  # reuse the existing isolated database fixture
 
@@ -47,15 +47,15 @@ def test_full_flow_persists_and_is_idempotent(client):
     register(client)
     onboard(client)
     lesson = client.get("/learning/next").json()
-    assert lesson["id"] == "variables-v1"
+    assert lesson["id"] == "variables-v2"
     assert "answer" not in lesson
     assert complete(client, answer="4").json()["path"]["completed"] == 0
     response = complete(client)
     assert response.json()["correct"] is True
-    assert response.json()["path"]["next_lesson_id"] == "data-types-v1"
+    assert response.json()["path"]["next_lesson_id"] == "data-types-v2"
     conditions = next(
         row for row in response.json()["path"]["lessons"]
-        if row["id"] == "conditions-v1"
+        if row["id"] == "conditions-v2"
     )
     assert conditions["status"] == "locked"
     stamp = response.json()["path"]["lessons"][0]["completed_at"]
@@ -66,7 +66,7 @@ def test_full_flow_persists_and_is_idempotent(client):
     assert complete(client, answer="4").json()["path"]["completed"] == 1
     assert client.get("/learning/lessons/conditions-v1").status_code == 409
     assert complete(client, lesson="conditions-v1", answer="adult").status_code == 409
-    assert client.get("/learning/next").json()["id"] == "data-types-v1"
+    assert client.get("/learning/next").json()["id"] == "data-types-v2"
     client.post("/auth/logout", headers={"X-CSRF-Token": csrf(client)})
     assert client.post("/auth/login", json={"email": "learning@example.com", "password": "safe-password"}).status_code == 200
     assert client.get("/learning/path").json()["completed"] == 1
@@ -103,10 +103,10 @@ def test_pending_exact_version_flow_can_finish_after_prerequisite_gate_closes(cl
     assert completed.json()["correct"] is True
     condition = next(
         lesson for lesson in completed.json()["path"]["lessons"]
-        if lesson["id"] == "conditions-v1"
+        if lesson["id"] == "conditions-v2"
     )
     assert condition["status"] == "completed"
-    assert completed.json()["path"]["next_lesson_id"] == "variables-v1"
+    assert completed.json()["path"]["next_lesson_id"] == "variables-v2"
 
 
 def test_lesson_api_uses_immutable_snapshot_for_display_and_grading(client):
@@ -118,7 +118,7 @@ def test_lesson_api_uses_immutable_snapshot_for_display_and_grading(client):
     original = client.get("/learning/lessons/variables-v1").json()
     assert "answer" not in original
 
-    authored = next(item for item in LESSONS if item["id"] == "variables-v1")
+    authored = LESSONS_BY_ID["variables-v1"]
     original_values = {key: authored[key] for key in ("title", "minutes", "body", "answer")}
     authored.update(
         title="MUTATED authored title",
@@ -134,9 +134,9 @@ def test_lesson_api_uses_immutable_snapshot_for_display_and_grading(client):
         assert lesson.json()["title"] == original["title"]
         assert lesson.json()["minutes"] == original["minutes"]
         assert lesson.json()["body"] == original["body"]
-        summary = next(item for item in path.json()["lessons"] if item["id"] == "variables-v1")
-        assert summary["title"] == original["title"]
-        assert summary["minutes"] == original["minutes"]
+        summary = next(item for item in path.json()["lessons"] if item["id"] == "variables-v2")
+        assert summary["title"] == LESSONS_BY_ID["variables-v2"]["title"]
+        assert summary["minutes"] == LESSONS_BY_ID["variables-v2"]["minutes"]
         assert completion.json()["correct"] is True
     finally:
         authored.update(original_values)
@@ -145,7 +145,7 @@ def test_lesson_api_uses_immutable_snapshot_for_display_and_grading(client):
 def test_lesson_get_post_and_hint_bind_to_exact_version_after_publication(client, monkeypatch):
     register(client, "lesson-binding@example.com")
     onboard(client)
-    shown = client.get("/learning/next").json()
+    shown = client.get("/learning/lessons/variables-v1").json()
     assert shown["id"] == "variables-v1"
     with next(app.dependency_overrides[get_db]()) as db:
         original_version = db.scalar(select(ExerciseVersion).where(
@@ -159,7 +159,7 @@ def test_lesson_get_post_and_hint_bind_to_exact_version_after_publication(client
     enable_choice_feedback(monkeypatch, "variables-v1", prefix="published")
     try:
         # Publish a genuinely different answer and hint under the new version.
-        authored = next(item for item in LESSONS if item["id"] == "variables-v1")
+        authored = LESSONS_BY_ID["variables-v1"]
         original_answer = authored["answer"]
         authored["answer"] = "4"
         original_ladder = EXERCISE_HINT_LADDERS["variables-v1"]["hints"]
@@ -234,7 +234,8 @@ def test_lesson_api_rejects_missing_snapshot(client):
         db.commit()
 
     assert client.get("/learning/lessons/variables-v1").status_code == 409
-    assert client.get("/learning/path").status_code == 409
+    # A broken historical publication cannot block the newer active route.
+    assert client.get("/learning/path").status_code == 200
     assert complete(client).status_code == 409
 
     with next(app.dependency_overrides[get_db]()) as db:
@@ -243,6 +244,11 @@ def test_lesson_api_rejects_missing_snapshot(client):
         db.commit()
 
     assert client.get("/learning/lessons/variables-v1").status_code == 409
+    with next(app.dependency_overrides[get_db]()) as db:
+        active = _seed_exercise(db, "variables-v2")
+        active.content_snapshot = None
+        db.commit()
+    assert client.get("/learning/path").status_code == 409
 
 
 def test_progress_is_owned_by_session_user(client):
@@ -253,7 +259,7 @@ def test_progress_is_owned_by_session_user(client):
     register(client, "second@example.com")
     onboard(client)
     assert client.get("/learning/path").json()["completed"] == 0
-    assert client.get("/learning/next").json()["id"] == "variables-v1"
+    assert client.get("/learning/next").json()["id"] == "variables-v2"
     assert complete(client, lesson="conditions-v1", answer="adult").status_code == 409
     complete(client)
     assert client.get("/learning/path").json()["completed"] == 1
@@ -291,7 +297,7 @@ def test_hint_ladder_reveals_one_next_level_and_is_append_only(client):
     ).status_code == 403
 
     with next(app.dependency_overrides[get_db]()) as db:
-        assert db.scalar(select(func.count()).select_from(ExerciseVersion)) == len(LESSONS)
+        assert db.scalar(select(func.count()).select_from(ExerciseVersion)) == len(LESSONS) + 1
         assert db.scalar(select(func.count()).select_from(ExerciseHint)) == 5
         assert db.scalar(select(func.count()).select_from(HintReveal)) == 2
 

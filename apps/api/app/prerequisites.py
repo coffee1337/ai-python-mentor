@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import ExerciseVersion, LessonCompletion, SkillEdge, UserSkill
+from app.content_publication import PUBLICATION_REPLACEMENTS
 
 
 # Completions recorded before immutable lesson snapshots were introduced do
@@ -138,7 +139,7 @@ def prerequisite_state(db: Session, user_id) -> PrerequisiteState:
         prerequisites.setdefault(edge.to_skill_id, set()).add(edge.from_skill_id)
 
     completed_ids = {completion.lesson_id for completion in completions}
-    completed_ids.update(new for old, new in {"imports-v1": "imports-v2", "fixtures-v1": "fixtures-v2"}.items() if old in completed_ids)
+    completed_ids.update(new for old, new in PUBLICATION_REPLACEMENTS.items() if old in completed_ids)
     return PrerequisiteState(
         completed_lesson_ids=frozenset(completed_ids),
         completed_primary_skills=frozenset(completed_skills),

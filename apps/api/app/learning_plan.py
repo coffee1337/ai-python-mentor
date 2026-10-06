@@ -6,6 +6,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 from app.db.models import AssessmentResponse, AssessmentRun, KnowledgeCheckAttempt, LearningPlan, LearningPlanItem, LessonCompletion, User, UserSkill
 from app.learning_content import LESSONS
+from app.content_publication import PUBLICATION_REPLACEMENTS
+from app.learning_continuity import resumable_publication
 from app.prerequisites import PrerequisiteState, prerequisite_state
 from app.skill_graph import SKILLS
 
@@ -47,6 +49,9 @@ class LearningPlanResponse(BaseModel):
     items: list[PlanItemResponse]
     assessment_run_id: str | None
     version: int | None
+    learning_mode: str = "assessed"
+    assessment_optional: bool = True
+    resume_lesson_id: str | None = None
 
 def _assessment_scores(db: Session, run_id):
     rows = db.scalars(select(AssessmentResponse).where(AssessmentResponse.run_id == run_id)).all()
@@ -185,14 +190,61 @@ def _due_review_items(
         )
     return items
 
+def _completion_times(db: Session, user: User) -> dict:
+    completions = {
+        row.lesson_id: row.completed_at
+        for row in db.scalars(select(LessonCompletion).where(LessonCompletion.user_id == user.id))
+    }
+    for old, new in PUBLICATION_REPLACEMENTS.items():
+        if old in completions:
+            completions.setdefault(new, completions[old])
+    return completions
+
+
+def _starter_plan_response(db: Session, user: User) -> LearningPlanResponse:
+    """An authored route is available before an optional diagnostic.
+
+    This is a read projection of real lesson facts, not an assessment result.
+    It creates neither an assessment run nor a mastery prior/evidence row.
+    """
+    readiness = prerequisite_state(db, user.id)
+    completions = _completion_times(db, user)
+    next_lesson = next((lesson for lesson in LESSONS if lesson["id"] not in completions
+                        and readiness.is_lesson_ready(lesson)), None)
+    items = []
+    for position, lesson in enumerate(LESSONS, 1):
+        completed = lesson["id"] in completions
+        ready = readiness.is_lesson_ready(lesson)
+        status = ("completed" if completed else "locked" if not ready else
+                  "recommended" if lesson is next_lesson else "up_next")
+        rationale = ("Начните с объяснения и разбора примера: предварительные знания не нужны."
+                     if not lesson.get("prerequisites") else
+                     "Новая тема использует правила предыдущих уроков; сначала закончите доступную основу.")
+        items.append(PlanItemResponse(lesson_id=lesson["id"], title=lesson["title"],
+            skill_id=lesson["skill_id"], position=position, status=status,
+            completed_at=completions.get(lesson["id"]), rationale=rationale))
+    items.extend(_due_review_items(db, user, start_position=len(items) + 1,
+        completed_lesson_ids=set(completions), readiness=readiness))
+    resume = resumable_publication(db, user.id)
+    return LearningPlanResponse(status="ready", learning_mode="starter", resume_lesson_id=resume[0] if resume else None,
+        focus_skill_id=next_lesson["skill_id"] if next_lesson else None,
+        skill_profile=[], recommendation=(
+            f"Начните с урока «{next_lesson['title']}». Диагностика необязательна: сначала объяснение, потом практика и проверка."
+            if next_lesson else "Доступные темы пройдены. Повторите изученное или продолжите следующую открытую тему."),
+        recommended_lesson_id=next_lesson["id"] if next_lesson else None,
+        items=items, assessment_run_id=None, version=None)
+
+
 def plan_response(db: Session, user: User) -> LearningPlanResponse:
     plan = current_plan(db, user)
     if plan is None:
-        return LearningPlanResponse(status="assessment_required", focus_skill_id=None, skill_profile=[], recommendation="Пройдите короткую диагностику, чтобы получить персональный учебный план.", recommended_lesson_id=None, items=[], assessment_run_id=None, version=None)
+        return _starter_plan_response(db, user)
     completed_run = db.scalar(select(AssessmentRun).where(AssessmentRun.id == plan.assessment_run_id, AssessmentRun.user_id == user.id, AssessmentRun.status == "completed"))
     if completed_run is None:
-        return LearningPlanResponse(status="assessment_required", focus_skill_id=None, recommendation="Пройдите короткую диагностику, чтобы получить персональный учебный план.", recommended_lesson_id=None, items=[], assessment_run_id=None, version=None)
+        return _starter_plan_response(db, user)
     scores = _assessment_scores(db, completed_run.id)
+    if not scores:
+        return _starter_plan_response(db, user)
     mastery_rows = db.scalars(select(UserSkill).where(UserSkill.user_id == user.id)).all()
     readiness = prerequisite_state(db, user.id)
     checks = db.scalars(select(KnowledgeCheckAttempt).where(KnowledgeCheckAttempt.user_id == user.id)).all()
@@ -207,16 +259,13 @@ def plan_response(db: Session, user: User) -> LearningPlanResponse:
         evidence[skill] = evidence.get(skill, 0) + 1
     mastery_by_skill = {mastery.skill_id: mastery for mastery in mastery_rows}
     skill_profile = [SkillProfileResponse(skill_id=skill, score=score, evidence_count=(mastery_by_skill[skill].evidence_count if skill in mastery_by_skill else evidence.get(skill, 0)), next_review_at=(mastery_by_skill[skill].next_review_at if skill in mastery_by_skill else None)) for skill, score in sorted(scores.items())]
-    completions = {
-        row.lesson_id: row.completed_at
-        for row in db.scalars(select(LessonCompletion).where(LessonCompletion.user_id == user.id)).all()
-    }
+    completions = _completion_times(db, user)
     by_id = {lesson["id"]: lesson for lesson in LESSONS}
     rows = db.scalars(select(LearningPlanItem).where(LearningPlanItem.plan_id == plan.id).order_by(LearningPlanItem.position)).all()
     ordered_lessons: list[tuple[dict, str]] = []
     included: set[str] = set()
     for row in rows:
-        lesson = by_id.get(row.lesson_id)
+        lesson = by_id.get(PUBLICATION_REPLACEMENTS.get(row.lesson_id, row.lesson_id))
         if lesson is None or lesson["id"] in included:
             continue
         included.add(lesson["id"])
@@ -276,4 +325,5 @@ def plan_response(db: Session, user: User) -> LearningPlanResponse:
         if recommended_lesson
         else "Все доступные уроки пройдены. Следующие темы откроются после prerequisites."
     )
-    return LearningPlanResponse(status="ready", focus_skill_id=plan.focus_skill_id, skill_profile=skill_profile, recommendation=recommendation, recommended_lesson_id=recommended, items=items, assessment_run_id=str(plan.assessment_run_id) if plan.assessment_run_id else None, version=plan.version)
+    resume = resumable_publication(db, user.id)
+    return LearningPlanResponse(status="ready", resume_lesson_id=resume[0] if resume else None, focus_skill_id=plan.focus_skill_id, skill_profile=skill_profile, recommendation=recommendation, recommended_lesson_id=recommended, items=items, assessment_run_id=str(plan.assessment_run_id) if plan.assessment_run_id else None, version=plan.version)

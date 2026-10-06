@@ -2,6 +2,7 @@ export type PathSummary = {
   completed: number;
   total: number;
   next_lesson_id: string | null;
+  resume_lesson_id?: string | null;
   lessons: {
     id: string;
     title: string;
@@ -9,7 +10,6 @@ export type PathSummary = {
     status: "completed" | "available" | "locked";
   }[];
 };
-
 export type Lesson = {
   id: string;
   title: string;
@@ -30,18 +30,20 @@ export type Lesson = {
   prerequisites?: string[];
   difficulty?: number | null;
   version?: string | null;
-  practice_submission_type?: "text" | "python_code";
+  practice_submission_type?: "guided_reading" | "coding";
+  theory_sections?: { title: string; body: string }[];
+  example_walkthrough?: { line: number; explanation: string }[];
+  glossary?: { term: string; definition: string }[];
+  practice_steps?: string[];
+  why_it_matters?: string | null;
 };
-
 export type Attempt = {
   id: string;
   status: string;
   result: { message?: string; tests_passed?: number; tests_total?: number };
   created_at: string;
 };
-
 export type CheckQuestion = { id: string; prompt: string; choices: string[] };
-
 export type CheckResult = {
   lesson_id: string;
   score: number;
@@ -55,7 +57,6 @@ export type CheckResult = {
   recommendation: string;
   recommended_lesson_id: string | null;
 };
-
 export type Curriculum = {
   sessions: {
     planned_minutes: number;
@@ -70,7 +71,6 @@ export type Curriculum = {
     }[];
   }[];
 };
-
 export type AIPlan = {
   status: string;
   warning?: string | null;
@@ -94,7 +94,6 @@ export type AIPlan = {
     };
   }[];
 };
-
 export type MistakeMemory = {
   error_text: string;
   remediation_text: string;

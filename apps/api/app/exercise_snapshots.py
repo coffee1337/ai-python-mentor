@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.assessment_content import QUESTIONS
+from app.assessment_content import QUESTIONS, QUESTIONS_BY_ID
 from app.knowledge_check_content import CHECKS
 from app.learning_content import EXERCISE_HINT_LADDERS, LESSONS_BY_ID
 
@@ -130,7 +130,7 @@ def validate_check_snapshot(snapshot: dict[str, Any], exercise_id: str) -> tuple
 def authored_snapshot(exercise_id: str) -> dict[str, Any]:
     authored = EXERCISE_HINT_LADDERS.get(exercise_id)
     lesson = next((item for item in LESSONS if item["id"] == exercise_id), None) or LESSONS_BY_ID.get(exercise_id)
-    assessment = next((item for item in QUESTIONS if item["id"] == exercise_id), None)
+    assessment = next((item for item in QUESTIONS if item["id"] == exercise_id), None) or QUESTIONS_BY_ID.get(exercise_id)
     if authored is None and assessment is None and lesson is None:
         raise ValueError("Exercise snapshot references unknown authored content")
     if authored is not None and authored.get("lesson_id") != exercise_id:

@@ -90,8 +90,8 @@ def test_review_api_is_owned_csrf_protected_and_server_graded(client):
     assert "version" not in started.text
     assert set(body["question"]) == {"id", "prompt", "choices"}
     answers = {
-        "variables-output-v1": "6",
-        "variables-reassignment-v1": "Увеличивает текущее значение x на 1",
+        "variables-text-v2": "Текст books",
+        "variables-order-v2": "7",
     }
 
     assert client.post(
@@ -163,8 +163,8 @@ def test_today_contract_is_public_and_replays_without_duplicate_evidence(client)
         assert forbidden not in today.text
 
     answers = {
-        "variables-output-v1": "6",
-        "variables-reassignment-v1": "Увеличивает текущее значение x на 1",
+        "variables-text-v2": "Текст books",
+        "variables-order-v2": "7",
     }
     headers = {
         "X-CSRF-Token": csrf(client),
@@ -238,8 +238,8 @@ def test_today_completion_uses_server_hint_attribution_and_same_day_is_observati
         db.commit()
 
     answers = {
-        "variables-output-v1": "6",
-        "variables-reassignment-v1": "Увеличивает текущее значение x на 1",
+        "variables-text-v2": "Текст books",
+        "variables-order-v2": "7",
     }
     completed = client.post(
         "/learning/reviews/today/complete",
@@ -309,9 +309,10 @@ def test_review_binds_snapshot_and_derives_hint_assistance_on_server(client):
         )
         db.commit()
 
-    authored = next(item for item in LESSONS if item["id"] == "variables-v1")
+    from app.learning_content import LESSONS_BY_ID
+    authored = LESSONS_BY_ID["variables-v2"]
     original_answer = authored["answer"]
-    authored["answer"] = "4"
+    authored["answer"] = "На экран попадёт число 2"
     try:
         response = client.post(
             "/learning/reviews/answer",
@@ -319,8 +320,8 @@ def test_review_binds_snapshot_and_derives_hint_assistance_on_server(client):
             json={
                 "session_token": token,
                 "answers": {
-                    "variables-output-v1": "6",
-                    "variables-reassignment-v1": "Увеличивает текущее значение x на 1",
+                    "variables-text-v2": "Текст books",
+                    "variables-order-v2": "7",
                 },
             },
         )
@@ -347,8 +348,8 @@ def test_same_utc_day_retains_later_observation_without_second_shift(client):
         json={
             "session_token": first["session_token"],
             "answers": {
-                "variables-output-v1": "6",
-                "variables-reassignment-v1": "Увеличивает текущее значение x на 1",
+                "variables-text-v2": "Текст books",
+                "variables-order-v2": "7",
             },
         },
     )
@@ -380,8 +381,8 @@ def test_same_utc_day_retains_later_observation_without_second_shift(client):
         json={
             "session_token": second.json()["session_token"],
             "answers": {
-                "variables-output-v1": "4",
-                "variables-reassignment-v1": "Создаёт вторую переменную x",
+                "variables-text-v2": "Число из переменной books",
+                "variables-order-v2": "4",
             },
         },
     )
@@ -409,7 +410,7 @@ def test_same_utc_day_retains_later_observation_without_second_shift(client):
 
 
 def test_overdue_review_is_bounded_and_appended_after_learning_candidates(client):
-    setup_user(client, "review-plan@example.com", weekly_minutes=20)
+    setup_user(client, "review-plan@example.com", weekly_minutes=30)
     with next(app.dependency_overrides[get_db]()) as db:
         user = db.scalar(select(User))
         now = datetime.now(timezone.utc)

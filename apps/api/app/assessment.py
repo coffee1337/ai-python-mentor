@@ -32,14 +32,20 @@ from app.choice_order import ordered_choices
 router=APIRouter(prefix="/assessment", tags=["assessment"])
 class QuestionResponse(BaseModel):
     id:str; skill_id:str; difficulty:float; prompt:str; choices:list[str]; question_number:int; total_questions:int
+    code:str|None=None
 class AssessmentState(BaseModel):
     status:str; completed:bool; score:float|None=None; answered:int; question:QuestionResponse|None=None
+    skipped:int=0
+    assessment_optional:bool=True
 class AnswerRequest(BaseModel):
     model_config=ConfigDict(extra="forbid")
     question_id:str=Field(min_length=1,max_length=80)
     answer:str=Field(min_length=1,max_length=200)
 class AnswerResponse(BaseModel):
     correct:bool; feedback:str; state:AssessmentState
+class SkipRequest(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    question_id:str=Field(min_length=1,max_length=80)
 
 def _invalid_snapshot() -> HTTPException:
     return HTTPException(409, "Assessment content snapshot is unavailable")
@@ -62,6 +68,7 @@ def _snapshot_question(run: AssessmentRun, db: Session) -> dict:
         or not isinstance(question.get("skill_id"), str)
         or not isinstance(question.get("prompt"), str)
         or not isinstance(question.get("difficulty"), (int, float))
+        or (question.get("code") is not None and not isinstance(question.get("code"), str))
     ):
         raise _invalid_snapshot()
     return question
@@ -74,12 +81,14 @@ def _version_for_question(db: Session, question_id: str):
     return version
 
 
-def _question_response(q, number, session_id): return QuestionResponse(id=q["id"],skill_id=q["skill_id"],difficulty=q["difficulty"],prompt=q["prompt"],choices=ordered_choices(q["choices"],session_id=session_id,question_id=q["id"]),question_number=number,total_questions=MAX_QUESTIONS)
+def _question_response(q, number, session_id): return QuestionResponse(id=q["id"],skill_id=q["skill_id"],difficulty=q["difficulty"],prompt=q["prompt"],choices=ordered_choices(q["choices"],session_id=session_id,question_id=q["id"]),question_number=number,total_questions=MAX_QUESTIONS,code=q.get("code"))
 def _state(run, db):
     responses=db.scalars(select(AssessmentResponse).where(AssessmentResponse.run_id==run.id).order_by(AssessmentResponse.created_at)).all()
-    if run.status=="completed": return AssessmentState(status=run.status,completed=True,score=(sum(r.is_correct for r in responses)/len(responses) if responses else 0),answered=len(responses))
+    asked=json.loads(run.asked_question_ids)
+    skipped=max(0,len(asked)-len(responses)-(1 if run.status=="in_progress" else 0))
+    if run.status=="completed": return AssessmentState(status=run.status,completed=True,score=(sum(r.is_correct for r in responses)/len(responses) if responses else None),answered=len(responses),skipped=skipped)
     q=_snapshot_question(run, db)
-    return AssessmentState(status=run.status,completed=False,answered=len(responses),question=_question_response(q,len(responses)+1,run.id))
+    return AssessmentState(status=run.status,completed=False,answered=len(responses),skipped=skipped,question=_question_response(q,len(asked),run.id))
 
 def _owned_run(user,db, *, lock=False):
     query=select(AssessmentRun).where(AssessmentRun.user_id==user.id,AssessmentRun.status=="in_progress").order_by(AssessmentRun.created_at.desc())
@@ -160,6 +169,57 @@ def restart(auth:tuple[User,AuthSession]=Depends(csrf_protected), db:Session=Dep
     run=_new_run(user,db)
     return _state(run,db)
 
+
+def _advance(run, q, user, db, *, correct: bool | None):
+    # The budget counts presented questions, including explicit unknowns.
+    # Unknown is not a wrong response and creates no assessment evidence.
+    asked=json.loads(run.asked_question_ids)
+    nxt=None
+    if len(asked)<MAX_QUESTIONS:
+        target=_next_target(q["difficulty"],correct=correct is True)
+        nxt=_pick_question(asked,target_difficulty=target,exclude_skill_id=q["skill_id"])
+    if nxt is None:
+        run.status="completed"
+        run.completed_at=datetime.now(timezone.utc)
+        run.current_question_id=None
+        run.current_exercise_version_id=None
+        db.flush()
+        responses=db.scalars(select(AssessmentResponse).where(AssessmentResponse.run_id==run.id)).all()
+        for response in responses:
+            assisted,hint_count=derive_assistance(db,user_id=user.id,source_type="assessment_response",source_id=str(response.id))
+            record_evidence(db,user_id=user.id,skill_id=response.skill_id,
+                source_type="assessment_response",source_id=str(response.id),
+                result_score=float(response.is_correct),assisted=assisted,hint_count=hint_count,
+                occurred_at=response.created_at,metadata={"question_id":response.question_id,"difficulty":response.difficulty})
+        generate_plan(db,user,run)
+        build_curriculum(db,user,reason="assessment_completed")
+    else:
+        version=_version_for_question(db,nxt["id"])
+        run.current_question_id=nxt["id"]
+        run.current_exercise_version_id=version.id
+        run.asked_question_ids=json.dumps(asked+[nxt["id"]])
+    db.commit()
+    db.refresh(run)
+    if run.status=="completed" and db.scalar(select(AssessmentResponse.id).where(AssessmentResponse.run_id==run.id).limit(1)) is not None:
+        try:
+            generate_personalized_plan(db,user,trigger="assessment_completed")
+        except Exception:
+            db.rollback()
+
+
+@router.post("/skip", response_model=AssessmentState)
+def skip(payload:SkipRequest,auth:tuple[User,AuthSession]=Depends(csrf_protected),db:Session=Depends(get_db)):
+    user,_=auth
+    require_onboarding(user)
+    run=_owned_run(user,db,lock=True)
+    if run is None:
+        raise HTTPException(409,"Assessment is not in progress")
+    if payload.question_id != run.current_question_id:
+        raise HTTPException(409,"Question is no longer active")
+    q=_snapshot_question(run,db)
+    _advance(run,q,user,db,correct=None)
+    return _state(run,db)
+
 @router.post("/answers",response_model=AnswerResponse)
 def answer(payload:AnswerRequest,auth:tuple[User,AuthSession]=Depends(csrf_protected),db:Session=Depends(get_db)):
     user,_=auth; require_onboarding(user); run=_owned_run(user,db, lock=True)
@@ -192,43 +252,5 @@ def answer(payload:AnswerRequest,auth:tuple[User,AuthSession]=Depends(csrf_prote
             source_type="assessment_response",
             source_id=response.id,
         )
-    answered=len(db.scalars(select(AssessmentResponse).where(AssessmentResponse.run_id==run.id)).all())
-    nxt=None
-    if answered<MAX_QUESTIONS:
-        asked=json.loads(run.asked_question_ids)
-        target=_next_target(q["difficulty"],correct=correct)
-        nxt=_pick_question(asked,target_difficulty=target,exclude_skill_id=q["skill_id"])
-    if nxt is None:
-        # Either the question budget is spent or the bank has nothing left that
-        # is not already asked.  Both are normal endings, not a failure state.
-        run.status="completed"; run.completed_at=datetime.now(timezone.utc); run.current_question_id=None; run.current_exercise_version_id=None
-    else:
-        next_version = _version_for_question(db, nxt["id"])
-        run.current_question_id=nxt["id"]
-        run.current_exercise_version_id=next_version.id
-        run.asked_question_ids=json.dumps(asked+[nxt["id"]])
-    if run.status == "completed":
-        db.flush()
-        responses = db.scalars(select(AssessmentResponse).where(AssessmentResponse.run_id == run.id)).all()
-        for response in responses:
-            assisted, hint_count = derive_assistance(
-                db, user_id=user.id, source_type="assessment_response", source_id=str(response.id)
-            )
-            record_evidence(
-                db, user_id=user.id, skill_id=response.skill_id,
-                source_type="assessment_response", source_id=str(response.id),
-                result_score=float(response.is_correct),
-                assisted=assisted, hint_count=hint_count,
-                occurred_at=response.created_at,
-                metadata={"question_id": response.question_id, "difficulty": response.difficulty},
-            )
-        generate_plan(db, user, run)
-        build_curriculum(db, user, reason="assessment_completed")
-    db.commit(); db.refresh(run)
-    if run.status == "completed":
-        try:
-            generate_personalized_plan(db, user, trigger="assessment_completed")
-        except Exception:
-            # The completed assessment and deterministic plan remain valid.
-            db.rollback()
+    _advance(run,q,user,db,correct=correct)
     state=_state(run,db); return AnswerResponse(correct=correct,feedback="Ответ засчитан." if correct else "Ответ неверный; следующий вопрос подберем ниже по сложности.",state=state)

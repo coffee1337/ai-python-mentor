@@ -14,9 +14,11 @@ from app.learning_content import LESSONS, LESSONS_BY_ID
 from app.backend_content import BACKEND_PHASES, BACKEND_PHASE_ONE_LESSONS
 from app.skill_graph import seed_skill_graph
 from app.curriculum import build_curriculum
-from app.prerequisites import prerequisite_state
+from app.prerequisites import MASTERY_READINESS_THRESHOLD, prerequisite_state
 from app.db.models import LearningPlan, LearningPlanItem
 from app.choice_order import ordered_choices
+from app.content_publication import PUBLICATION_REPLACEMENTS
+from app.learning_continuity import resumable_publication
 
 router = APIRouter(prefix="/learning", tags=["learning"])
 
@@ -49,6 +51,7 @@ class LearningPath(BaseModel):
     next_lesson_id: str | None
     lessons: list[LessonSummary]
     phases: list[PhaseSummary] = Field(default_factory=list)
+    resume_lesson_id: str | None = None
 
 
 class MisconceptionCheck(BaseModel):
@@ -61,6 +64,21 @@ class LessonCheckpoint(BaseModel):
     model_config = ConfigDict(extra="forbid")
     prompt: str
     choices: list[str]
+
+
+class TheorySection(BaseModel):
+    title: str
+    body: str
+
+
+class ExampleStep(BaseModel):
+    line: int
+    explanation: str
+
+
+class GlossaryEntry(BaseModel):
+    term: str
+    definition: str
 
 
 class LessonResponse(BaseModel):
@@ -89,6 +107,12 @@ class LessonResponse(BaseModel):
     difficulty: int | None = None
     phase: int | None = None
     version: str | None = None
+    theory_sections: list[TheorySection] = Field(default_factory=list)
+    example_walkthrough: list[ExampleStep] = Field(default_factory=list)
+    glossary: list[GlossaryEntry] = Field(default_factory=list)
+    practice_steps: list[str] = Field(default_factory=list)
+    why_it_matters: str | None = None
+    practice_submission_type: Literal["guided_reading", "coding"] | None = None
 
 
 class AnswerRequest(BaseModel):
@@ -141,10 +165,35 @@ def _lesson_from_snapshot(version: ExerciseVersion, lesson_id: str) -> dict[str,
     return lesson
 
 
-def _lesson_response(version: ExerciseVersion, lesson_id: str, session_id) -> dict[str, Any]:
+CODING_INTERFACE_SKILLS = frozenset({
+    "python.functions", "python.parameters", "python.return_values", "python.dictionaries",
+})
+
+
+def coding_practice_ready(db: Session, user: User) -> bool:
+    """The function/payload interface must already have been learned.
+
+    This only chooses the public practice interface. It does not change the
+    immutable published grader, old jobs, or the lesson's grading facts.
+    """
+    facts = prerequisite_state(db, user.id)
+    return all(skill in facts.completed_primary_skills
+               or facts.mastery.get(skill, 0.0) >= MASTERY_READINESS_THRESHOLD
+               for skill in CODING_INTERFACE_SKILLS)
+
+
+def _lesson_response(version: ExerciseVersion, lesson_id: str, session_id,
+                     db: Session | None = None, user: User | None = None) -> dict[str, Any]:
     lesson = dict(_lesson_from_snapshot(version, lesson_id))
     lesson["version"] = str(version.version)
     lesson["choices"] = ordered_choices(lesson["choices"], session_id=session_id, question_id=lesson_id)
+    # A historical quiz is still immutable. The available interface is a
+    # learner-specific presentation fact, not newly authored lesson content.
+    if lesson.get("practice_submission_type") != "guided_reading":
+        from app.runner_exercise_content import RUNNER_EXERCISES
+        lesson["practice_submission_type"] = (
+            "coding" if db is not None and user is not None and f"{lesson_id}-code" in RUNNER_EXERCISES and coding_practice_ready(db, user)
+            else "guided_reading")
     checkpoint = lesson.get("checkpoint")
     if isinstance(checkpoint, dict):
         checkpoint = dict(checkpoint)
@@ -220,7 +269,14 @@ def _get_or_create_lesson_session(
     if session is not None:
         return session, _lesson_session_version(db, session, lesson_id)
 
-    version = _persisted_lesson_version(lesson_id, db)
+    pending_check = _pending_knowledge_check_session(db, user.id, lesson_id)
+    if pending_check is not None:
+        version = db.get(ExerciseVersion, pending_check.exercise_version_id)
+        if version is None:
+            raise _invalid_lesson_snapshot()
+        _lesson_from_snapshot(version, lesson_id)
+    else:
+        version = _persisted_lesson_version(lesson_id, db)
     session = LessonSession(
         user_id=user.id,
         lesson_id=lesson_id,
@@ -246,7 +302,7 @@ def learning_path(db: Session, user: User) -> LearningPath:
         row.lesson_id: row.completed_at
         for row in db.scalars(select(LessonCompletion).where(LessonCompletion.user_id == user.id))
     }
-    for old_id, new_id in {"imports-v1": "imports-v2", "fixtures-v1": "fixtures-v2"}.items():
+    for old_id, new_id in PUBLICATION_REPLACEMENTS.items():
         if old_id in completions and new_id not in completions:
             completions[new_id] = completions[old_id]
     plan = db.scalar(select(LearningPlan).where(LearningPlan.user_id == user.id))
@@ -271,7 +327,7 @@ def learning_path(db: Session, user: User) -> LearningPath:
                 lesson = _persisted_lesson(lesson_id, db)
         ordered_lessons.append(lesson)
     if plan is not None:
-        order = {item.lesson_id: item.position for item in db.scalars(select(LearningPlanItem).where(LearningPlanItem.plan_id == plan.id)).all()}
+        order = {PUBLICATION_REPLACEMENTS.get(item.lesson_id, item.lesson_id): item.position for item in db.scalars(select(LearningPlanItem).where(LearningPlanItem.plan_id == plan.id)).all()}
         ordered_lessons.sort(key=lambda lesson: order.get(lesson["id"], len(order) + 1))
     def ready(lesson: dict) -> bool:
         return readiness.is_lesson_ready(lesson)
@@ -291,9 +347,10 @@ def learning_path(db: Session, user: User) -> LearningPath:
         for lesson in ordered_lessons
     ]
     phases = _phase_summaries(lessons)
+    resume = resumable_publication(db, user.id)
     return LearningPath(completed=sum(item.status == "completed" for item in lessons),
                         total=len(lessons), next_lesson_id=next_id, lessons=lessons,
-                        phases=phases)
+                        phases=phases, resume_lesson_id=resume[0] if resume else None)
 
 
 def _phase_summaries(lessons: list[LessonSummary]) -> list[PhaseSummary]:
@@ -399,17 +456,60 @@ def get_path(auth: tuple[User, AuthSession] = Depends(current_auth), db: Session
     return learning_path(db, user)
 
 
+@router.get("/overview")
+def get_overview(auth: tuple[User, AuthSession] = Depends(current_auth)):
+    """Explain the learning route and the tutor's actual configuration."""
+    require_onboarding(auth[0])
+    from app.ai_gateway import GatewayError, configuration
+    try:
+        configuration()
+        mentor_status = "configured"
+    except GatewayError:
+        mentor_status = "unconfigured"
+    return {
+        "title": "От первой строки Python к серверным приложениям",
+        "audience": "Можно начать без опыта программирования.",
+        "assessment_optional": True,
+        "lesson_count": len(LESSONS),
+        "start_lesson_id": "variables-v2",
+        "learning_steps": [
+            "Понять цель темы и прочитать объяснение новых слов.",
+            "Разобрать пример по строкам и сравнить с его выводом.",
+            "Выполнить небольшую практику на правила этой темы.",
+            "Проверить понимание и перейти к следующему доступному уроку.",
+        ],
+        "stages": [
+            {"title": "Первые программы", "outcome": "Читать код, сохранять значения и выбирать действия по условиям."},
+            {"title": "Основа Python", "outcome": "Работать с повторениями, функциями, коллекциями и ошибками."},
+            {"title": "Python Backend", "outcome": "Понять запросы сайта, API, базы данных, проверки и устройство серверного приложения."},
+        ],
+        "mentor": {
+            "status": mentor_status,
+            "purpose": "Наставник разбирает непонятную строку, объясняет термин на другом примере и задаёт наводящие вопросы в контексте текущего урока. Проверенные уроки задают основу; AI помогает понять её в вашем темпе.",
+            "examples": ["Объясни эту строку без терминов", "Зачем нужны кавычки?", "Дай другой бытовой пример, не раскрывая ответ на проверку"],
+            "message": ("AI-наставник подключён. При недоступности сервиса урок и авторские подсказки остаются доступны."
+                        if mentor_status == "configured" else
+                        "AI-наставник пока не подключён. Уроки, примеры, словарь и авторские подсказки доступны; чат станет доступен после настройки сервиса."),
+        },
+    }
+
+
 @router.get("/next", response_model=LessonResponse | None)
 def get_next(auth: tuple[User, AuthSession] = Depends(current_auth), db: Session = Depends(get_db)):
     user, _ = auth
     require_onboarding(user)
-    next_id = learning_path(db, user).next_lesson_id
+    path = learning_path(db, user)
+    next_id = path.resume_lesson_id or path.next_lesson_id
     if not next_id:
         return None
-    accessible_lesson(next_id, db, user)
+    resume = resumable_publication(db, user.id)
+    resumed_version = db.get(ExerciseVersion, resume[1]) if resume else None
+    if resume and resumed_version is None:
+        raise _invalid_lesson_snapshot()
+    accessible_lesson(next_id, db, user, bound_version=resumed_version)
     session, version = _get_or_create_lesson_session(db, user, next_id)
     db.commit()
-    return _lesson_response(version, next_id, session.id)
+    return _lesson_response(version, next_id, session.id, db, user)
 
 
 @router.get("/lessons/{lesson_id}", response_model=LessonResponse)
@@ -420,11 +520,16 @@ def get_lesson(lesson_id: str, auth: tuple[User, AuthSession] = Depends(current_
         accessible_lesson(
             lesson_id, db, user, bound_version=_lesson_session_version(db, pending, lesson_id)
         )
+    elif (pending_check := _pending_knowledge_check_session(db, user.id, lesson_id)) is not None:
+        version = db.get(ExerciseVersion, pending_check.exercise_version_id)
+        if version is None:
+            raise _invalid_lesson_snapshot()
+        accessible_lesson(lesson_id, db, user, bound_version=version)
     else:
         accessible_lesson(lesson_id, db, user)
     session, version = _get_or_create_lesson_session(db, user, lesson_id)
     db.commit()
-    return _lesson_response(version, lesson_id, session.id)
+    return _lesson_response(version, lesson_id, session.id, db, user)
 
 
 @router.post("/lessons/{lesson_id}/complete", response_model=AnswerResponse)

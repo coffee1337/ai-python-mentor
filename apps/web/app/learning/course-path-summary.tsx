@@ -1,52 +1,54 @@
-"use client";
-
 import type { PathSummary } from "./lesson-types";
-
-type CoursePathSummaryProps = {
+export default function CoursePathSummary({
+  path,
+  currentLessonId,
+}: {
   path: PathSummary;
   currentLessonId?: string;
-};
-
-const STATUS_LABELS = {
-  completed: "Завершён",
-  available: "Доступен",
-  locked: "Пока закрыт",
-} as const;
-
-/**
- * Compact route summary shown above the lesson. The full interactive route lives
- * in `course-path.tsx`; this block must not duplicate it. Progress is a count of
- * completed lessons, not a mastery percentage.
- */
-export default function CoursePathSummary({ path, currentLessonId }: CoursePathSummaryProps) {
-  if (path.lessons.length === 0) {
-    return (
-      <section className="lesson-route" aria-labelledby="lesson-route-title">
-        <h2 id="lesson-route-title">Ваш маршрут</h2>
-        <p role="status">В учебном пути пока нет опубликованных уроков.</p>
-        <a className="text-button" href="/learning/path">
-          Открыть учебный путь
-        </a>
-      </section>
-    );
-  }
-
-  const visible = path.lessons.filter((item) => item.id === currentLessonId || item.id === path.next_lesson_id);
-
+}) {
+  const currentIndex = path.lessons.findIndex(
+    (item) => item.id === currentLessonId,
+  );
+  const next = path.lessons.find(
+    (item) => item.id === path.next_lesson_id && item.id !== currentLessonId,
+  );
   return (
-    <section className="lesson-route" aria-labelledby="lesson-route-title">
-      <h2 id="lesson-route-title">Ваш маршрут</h2>
-      <p>
-        Завершено уроков: {path.completed} из {path.total}
-      </p>
-      <ol>
-        {visible.map((item) => (
-          <li key={item.id}>
-            {item.title} · {item.minutes} мин · {STATUS_LABELS[item.status]}
-          </li>
-        ))}
-      </ol>
-      <a className="text-button" href="/learning/path">
+    <section
+      className="panel lesson-route"
+      aria-labelledby="lesson-route-title"
+    >
+      <p className="page-kicker">Ваш маршрут</p>
+      <h2 id="lesson-route-title">Шаг за шагом</h2>
+      {path.total > 0 ? (
+        <>
+          <p>
+            Пройдено {path.completed} из {path.total} уроков
+          </p>
+          <progress
+            aria-label="Пройденные уроки курса"
+            value={path.completed}
+            max={path.total}
+          />
+          {currentIndex >= 0 && (
+            <p className="muted">
+              Сейчас вы изучаете урок {currentIndex + 1}:{" "}
+              {path.lessons[currentIndex].title}.
+            </p>
+          )}
+          {next && (
+            <div className="lesson-route-next">
+              <span className="badge">Следующий доступный</span>
+              <p>{next.title}</p>
+              <a href={`/learning?lesson=${encodeURIComponent(next.id)}`}>
+                Открыть урок →
+              </a>
+            </div>
+          )}
+        </>
+      ) : (
+        <p role="status">Материалы пока не опубликованы.</p>
+      )}
+      <a className="button-secondary" href="/learning/path">
         Весь учебный путь
       </a>
     </section>

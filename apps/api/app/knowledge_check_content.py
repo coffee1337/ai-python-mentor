@@ -1576,3 +1576,5 @@ from app.completion_content import COMPLETION_CHECKS
 from app.content_publication import CORRECTED_CHECKS
 CHECKS.update(COMPLETION_CHECKS)
 CHECKS.update(CORRECTED_CHECKS)
+from app.beginner_content import BEGINNER_CHECKS
+CHECKS.update(BEGINNER_CHECKS)

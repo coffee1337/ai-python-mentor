@@ -1,8 +1,6 @@
 "use client";
-
 import dynamic from "next/dynamic";
 import { FormEvent } from "react";
-
 // The editor is only needed once a learner reaches the submission block, so it is
 // loaded on demand. This keeps the lesson page's initial payload small; the
 // fallback mirrors the editor's layout so the form does not jump.
@@ -14,11 +12,8 @@ const CodeEditor = dynamic(() => import("./code-editor"), {
     </p>
   ),
 });
-
 export const SOURCE_LIMIT = 20000;
-
 const STARTER_CODE = "def solve():\n    # Напишите решение\n    pass\n";
-
 type LessonPracticeProps = {
   source: string;
   onSourceChange: (value: string) => void;
@@ -27,7 +22,6 @@ type LessonPracticeProps = {
   disabled?: boolean;
   executionConfigured?: boolean;
 };
-
 /**
  * Code submission block. The runner is fail-closed, so the button saves an
  * attempt and the copy says exactly that: no execution, no correctness verdict.
@@ -58,13 +52,20 @@ export default function LessonPractice({
       <p className="muted" id="runner-status-note">
         {executionConfigured
           ? "Код будет отправлен в изолированную очередь проверки. Результат определяет сервер; возможны ограничения времени и ресурсов."
-          : "Исполнение кода недоступно. Попытка сохранится без оценки правильности и без credit за освоение."}
+          : "Запуск кода сейчас недоступен. Попытка сохранится, но правильность решения и освоение темы не будут подтверждены."}
       </p>
-      <button type="submit" className="form-button" disabled={disabled || busy || !source.trim()}>
-        {busy ? "Сохраняем…" : executionConfigured ? "Отправить на проверку" : "Сохранить попытку"}
+      <button
+        type="submit"
+        className="button"
+        disabled={disabled || busy || !source.trim()}
+      >
+        {busy
+          ? "Сохраняем…"
+          : executionConfigured
+            ? "Отправить на проверку"
+            : "Сохранить попытку"}
       </button>
     </form>
   );
 }
-
 export { STARTER_CODE };
