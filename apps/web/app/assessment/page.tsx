@@ -298,7 +298,14 @@ export default function AssessmentPage() {
               >
                 <QuestionText text={state.question.prompt} />
               </h2>
-              {state.question.code && <pre className="assessment-code" aria-label="Фрагмент Python для вопроса"><code>{state.question.code}</code></pre>}
+              {state.question.code && (
+                <pre
+                  className="assessment-code"
+                  aria-label="Фрагмент Python для вопроса"
+                >
+                  <code>{state.question.code}</code>
+                </pre>
+              )}
               <fieldset className="assessment-choices" disabled={busy}>
                 <legend>Выберите один ответ</legend>
                 {state.question.choices.map((choice) => (

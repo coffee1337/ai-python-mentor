@@ -34,6 +34,38 @@ const LEVELS = {
   mentioned: "Упомянуто",
 };
 
+function RoadmapItem({
+  step,
+  index,
+}: {
+  step: Vacancy["roadmap"][number];
+  index: number;
+}) {
+  return (
+    <li>
+      <span className="product-step-number" aria-hidden="true">
+        {index + 1}
+      </span>
+      <div>
+        <strong>{step.name}</strong>
+        <p>
+          {step.inferred_prerequisite
+            ? "Основа для следующих тем"
+            : "Навык из вакансии"}
+        </p>
+        <span className="badge">
+          {step.ready ? "Можно приступить" : "Сначала изучите основы"}
+        </span>
+        <small>
+          {step.observation === "not_assessed"
+            ? "Навык ещё не проверяли в обучении."
+            : "Есть учебные наблюдения; это не оценка профессионального уровня."}
+        </small>
+      </div>
+    </li>
+  );
+}
+
 export default function JobsPage() {
   const { user, loading, error: userError, reload } = useUser(true);
   const [items, setItems] = useState<VacancySummary[]>([]);
@@ -392,35 +424,30 @@ export default function JobsPage() {
                       </p>
                     )}
                     <ol className="jobs-roadmap-list">
-                      {current.roadmap.map((step, index) => (
-                        <li key={step.skill_id}>
-                          <span
-                            className="product-step-number"
-                            aria-hidden="true"
-                          >
-                            {index + 1}
-                          </span>
-                          <div>
-                            <strong>{step.name}</strong>
-                            <p>
-                              {step.inferred_prerequisite
-                                ? "Основа для следующих тем"
-                                : "Навык из вакансии"}
-                            </p>
-                            <span className="badge">
-                              {step.ready
-                                ? "Можно приступить"
-                                : "Сначала изучите основы"}
-                            </span>
-                            <small>
-                              {step.observation === "not_assessed"
-                                ? "Навык ещё не проверяли в обучении."
-                                : "Есть учебные наблюдения; это не оценка профессионального уровня."}
-                            </small>
-                          </div>
-                        </li>
+                      {current.roadmap.slice(0, 6).map((step, index) => (
+                        <RoadmapItem
+                          key={step.skill_id}
+                          step={step}
+                          index={index}
+                        />
                       ))}
                     </ol>
+                    {current.roadmap.length > 6 && (
+                      <details className="product-disclosure jobs-roadmap-disclosure">
+                        <summary>
+                          Показать остальные темы ({current.roadmap.length - 6})
+                        </summary>
+                        <ol className="jobs-roadmap-list" start={7}>
+                          {current.roadmap.slice(6).map((step, index) => (
+                            <RoadmapItem
+                              key={step.skill_id}
+                              step={step}
+                              index={index + 6}
+                            />
+                          ))}
+                        </ol>
+                      </details>
+                    )}
                   </div>
                 </div>
 

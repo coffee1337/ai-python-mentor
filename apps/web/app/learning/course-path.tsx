@@ -79,10 +79,10 @@ export default function CoursePath({
           (lesson) => lesson.id === nextPath.next_lesson_id,
         );
         setActivePhase(
-          next?.phase ??
-            nextPath.phases?.find((phase) => phase.status === "available")
-              ?.id ??
-            null,
+          next
+            ? (next.phase ?? 0)
+            : (nextPath.phases?.find((phase) => phase.status === "available")
+                ?.id ?? null),
         );
       })
       .catch((reason) => {
@@ -107,10 +107,36 @@ export default function CoursePath({
   const nextPlanItem = plan?.items.find(
     (item) => item.lesson_id === nextLesson?.id,
   );
-  const phases = path?.phases?.filter((phase) => phase.total > 0) ?? [];
+  const foundations =
+    path?.lessons.filter((lesson) => lesson.phase === null) ?? [];
+  const foundationPhase: PhaseSummary[] = foundations.length
+    ? [
+        {
+          id: 0,
+          title: "Основы Python",
+          summary:
+            "От первой строки и переменных до функций, коллекций и работы с файлами.",
+          status: foundations.every((lesson) => lesson.status === "completed")
+            ? "completed"
+            : foundations.some((lesson) => lesson.status === "available")
+              ? "available"
+              : "locked",
+          completed: foundations.filter(
+            (lesson) => lesson.status === "completed",
+          ).length,
+          total: foundations.length,
+          next_lesson_id:
+            foundations.find((lesson) => lesson.status === "available")?.id ??
+            null,
+        },
+      ]
+    : [];
+  const phases = [...foundationPhase, ...(path?.phases ?? [])].filter(
+    (phase) => phase.total > 0,
+  );
   const visibleLessons =
     path?.lessons.filter(
-      (lesson) => activePhase === null || lesson.phase === activePhase,
+      (lesson) => activePhase === null || (lesson.phase ?? 0) === activePhase,
     ) ?? [];
 
   return (
@@ -290,7 +316,7 @@ export default function CoursePath({
                     </button>
                   </div>
                   <div className="course-phase-grid">
-                    {phases.map((phase) => (
+                    {phases.map((phase, index) => (
                       <button
                         type="button"
                         key={phase.id}
@@ -304,7 +330,7 @@ export default function CoursePath({
                       >
                         <span className="course-phase-top">
                           <span className="course-phase-index">
-                            {String(phase.id).padStart(2, "0")}
+                            {String(index + 1).padStart(2, "0")}
                           </span>
                           <span className="badge">
                             {phase.status === "completed"

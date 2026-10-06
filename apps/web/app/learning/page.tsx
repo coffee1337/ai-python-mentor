@@ -394,17 +394,18 @@ export default function LearningPage() {
                         {lesson.practice && (
                           <div className="practice-instructions">
                             <h3>Что нужно сделать</h3>
-                            <RichText text={lesson.practice} />
                             {lesson.practice_steps &&
-                              lesson.practice_steps.length > 0 && (
-                                <ol>
-                                  {lesson.practice_steps.map((item, index) => (
-                                    <li key={index}>
-                                      <RichText text={item} />
-                                    </li>
-                                  ))}
-                                </ol>
-                              )}
+                            lesson.practice_steps.length > 0 ? (
+                              <ol>
+                                {lesson.practice_steps.map((item, index) => (
+                                  <li key={index}>
+                                    <RichText text={item} />
+                                  </li>
+                                ))}
+                              </ol>
+                            ) : (
+                              <RichText text={lesson.practice} />
+                            )}
                           </div>
                         )}
                         {lesson.practice_submission_type !== "coding" ? (

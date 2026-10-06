@@ -2271,15 +2271,10 @@ small {
     padding-inline: 22px;
   }
   .app-sidebar {
-    visibility: hidden;
-    transform: translateX(-100%);
-    transition:
-      transform 150ms ease,
-      visibility 150ms ease;
+    display: none;
   }
   .app-sidebar.is-open {
-    visibility: visible;
-    transform: translateX(0);
+    display: flex;
   }
   .sidebar-backdrop {
     display: block;
@@ -2293,9 +2288,9 @@ small {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex: 0 0 40px;
-    width: 40px;
-    height: 40px;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
     padding: 0;
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -5545,8 +5540,8 @@ small {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     padding: 0;
     border: 0;
     border-radius: 6px;
@@ -5577,4 +5572,8 @@ small {
   background: var(--ink);
   color: var(--surface);
   line-height: 1.8;
+}
+
+.jobs-roadmap-disclosure {
+  margin-top: 16px;
 }
