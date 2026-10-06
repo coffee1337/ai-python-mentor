@@ -21,6 +21,8 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     reducedMotion: "reduce",
+    actionTimeout: 15_000,
+    navigationTimeout: 30_000,
   },
   projects: [
     { name: "desktop", use: { viewport: { width: 1440, height: 900 } } },

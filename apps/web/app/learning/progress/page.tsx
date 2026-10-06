@@ -424,8 +424,8 @@ export default function ProgressPage() {
                         placeholder="Например, функции или SQL"
                       />
                     </label>
-                    <label htmlFor="study-skill-filter">
-                      Показать темы
+                    <div>
+                      <label htmlFor="study-skill-filter">Показать темы</label>
                       <select
                         id="study-skill-filter"
                         value={skillFilter}
@@ -437,7 +437,7 @@ export default function ProgressPage() {
                         <option value="all">Все темы курса</option>
                         <option value="unobserved">Пока без наблюдений</option>
                       </select>
-                    </label>
+                    </div>
                   </div>
                   <p className="muted" role="status" aria-live="polite">
                     Показано тем: {visibleSkills.length} из {data.skills.length}.

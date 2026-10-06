@@ -381,14 +381,15 @@ export default function CoursePath({
                       placeholder="Например, функции или базы данных"
                       onChange={(event) => { setQuery(event.target.value); setActivePhase(null); }} />
                   </label>
-                  <label htmlFor="course-status">Статус урока
+                  <div>
+                    <label htmlFor="course-status">Статус урока</label>
                     <select id="course-status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as LessonStatus | "all")}>
                       <option value="all">Все статусы</option>
                       <option value="available">Доступные</option>
                       <option value="completed">Пройденные</option>
                       <option value="locked">Откроются позже</option>
                     </select>
-                  </label>
+                  </div>
                 </div>
                 <p className="muted" role="status">Найдено уроков: {visibleLessons.length}.</p>
                 {visibleLessons.length === 0 ? (

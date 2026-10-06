@@ -5763,6 +5763,12 @@ small {
   margin: 1.25rem 0;
 }
 
+.study-skill-controls > div, .course-search-controls > div {
+  display: grid;
+  align-content: start;
+  gap: .5rem;
+}
+
 .study-table-wrap  {
   overflow-x: auto;
   max-width: 100%;

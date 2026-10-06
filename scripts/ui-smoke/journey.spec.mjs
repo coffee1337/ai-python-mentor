@@ -11,6 +11,9 @@ async function capture(page, testInfo, name, workspace = false) {
     path: testInfo.outputPath(`${name}.png`),
     fullPage: true,
   });
+  if (name === "25-study-progress") {
+    await page.screenshot({ path: testInfo.outputPath(`${name}-viewport.png`), fullPage: false });
+  }
   const size = await page.evaluate(() => ({
     viewport: window.innerWidth,
     document: Math.max(
@@ -410,6 +413,13 @@ test("beginner learns before questions and uses the personal workspace", async (
       .getByText("Код не выполнялся.", { exact: false }),
   ).toBeVisible();
   await capture(page, testInfo, "16-project-artifact", true);
+  await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((item) => item.startsWith("mentor.project.draft"));
+    if (!key) throw new Error("Expected an owned project draft");
+    const draft = JSON.parse(localStorage.getItem(key));
+    draft.saved_at = Date.now() - 31 * 24 * 60 * 60 * 1000;
+    localStorage.setItem(key, JSON.stringify(draft));
+  });
   await page.reload();
   const milestones = page.locator(".project-milestone");
   await expect(milestones.nth(1)).toHaveAttribute("open", "");
@@ -418,6 +428,7 @@ test("beginner learns before questions and uses the personal workspace", async (
   await firstEditor.getByRole("button", { name: "Посмотреть материал", exact: true }).click();
   await expect(firstEditor.locator(".project-source-preview")).toHaveText(artifact);
   const artifactField = firstEditor.locator('textarea[name="artifact_text"]');
+  await expect(artifactField).toHaveValue(artifact);
   await artifactField.fill("Свой новый черновик — сохранить при отмене замены.");
   await firstEditor.getByRole("button", { name: "Скопировать в черновик и редактировать", exact: true }).click();
   await firstEditor.getByRole("button", { name: "Отмена", exact: true }).click();
