@@ -43,6 +43,7 @@ type Project = {
   id: string;
   template: Template;
   milestones: (MilestoneTemplate & { latest_submission?: Submission | null })[];
+  submissions: Submission[];
   created_at: string;
   portfolio?: Portfolio | null;
   notice: string;
@@ -55,6 +56,335 @@ function submissionStatus(submission?: Submission | null) {
     : "Нужно дополнить";
 }
 
+type Draft = { artifact_text: string; repository_url: string };
+type SubmissionSource = Submission & { artifact_text: string };
+const DRAFT_PREFIX = "mentor.project.draft.v1.";
+const DRAFT_LIMIT = 20;
+
+function readDraft(key: string): Draft {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw && raw.length <= 180000) {
+      const value = JSON.parse(raw);
+      if (
+        value.schema === 1 && typeof value.saved_at === "number" &&
+        value.saved_at >= 0 && value.saved_at <= Date.now() &&
+        typeof value.artifact_text === "string" && value.artifact_text.length <= 25000 &&
+        typeof value.repository_url === "string" && value.repository_url.length <= 2048
+      ) {
+        return {
+          artifact_text: value.artifact_text,
+          repository_url: value.repository_url,
+        };
+      }
+    }
+    if (raw) window.localStorage.removeItem(key);
+  } catch {
+    /* Keep the editor usable if browser storage is unavailable. */
+  }
+  return { artifact_text: "", repository_url: "" };
+}
+
+function storeDraft(key: string, draft: Draft): boolean {
+  try {
+    if (!draft.artifact_text && !draft.repository_url) {
+      window.localStorage.removeItem(key);
+    } else {
+      const existing = window.localStorage.getItem(key) !== null;
+      const keys = Object.keys(window.localStorage).filter((item) => item.startsWith(DRAFT_PREFIX));
+      // Refuse an additional draft instead of discarding another unsent text.
+      if (!existing && keys.length >= DRAFT_LIMIT) return false;
+      window.localStorage.setItem(key, JSON.stringify({ schema: 1, saved_at: Date.now(), ...draft }));
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function clearProjectDrafts(userId: string, projectId: string) {
+  try {
+    const prefix = `${DRAFT_PREFIX}${userId}.${projectId}.`;
+    for (const key of Object.keys(window.localStorage)) {
+      if (key.startsWith(prefix)) window.localStorage.removeItem(key);
+    }
+  } catch {
+    /* Server deletion succeeds even when browser storage is unavailable. */
+  }
+}
+
+function preferredMilestone(project: Project): string | null {
+  const milestone = project.milestones.find((item) => item.latest_submission?.validation.status === "needs_revision") ??
+    project.milestones.find((item) => !item.latest_submission) ?? project.milestones[0];
+  return milestone?.id ?? null;
+}
+
+function rememberProject(projectId: string | null) {
+  const url = new URL(window.location.href);
+  if (projectId) url.searchParams.set("project", projectId);
+  else url.searchParams.delete("project");
+  window.history.replaceState(window.history.state, "", url);
+}
+
+function MilestoneEditor({
+  userId, project, milestone, busy, setBusy, onSubmitted, onNext,
+}: {
+  userId: string;
+  project: Project;
+  milestone: Project["milestones"][number];
+  busy: boolean;
+  setBusy: (value: boolean) => void;
+  onSubmitted: (result: Submission) => void;
+  onNext: (id: string) => void;
+}) {
+  const key = `${DRAFT_PREFIX}${userId}.${project.id}.${milestone.id}`;
+  const [draft, setDraft] = useState<Draft>({ artifact_text: "", repository_url: "" });
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [draftNote, setDraftNote] = useState("");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [source, setSource] = useState<SubmissionSource | null>(null);
+  const [sourceId, setSourceId] = useState(milestone.latest_submission?.id ?? "");
+  const [sourceLoading, setSourceLoading] = useState(false);
+  const [sourceError, setSourceError] = useState("");
+  const [replacePending, setReplacePending] = useState(false);
+  const pending = useRef<{ fingerprint: string; key: string } | null>(null);
+  const latest = milestone.latest_submission;
+  const recent = project.submissions.filter((item) => item.milestone_id === milestone.id);
+  const history = latest && !recent.some((item) => item.id === latest.id)
+    ? [latest, ...recent]
+    : recent;
+  const next = project.milestones.find((item) => item.id !== milestone.id && item.latest_submission?.validation.status === "needs_revision") ??
+    project.milestones.find((item) => item.id !== milestone.id && !item.latest_submission);
+
+  useEffect(() => {
+    const saved = readDraft(key);
+    setDraft(saved);
+    setDraftLoaded(true);
+    if (saved.artifact_text || saved.repository_url) {
+      setDraftNote("Восстановлен черновик с этого устройства.");
+    }
+  }, [key]);
+
+  function edit(value: Draft) {
+    setDraft(value);
+    setDraftNote(storeDraft(key, value)
+      ? "Черновик сохранён на этом устройстве."
+      : "Черновик доступен в текущем окне. Отправьте материал или освободите место для черновиков на устройстве.");
+    setMessage("");
+  }
+
+  async function preview() {
+    if (!sourceId || sourceLoading) return;
+    setSourceLoading(true);
+    setSourceError("");
+    setSource(null);
+    setReplacePending(false);
+    try {
+      setSource(await api<SubmissionSource>(
+        `/projects/${encodeURIComponent(project.id)}/submissions/${encodeURIComponent(sourceId)}`,
+        { cache: "no-store" },
+      ));
+    } catch (reason) {
+      setSourceError(errorMessage(reason));
+    } finally {
+      setSourceLoading(false);
+    }
+  }
+
+  function restore() {
+    if (!source) return;
+    const old = {
+      artifact_text: source.artifact_text,
+      repository_url: source.repository_url ?? "",
+    };
+    if (!replacePending && (draft.artifact_text || draft.repository_url) && JSON.stringify(old) !== JSON.stringify(draft)) {
+      setReplacePending(true);
+      return;
+    }
+    edit(old);
+    setReplacePending(false);
+    setMessage("Материал скопирован в черновик. Измените его и отправьте как новую версию.");
+    document.getElementById(`artifact-${milestone.id}`)?.focus();
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy || !draftLoaded) return;
+    const payload = {
+      artifact_text: draft.artifact_text,
+      repository_url: draft.repository_url || null,
+    };
+    const fingerprint = JSON.stringify(payload);
+    if (pending.current?.fingerprint !== fingerprint) {
+      pending.current = { fingerprint, key: newRequestId() };
+    }
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await api<Submission>(
+        `/projects/${encodeURIComponent(project.id)}/milestones/${encodeURIComponent(milestone.id)}/submissions`,
+        {
+          method: "POST",
+          body: JSON.stringify({ ...payload, idempotency_key: pending.current.key }),
+        },
+      );
+      pending.current = null;
+      onSubmitted(result);
+      setSourceId(result.id);
+      setMessage(result.validation.message);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <form className="settings-form" onSubmit={submit}>
+        <fieldset disabled={busy || !draftLoaded}>
+          <label htmlFor={`artifact-${milestone.id}`}>
+            Материал этапа
+            <textarea
+              id={`artifact-${milestone.id}`}
+              name="artifact_text"
+              value={draft.artifact_text}
+              onChange={(event) => edit({ ...draft, artifact_text: event.target.value })}
+              required
+              minLength={30}
+              maxLength={25000}
+              rows={8}
+              placeholder={milestone.required_sections
+                .map((section) => `## ${section}\nВаше описание и результаты…`)
+                .join("\n\n")}
+            />
+            <span className="product-field-hint">
+              Разделы должны называться точно как в списке выше. Не добавляйте пароли и ключи.
+            </span>
+          </label>
+          <label>
+            Ссылка на репозиторий <span className="optional">необязательно</span>
+            <input
+              name="repository_url"
+              value={draft.repository_url}
+              onChange={(event) => edit({ ...draft, repository_url: event.target.value })}
+              type="url"
+              pattern="https://.*"
+              maxLength={2048}
+              placeholder="https://github.com/…"
+            />
+          </label>
+        </fieldset>
+        {draftNote && (
+          <p className="product-field-hint project-draft-note" role="status">{draftNote}</p>
+        )}
+        {error && (
+          <p className="status-message product-error" role="alert">
+            {error} Текст сохранён в форме; повторите отправку.
+          </p>
+        )}
+        <button className="button" disabled={busy || !draftLoaded}>
+          {busy ? "Обрабатываем запрос…" : latest
+            ? "Отправить обновлённый материал" : "Отправить материал этапа"}
+        </button>
+      </form>
+      {message && <p className="status-message product-success" role="status">{message}</p>}
+      {latest && (
+        <div className={`project-submission-result ${latest.validation.status === "artifact_received" ? "product-success" : "product-revision"}`}>
+          <div className="product-inline-heading">
+            <strong>{submissionStatus(latest)}</strong>
+            <span className="product-field-hint">
+              {new Date(latest.created_at).toLocaleDateString("ru-RU")}
+            </span>
+          </div>
+          <p>{latest.validation.message}</p>
+          {latest.validation.missing_sections.length > 0 && (
+            <p>
+              Добавьте заголовки и содержание разделов: <strong>{latest.validation.missing_sections.join(", ")}</strong>.
+            </p>
+          )}
+          <p className="product-field-hint">
+            Код не выполнялся. Проверка не меняет оценку освоения навыков.
+          </p>
+          {latest.validation.status === "artifact_received" && next && (
+            <button className="button button-secondary" disabled={busy} onClick={() => onNext(next.id)}>
+              Продолжить: {next.title}
+            </button>
+          )}
+          {latest.validation.status === "artifact_received" && !next && (
+            <p>Материалы всех этапов приняты. Можно оформить портфолио ниже.</p>
+          )}
+        </div>
+      )}
+      {history.length > 0 && (
+        <section className="project-history-panel" aria-labelledby={`history-${milestone.id}`}>
+          <h3 id={`history-${milestone.id}`}>Ранее отправленные материалы</h3>
+          <p className="product-field-hint">
+            Просмотр и копирование не изменяют отправленную версию. Здесь показаны последние материалы проекта.
+          </p>
+          <label>
+            Версия материала
+            <select
+              value={sourceId}
+              disabled={busy || sourceLoading}
+              onChange={(event) => {
+                setSourceId(event.target.value);
+                setSource(null);
+                setReplacePending(false);
+                setSourceError("");
+              }}
+            >
+              {history.map((item, index) => (
+                <option key={item.id} value={item.id}>
+                  {new Date(item.created_at).toLocaleString("ru-RU")} · {submissionStatus(item)}{index === 0 ? " · последняя" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="button button-secondary"
+            disabled={busy || sourceLoading || !sourceId}
+            onClick={() => void preview()}
+          >
+            {sourceLoading ? "Загружаем материал…" : "Посмотреть материал"}
+          </button>
+          {sourceError && (
+            <div className="status-message product-error" role="alert">
+              <p>{sourceError}</p>
+              <button className="button button-secondary" onClick={() => void preview()} disabled={sourceLoading}>
+                Повторить загрузку материала
+              </button>
+            </div>
+          )}
+          {source && (
+            <>
+              <pre className="project-source-preview">{source.artifact_text}</pre>
+              {source.repository_url && (
+                <p className="product-preserve-lines">Репозиторий: {source.repository_url}</p>
+              )}
+              {replacePending ? (
+                <div className="project-restore-confirm" role="group" aria-label="Замена текущего черновика">
+                  <p>В форме уже есть черновик. Заменить его выбранным материалом и ссылкой?</p>
+                  <div className="product-action-row">
+                    <button className="button" disabled={busy} onClick={restore}>Заменить черновик</button>
+                    <button className="button button-secondary" onClick={() => setReplacePending(false)}>Отмена</button>
+                  </div>
+                </div>
+              ) : (
+                <button className="button button-secondary" disabled={busy} onClick={restore}>
+                  Скопировать в черновик и редактировать
+                </button>
+              )}
+            </>
+          )}
+        </section>
+      )}
+    </>
+  );
+}
+
 export default function ProjectsPage() {
   const { user, loading, error: userError, reload } = useUser(true);
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -64,12 +394,12 @@ export default function ProjectsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
-  const pending = useRef<Record<string, { fingerprint: string; key: string }>>(
-    {},
-  );
+  const [activeMilestone, setActiveMilestone] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoadBusy(true);
+    setCurrent(null);
+    setActiveMilestone(null);
     setError("");
     try {
       const [catalog, saved] = await Promise.all([
@@ -78,6 +408,12 @@ export default function ProjectsPage() {
       ]);
       setTemplates(catalog);
       setProjects(saved);
+      const requested = new URLSearchParams(window.location.search).get("project");
+      if (requested) {
+        const selected = await api<Project>(`/projects/${encodeURIComponent(requested)}`);
+        setCurrent(selected);
+        setActiveMilestone(preferredMilestone(selected));
+      }
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -90,7 +426,7 @@ export default function ProjectsPage() {
   }, [user, load]);
 
   async function action(operation: () => Promise<void>) {
-    if (busy) return;
+    if (busy || loadBusy) return;
     setBusy(true);
     setError("");
     setStatus("");
@@ -104,7 +440,10 @@ export default function ProjectsPage() {
   }
 
   async function refreshCurrent(id: string) {
-    setCurrent(await api<Project>(`/projects/${encodeURIComponent(id)}`));
+    const project = await api<Project>(`/projects/${encodeURIComponent(id)}`);
+    setCurrent(project);
+    setActiveMilestone(preferredMilestone(project));
+    rememberProject(project.id);
   }
 
   function createProject(template: Template) {
@@ -114,6 +453,8 @@ export default function ProjectsPage() {
         body: JSON.stringify({ template_id: template.id }),
       });
       setCurrent(project);
+      setActiveMilestone(preferredMilestone(project));
+      rememberProject(project.id);
       await load();
       setStatus(
         "Проект создан. Откройте первый этап и начните с описания задачи.",
@@ -121,38 +462,20 @@ export default function ProjectsPage() {
     });
   }
 
-  function submitMilestone(
-    event: FormEvent<HTMLFormElement>,
-    milestoneId: string,
-  ) {
-    event.preventDefault();
+  function recordSubmission(result: Submission) {
     if (!current) return;
-    const data = new FormData(event.currentTarget);
-    const payload = {
-      artifact_text: String(data.get("artifact_text")),
-      repository_url: data.get("repository_url") || null,
+    const updated = {
+      ...current,
+      milestones: current.milestones.map((item) => item.id === result.milestone_id ? { ...item, latest_submission: result } : item),
+      submissions: [result, ...current.submissions.filter((item) => item.id !== result.id)].slice(0, 100),
     };
-    const scope = `${current.id}.${milestoneId}`;
-    const fingerprint = JSON.stringify(payload);
-    if (pending.current[scope]?.fingerprint !== fingerprint) {
-      pending.current[scope] = { fingerprint, key: newRequestId() };
-    }
-    void action(async () => {
-      const result = await api<Submission>(
-        `/projects/${encodeURIComponent(current.id)}/milestones/${encodeURIComponent(milestoneId)}/submissions`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            ...payload,
-            idempotency_key: pending.current[scope].key,
-          }),
-        },
-      );
-      delete pending.current[scope];
-      await refreshCurrent(current.id);
-      await load();
-      setStatus(result.validation.message);
-    });
+    setCurrent(updated);
+    setProjects((saved) => saved.map((item) => item.id === updated.id ? updated : item));
+  }
+
+  function goToMilestone(id: string) {
+    setActiveMilestone(id);
+    document.getElementById(`milestone-${id}`)?.focus();
   }
 
   function savePortfolio(event: FormEvent<HTMLFormElement>) {
@@ -296,7 +619,7 @@ export default function ProjectsPage() {
                   <button
                     className={`panel project-saved-card ${current?.id === project.id ? "is-selected" : ""}`}
                     key={project.id}
-                    disabled={busy}
+                    disabled={busy || loadBusy}
                     aria-pressed={current?.id === project.id}
                     onClick={() =>
                       void action(() => refreshCurrent(project.id))
@@ -356,9 +679,15 @@ export default function ProjectsPage() {
                     <details
                       className="project-milestone"
                       key={`${current.id}.${milestone.id}`}
-                      open={index === 0 ? true : undefined}
+                      open={activeMilestone === milestone.id}
                     >
-                      <summary>
+                      <summary
+                        id={`milestone-${milestone.id}`}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          if (!busy) setActiveMilestone(activeMilestone === milestone.id ? null : milestone.id);
+                        }}
+                      >
                         <span
                           className="product-step-number"
                           aria-hidden="true"
@@ -392,88 +721,16 @@ export default function ProjectsPage() {
                             <li key={section}>{section}</li>
                           ))}
                         </ul>
-                        <form
-                          className="settings-form"
-                          onSubmit={(event) =>
-                            submitMilestone(event, milestone.id)
-                          }
-                        >
-                          <fieldset disabled={busy}>
-                            <label>
-                              Материал этапа
-                              <textarea
-                                name="artifact_text"
-                                required
-                                minLength={30}
-                                maxLength={25000}
-                                rows={8}
-                                placeholder={milestone.required_sections
-                                  .map(
-                                    (section) =>
-                                      `## ${section}\nВаше описание и результаты…`,
-                                  )
-                                  .join("\n\n")}
-                              />
-                              <span className="product-field-hint">
-                                Разделы должны называться точно как в списке
-                                выше. Не добавляйте пароли и ключи.
-                              </span>
-                            </label>
-                            <label>
-                              Ссылка на репозиторий{" "}
-                              <span className="optional">необязательно</span>
-                              <input
-                                name="repository_url"
-                                type="url"
-                                pattern="https://.*"
-                                maxLength={2000}
-                                placeholder="https://github.com/…"
-                              />
-                            </label>
-                          </fieldset>
-                          <button className="button" disabled={busy}>
-                            {busy
-                              ? "Обрабатываем запрос…"
-                              : milestone.latest_submission
-                                ? "Отправить обновлённый материал"
-                                : "Отправить материал этапа"}
-                          </button>
-                        </form>
-                        {milestone.latest_submission && (
-                          <div
-                            className={`project-submission-result ${milestone.latest_submission.validation.status === "artifact_received" ? "product-success" : "product-revision"}`}
-                          >
-                            <div className="product-inline-heading">
-                              <strong>
-                                {submissionStatus(milestone.latest_submission)}
-                              </strong>
-                              <span className="product-field-hint">
-                                {new Date(
-                                  milestone.latest_submission.created_at,
-                                ).toLocaleDateString("ru-RU")}
-                              </span>
-                            </div>
-                            <p>
-                              {milestone.latest_submission.validation.message}
-                            </p>
-                            {milestone.latest_submission.validation
-                              .missing_sections.length > 0 && (
-                              <p>
-                                Добавьте заголовки и содержание разделов:{" "}
-                                <strong>
-                                  {milestone.latest_submission.validation.missing_sections.join(
-                                    ", ",
-                                  )}
-                                </strong>
-                                .
-                              </p>
-                            )}
-                            <p className="product-field-hint">
-                              Код не выполнялся. Проверка не меняет оценку
-                              освоения навыков.
-                            </p>
-                          </div>
-                        )}
+                        <MilestoneEditor
+                          key={`${user.id}.${current.id}.${milestone.id}`}
+                          userId={user.id}
+                          project={current}
+                          milestone={milestone}
+                          busy={busy || loadBusy}
+                          setBusy={setBusy}
+                          onSubmitted={recordSubmission}
+                          onNext={goToMilestone}
+                        />
                       </div>
                     </details>
                   ))}
@@ -503,7 +760,7 @@ export default function ProjectsPage() {
                     key={`portfolio.${current.id}`}
                     onSubmit={savePortfolio}
                   >
-                    <fieldset disabled={busy}>
+                    <fieldset disabled={busy || loadBusy}>
                       <div className="product-form-columns">
                         <label>
                           Название проекта
@@ -554,7 +811,7 @@ export default function ProjectsPage() {
                       </label>
                     </fieldset>
                     <div className="product-action-row">
-                      <button className="button" disabled={busy}>
+                      <button className="button" disabled={busy || loadBusy}>
                         {busy ? "Сохраняем…" : "Сохранить портфолио"}
                       </button>
                       {current.portfolio?.published &&
@@ -582,14 +839,16 @@ export default function ProjectsPage() {
                   </p>
                   <button
                     className="button product-danger-button"
-                    disabled={busy}
+                    disabled={busy || loadBusy}
                     onClick={() =>
                       void action(async () => {
                         await api<void>(
                           `/projects/${encodeURIComponent(current.id)}`,
                           { method: "DELETE" },
                         );
+                        clearProjectDrafts(user.id, current.id);
                         setCurrent(null);
+                        rememberProject(null);
                         await load();
                         setStatus("Проект удалён.");
                       })
@@ -646,7 +905,7 @@ export default function ProjectsPage() {
                     </p>
                     <button
                       className="button button-secondary"
-                      disabled={busy}
+                      disabled={busy || loadBusy}
                       onClick={() => createProject(template)}
                     >
                       Создать проект <span aria-hidden="true">→</span>

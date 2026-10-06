@@ -439,3 +439,44 @@ def test_parallel_account_token_consumption_is_single_use(postgres_engine, sandb
         futures = [executor.submit(consume) for _ in range(2)]
         statuses = [future.result(timeout=30) for future in futures]
     assert sorted(statuses) == [200, 400]
+
+
+def test_progress_calendar_uses_device_offset_not_postgres_connection_timezone(postgres_engine, sandbox):
+    """Exercise the actual timestamptz + interval day aggregation on PostgreSQL."""
+    from app.study_progress import CourseView, _period_counts
+    from datetime import date
+
+    now = datetime(2026, 10, 6, 0, 30, tzinfo=timezone.utc)
+    start = datetime(2026, 10, 4, 21, 0, tzinfo=timezone.utc)
+    dates = [date(2026, 10, 5), date(2026, 10, 6)]
+    with sessionmaker(bind=postgres_engine, autoflush=False)() as db:
+        user = db.get(User, sandbox.user_id)
+        db.add_all([
+            KnowledgeCheckAttempt(user_id=user.id, exercise_version_id=sandbox.exercise_version_id,
+                lesson_id=sandbox.exercise_id, skill_id=sandbox.skill_id, score=0.0, passed=False,
+                created_at=datetime(2026, 10, 5, 20, 30, tzinfo=timezone.utc)),
+            KnowledgeCheckAttempt(user_id=user.id, exercise_version_id=sandbox.exercise_version_id,
+                lesson_id=sandbox.exercise_id, skill_id=sandbox.skill_id, score=1.0, passed=True,
+                created_at=datetime(2026, 10, 5, 21, 30, tzinfo=timezone.utc)),
+            KnowledgeCheckAttempt(user_id=user.id, exercise_version_id=sandbox.exercise_version_id,
+                lesson_id=sandbox.exercise_id, skill_id=sandbox.skill_id, score=1.0, passed=True,
+                created_at=datetime(2026, 10, 6, 1, 0, tzinfo=timezone.utc)),
+        ])
+        db.flush()
+        for connection_timezone in ("UTC", "Pacific/Honolulu"):
+            db.execute(text(f"SET LOCAL TIME ZONE '{connection_timezone}'"))
+            calendar = {day: {"date": day, "activity_count": 0, "lessons_completed": 0,
+                "coding_submissions": 0, "acquisition_observations": 0,
+                "independent_observations": 0, "assisted_observations": 0,
+                "review_observations": 0} for day in dates}
+            counts = _period_counts(db, user, start, now, 180, calendar)
+            assert counts["active_days"] == 2
+            assert counts["checks_attempted"] == 2 and counts["checks_passed"] == 1
+            assert counts["acquisition_observations"] == counts["review_observations"] == 0
+            assert [calendar[day]["activity_count"] for day in dates] == [1, 1]
+            # Exact-publication tuple lookups and the same readiness projection
+            # must also run on this dialect without generating lesson bindings.
+            course = CourseView(db, user, now)
+            assert len(course.lessons) == 90
+            assert course.next is not None
+        db.rollback()

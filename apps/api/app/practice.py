@@ -5,13 +5,13 @@ from time import monotonic
 from uuid import UUID
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import csrf_protected, current_auth
-from app.db.models import AuthSession, CodingAttempt, SubmissionResult, User
+from app.db.models import AuthSession, CodingAttempt, ExerciseVersion, SubmissionResult, User
 from app.db.session import get_db
 from app.learning import (
     _lesson_session_version,
@@ -44,6 +44,19 @@ class AttemptResponse(BaseModel):
     status: str
     result: dict
     created_at: datetime
+
+class AttemptSourceResponse(BaseModel):
+    """Only the owner's saved text and its verified public version number."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    attempt_id: UUID
+    exercise_id: str
+    exercise_version: int | None
+    source_code: str
+    language: str
+    mode: str
+    created_at: datetime
+    version_verified: bool
 
 def _rate_limit(user_id: UUID) -> None:
     now = monotonic(); key = str(user_id)
@@ -193,6 +206,42 @@ def _unavailable_result(message: str) -> RunnerResult:
         tests_total=0,
         timeout=False,
         resource_violation=False,
+    )
+
+
+@router.get("/attempts/{attempt_id}/source", response_model=AttemptSourceResponse)
+def attempt_source(
+    attempt_id: UUID,
+    response: Response,
+    auth: tuple[User, AuthSession] = Depends(current_auth),
+    db: Session = Depends(get_db),
+):
+    # Ownership is checked before any version lookup. Recovering saved code
+    # neither needs current lesson access nor resolves/publishes an exercise.
+    attempt = db.scalar(
+        select(CodingAttempt).where(
+            CodingAttempt.id == attempt_id,
+            CodingAttempt.user_id == auth[0].id,
+        )
+    )
+    if attempt is None:
+        raise HTTPException(404, "Attempt not found")
+    version = (
+        db.get(ExerciseVersion, attempt.exercise_version_id)
+        if attempt.exercise_version_id is not None
+        else None
+    )
+    verified = version is not None and version.exercise_id == attempt.exercise_id
+    response.headers["Cache-Control"] = "no-store"
+    return AttemptSourceResponse(
+        attempt_id=attempt.id,
+        exercise_id=attempt.exercise_id,
+        exercise_version=version.version if verified else None,
+        source_code=attempt.source_code,
+        language=attempt.language,
+        mode=attempt.mode,
+        created_at=attempt.created_at,
+        version_verified=verified,
     )
 
 

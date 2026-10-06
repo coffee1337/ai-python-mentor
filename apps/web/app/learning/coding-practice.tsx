@@ -3,13 +3,13 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api, errorMessage, newRequestId } from "../lib/api";
 import RichText from "./rich-text";
 import LessonPractice, { SOURCE_LIMIT } from "./lesson-practice";
-import AttemptHistory from "./attempt-history";
+import AttemptHistory, { type AttemptSource } from "./attempt-history";
 import HintLadder from "./hint-ladder";
 import type { Attempt } from "./lesson-types";
 type CodingSpec = {
   exercise_id: string;
   lesson_id: string;
-  version: number | string;
+  version: number;
   prompt: string;
   starter_code: string;
   function_name: string;
@@ -32,6 +32,9 @@ type Job = {
   result: Attempt["result"] | null;
 };
 type Submission = { key: string; source: string };
+type DraftBackup = { key: string; source: string };
+const CODE_LANGUAGE = "python";
+const CODE_MODE = "function";
 const ACTIVE = new Set(["queued", "running"]);
 const LABELS: Record<string, string> = {
   queued: "В очереди",
@@ -69,66 +72,120 @@ export default function CodingPractice({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [historyError, setHistoryError] = useState("");
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [draftBackup, setDraftBackup] = useState<DraftBackup | null>(null);
+  const [restoreMessage, setRestoreMessage] = useState("");
+  const [restoreError, setRestoreError] = useState("");
+  const [focusRequest, setFocusRequest] = useState(0);
   const [pollStopped, setPollStopped] = useState(false);
   const requestInFlight = useRef(false);
+  const historyRequest = useRef(0);
+  const practiceRef = useRef<HTMLElement>(null);
   const draftKey = spec
     ? `mentor.lesson.draft.v2.${userId}.${spec.exercise_id}.${spec.version}`
     : null;
 
-  const history = useCallback(async (exerciseId: string) => {
+  const history = useCallback(async (exerciseId: string, signal?: AbortSignal) => {
+    const request = ++historyRequest.current;
+    setHistoryLoading(true);
     try {
-      setAttempts(
-        await api<Attempt[]>(
-          `/learning/exercises/${encodeURIComponent(exerciseId)}/attempts`,
-        ),
+      const next = await api<Attempt[]>(
+        `/learning/exercises/${encodeURIComponent(exerciseId)}/attempts`,
+        { signal },
       );
+      if (signal?.aborted || request !== historyRequest.current) return;
+      setAttempts(next);
       setHistoryError("");
     } catch (reason) {
-      setHistoryError(errorMessage(reason));
+      if (!signal?.aborted && request === historyRequest.current)
+        setHistoryError(errorMessage(reason));
+    } finally {
+      if (!signal?.aborted && request === historyRequest.current)
+        setHistoryLoading(false);
     }
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
+    ++historyRequest.current;
     setLoading(true);
     setError("");
+    setSpec(null);
+    setAttempts([]);
+    setJob(null);
+    setPending(null);
+    setCapabilities(null);
+    setHistoryError("");
+    setHistoryLoading(false);
+    setDraftBackup(null);
+    setRestoreMessage("");
+    setRestoreError("");
+    setFocusRequest(0);
     try {
       const nextSpec = await api<CodingSpec>(
         `/learning/exercises/${encodeURIComponent(lessonId)}/coding-specification`,
+        { signal },
       );
+      if (signal?.aborted) return;
       setSpec(nextSpec);
       const key = `mentor.lesson.draft.v2.${userId}.${nextSpec.exercise_id}.${nextSpec.version}`;
       let draft: string | null = null;
+      let backup: string | null = null;
       try {
         draft = window.localStorage.getItem(key);
+        backup = window.localStorage.getItem(`${key}.backup`);
+        if (backup !== null && backup.length > SOURCE_LIMIT) {
+          backup = null;
+          window.localStorage.removeItem(`${key}.backup`);
+        }
       } catch {
         /* Storage is optional. */
       }
+      setDraftBackup(backup !== null ? { key, source: backup } : null);
       setSource(
         draft !== null && draft.length <= SOURCE_LIMIT
           ? draft
           : nextSpec.starter_code,
       );
-      await history(nextSpec.exercise_id);
+      await history(nextSpec.exercise_id, signal);
+      if (signal?.aborted) return;
       try {
-        setCapabilities(
-          await api<Capabilities>("/learning/execution-capabilities"),
+        const nextCapabilities = await api<Capabilities>(
+          "/learning/execution-capabilities",
+          { signal },
         );
+        if (!signal?.aborted) setCapabilities(nextCapabilities);
       } catch {
-        setCapabilities(null);
+        if (!signal?.aborted) setCapabilities(null);
       }
     } catch (reason) {
+      if (signal?.aborted) return;
       setError(
         reason instanceof ApiError && reason.status === 404
           ? "Для этого урока отдельное задание с кодом пока не опубликовано. Можно выполнить практику из материала и объяснить решение своими словами."
           : errorMessage(reason),
       );
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [history, lessonId, userId]);
   useEffect(() => {
-    void load();
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => {
+      controller.abort();
+      ++historyRequest.current;
+    };
   }, [load]);
+
+  useEffect(() => {
+    if (!focusRequest) return;
+    const frame = window.requestAnimationFrame(() => {
+      practiceRef.current
+        ?.querySelector<HTMLElement>("#source-code .cm-content")
+        ?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusRequest]);
 
   useEffect(() => {
     if (!job || !ACTIVE.has(job.status) || pollStopped) return;
@@ -167,6 +224,7 @@ export default function CodingPractice({
   }, [job?.id, job?.status, pollStopped, history]);
 
   function changeSource(value: string) {
+    if (value.length > SOURCE_LIMIT) return;
     setSource(value);
     if (draftKey)
       try {
@@ -174,6 +232,51 @@ export default function CodingPractice({
       } catch {
         /* Storage is optional. */
       }
+  }
+
+  function preserveDraftBeforeReplacement(): boolean {
+    if (!draftKey || source.length > SOURCE_LIMIT) return false;
+    try {
+      window.localStorage.setItem(`${draftKey}.backup`, source);
+    } catch {
+      setRestoreError(
+        "Не удалось сохранить предыдущий черновик в браузере. Замена отменена, текущий код остался в редакторе. Проверьте доступ к локальному хранилищу и повторите действие.",
+      );
+      setRestoreMessage("");
+      return false;
+    }
+    setDraftBackup({ key: draftKey, source });
+    setRestoreError("");
+    return true;
+  }
+
+  function restoreAttempt(attempt: AttemptSource): boolean {
+    if (
+      !spec || !draftKey || busy || pending || (job && ACTIVE.has(job.status)) ||
+      !attempt.version_verified || attempt.exercise_id !== spec.exercise_id ||
+      attempt.exercise_version !== spec.version || attempt.language !== CODE_LANGUAGE ||
+      attempt.mode !== CODE_MODE || attempt.source_code.length > SOURCE_LIMIT
+    ) return false;
+    if (source !== attempt.source_code && !preserveDraftBeforeReplacement())
+      return false;
+    changeSource(attempt.source_code);
+    setRestoreError("");
+    setRestoreMessage("Код восстановлен в редакторе. Сохраните новую попытку, когда будете готовы.");
+    setFocusRequest((value) => value + 1);
+    return true;
+  }
+
+  function restorePreviousDraft() {
+    if (
+      !draftBackup || draftBackup.key !== draftKey || busy || pending ||
+      (job && ACTIVE.has(job.status))
+    ) return;
+    // Swap the two drafts so restoring the backup also preserves later edits.
+    const previous = draftBackup.source;
+    if (!preserveDraftBeforeReplacement()) return;
+    changeSource(previous);
+    setRestoreMessage("Предыдущий черновик возвращён в редактор. Заменённый текст доступен ниже.");
+    setFocusRequest((value) => value + 1);
   }
 
   async function send(submission: Submission) {
@@ -188,8 +291,8 @@ export default function CodingPractice({
           method: "POST",
           headers: { "Idempotency-Key": submission.key },
           body: JSON.stringify({
-            language: "python",
-            mode: "function",
+            language: CODE_LANGUAGE,
+            mode: CODE_MODE,
             source_code: submission.source,
           }),
         },
@@ -229,6 +332,7 @@ export default function CodingPractice({
 
   return (
     <section
+      ref={practiceRef}
       className="lesson-subsection"
       aria-labelledby="coding-task-heading"
       aria-busy={loading || busy}
@@ -287,6 +391,29 @@ export default function CodingPractice({
             disabled={!!pending || (!!job && ACTIVE.has(job.status))}
             executionConfigured={capabilities?.configured ?? false}
           />
+          {restoreMessage && <p role="status">{restoreMessage}</p>}
+          {restoreError && <p className="form-error" role="alert">{restoreError}</p>}
+          {draftBackup && draftBackup.key === draftKey && (
+            <details className="lesson-detail">
+              <summary>Предыдущий черновик</summary>
+              <p className="muted">
+                Сохранён до замены кода в этом браузере и доступен при повторном
+                открытии урока. При возврате текущий код останется здесь как
+                предыдущий черновик. Выход из аккаунта удаляет локальные черновики.
+              </p>
+              <pre className="attempt-source-preview" tabIndex={0} aria-label="Предыдущий черновик кода">
+                <code>{draftBackup.source}</code>
+              </pre>
+              <button
+                className="text-button"
+                type="button"
+                disabled={busy || !!pending || (!!job && ACTIVE.has(job.status))}
+                onClick={restorePreviousDraft}
+              >
+                Вернуть предыдущий черновик
+              </button>
+            </details>
+          )}
           {job && (
             <div className="review-result" role="status">
               <strong>{LABELS[job.status] ?? "Статус задания обновлён"}</strong>
@@ -322,22 +449,39 @@ export default function CodingPractice({
               </button>
             </p>
           )}
-          {historyError ? (
-            <div role="alert">
-              <p>{historyError}</p>
-              <button
-                className="text-button"
-                onClick={() => void history(spec.exercise_id)}
-              >
-                Обновить историю
-              </button>
-            </div>
-          ) : (
-            <details className="lesson-detail">
-              <summary>История попыток ({attempts.length})</summary>
-              <AttemptHistory attempts={attempts} />
-            </details>
-          )}
+          <details className="lesson-detail">
+            <summary>История попыток ({attempts.length})</summary>
+            {historyLoading && <p role="status">Обновляем историю попыток…</p>}
+            {historyError && (
+              <div role="alert">
+                <p className="form-error">{historyError}</p>
+                <button
+                  className="text-button"
+                  type="button"
+                  disabled={historyLoading}
+                  onClick={() => void history(spec.exercise_id)}
+                >
+                  Обновить историю
+                </button>
+              </div>
+            )}
+            {(!historyLoading || attempts.length > 0) && (!historyError || attempts.length > 0) && (
+              <AttemptHistory
+                key={draftKey}
+                attempts={attempts}
+                currentSource={source}
+                restoreTarget={{
+                  exercise_id: spec.exercise_id,
+                  version: spec.version,
+                  language: CODE_LANGUAGE,
+                  mode: CODE_MODE,
+                  maxSourceLength: SOURCE_LIMIT,
+                }}
+                restoreDisabled={busy || !!pending || (!!job && ACTIVE.has(job.status))}
+                onRestore={restoreAttempt}
+              />
+            )}
+          </details>
         </>
       )}
       {error && (

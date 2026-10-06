@@ -1,5 +1,6 @@
 """Explainable vacancy matching from pasted text, without fetching untrusted URLs."""
 import re
+from datetime import datetime, timezone
 from uuid import UUID
 from urllib.parse import urlsplit
 
@@ -9,11 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import csrf_protected, current_auth
-from app.db.models import AuthSession, User, UserSkill
+from app.db.models import AuthSession, User
 from app.db.product_models import VacancyAnalysis, VacancyTarget
 from app.db.session import get_db
 from app.learning import require_onboarding
-from app.skill_graph import EDGES, SKILLS, seed_skill_graph
+from app.skill_graph import SKILLS, seed_skill_graph
 
 router = APIRouter(prefix="/vacancies", tags=["vacancies"])
 ANALYZER_VERSION = "authored-keywords-v1"
@@ -104,30 +105,43 @@ def _owned(db, user, vacancy_id):
 
 
 def _roadmap(db: Session, user: User, requirements: list[dict]) -> list[dict]:
-    from app.prerequisites import prerequisite_state
-    rows = {row.skill_id: row for row in db.scalars(select(UserSkill).where(UserSkill.user_id == user.id))}
-    state = prerequisite_state(db, user.id)
+    from app.prerequisites import MASTERY_READINESS_THRESHOLD
+    from app.study_progress import CourseView
+    course = CourseView(db, user, datetime.now(timezone.utc))
+    rows = course.mastery
+    state = course.readiness
     target = {item["skill_id"] for item in requirements}
-    closure = set(target)
-    changed = True
-    while changed:
-        changed = False
-        for source, destination, relation in EDGES:
-            if relation == "prerequisite" and destination in closure and source not in closure:
-                closure.add(source)
-                changed = True
+    closure = target | {required for skill_id in target for required in state.required_skills(skill_id)}
     result = []
+    # Only active primary publications are destinations. Completion IDs already
+    # include publication replacements in the shared readiness policy.
+    lessons = {lesson["skill_id"]: lesson for lesson in course.lessons.values()}
     for skill in SKILLS:
         if skill["id"] not in closure:
             continue
         row = rows.get(skill["id"])
         observed = row is not None and row.evidence_count > 0
         score = (0.45 * row.independent_score + 0.35 * row.knowledge_score + 0.2 * row.practice_score) if observed else None
+        lesson = lessons.get(skill["id"])
+        lesson_status = None if lesson is None else course.status(lesson)
+        prerequisite = None
+        if lesson_status == "locked":
+            required = state.required_skills(skill["id"])
+            prerequisite = next((candidate for candidate in course.lessons.values()
+                                 if candidate["skill_id"] in required
+                                 and candidate["skill_id"] not in state.completed_primary_skills
+                                 and state.mastery.get(candidate["skill_id"], 0) < MASTERY_READINESS_THRESHOLD
+                                 and state.is_lesson_ready(candidate)), None)
         result.append({"skill_id": skill["id"], "name": skill["name"],
                        "inferred_prerequisite": skill["id"] not in target,
                        "observation": "observed" if observed else "not_assessed",
                        "mastery_signal": score, "gap": None if score is None else round(max(0, .75 - score), 4),
-                       "ready": state.is_skill_ready(skill["id"])})
+                       "ready": state.is_skill_ready(skill["id"]),
+                       "lesson_id": lesson["id"] if lesson else None,
+                       "lesson_title": lesson["title"] if lesson else None,
+                       "lesson_status": lesson_status,
+                       "prerequisite_lesson_id": prerequisite["id"] if prerequisite else None,
+                       "prerequisite_lesson_title": prerequisite["title"] if prerequisite else None})
     return result
 
 
@@ -156,8 +170,26 @@ def analyze(payload: VacancyRequest, auth: tuple[User, AuthSession] = Depends(cs
 
 @router.get("")
 def history(auth: tuple[User, AuthSession] = Depends(current_auth), db: Session = Depends(get_db)):
-    rows = db.scalars(select(VacancyAnalysis).where(VacancyAnalysis.user_id == auth[0].id).order_by(VacancyAnalysis.created_at.desc()).limit(50))
-    return [{"id": str(row.id), "title": row.title, "requirements_count": len(row.requirements), "created_at": row.created_at} for row in rows]
+    user = auth[0]
+    rows = list(db.scalars(select(VacancyAnalysis).where(VacancyAnalysis.user_id == user.id).order_by(VacancyAnalysis.created_at.desc(), VacancyAnalysis.id.desc()).limit(50)))
+    target = db.get(VacancyTarget, user.id)
+    selected = None if target is None else db.scalar(select(VacancyAnalysis).where(
+        VacancyAnalysis.id == target.vacancy_id, VacancyAnalysis.user_id == user.id,
+    ))
+    if selected is not None and all(row.id != selected.id for row in rows):
+        rows.append(selected)
+    return [{"id": str(row.id), "title": row.title, "requirements_count": len(row.requirements),
+             "selected": selected is not None and selected.id == row.id,
+             "created_at": row.created_at} for row in rows]
+
+
+@router.get("/current")
+def current_target(auth: tuple[User, AuthSession] = Depends(current_auth), db: Session = Depends(get_db)):
+    target = db.get(VacancyTarget, auth[0].id)
+    row = None if target is None else db.scalar(select(VacancyAnalysis).where(
+        VacancyAnalysis.id == target.vacancy_id, VacancyAnalysis.user_id == auth[0].id,
+    ))
+    return {"selected": False} if row is None else _response(db, auth[0], row)
 
 
 @router.get("/{vacancy_id}")

@@ -24,6 +24,20 @@ import type {
   MistakeMemory,
   PathSummary,
 } from "./lesson-types";
+
+type LessonFlowDraft = { step: 1 | 2 | 3; answers: Record<string, string> };
+function flowDraftKey(userId: string, lesson: Lesson) {
+  return `mentor.lesson.draft.v3.${userId}.${lesson.id}.${lesson.version ?? "legacy"}.flow`;
+}
+function readFlowDraft(key: string): LessonFlowDraft | null {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw || raw.length > 12000) return null;
+    const value = JSON.parse(raw);
+    if (![1, 2, 3].includes(value?.step) || !value.answers || typeof value.answers !== "object" || Array.isArray(value.answers)) return null;
+    return { step: value.step, answers: value.answers };
+  } catch { return null; }
+}
 export default function LearningPage() {
   const router = useRouter();
   const {
@@ -53,6 +67,8 @@ export default function LearningPage() {
   const [curriculumError, setCurriculumError] = useState("");
   const [plansLoading, setPlansLoading] = useState(true);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const [flowReady, setFlowReady] = useState(false);
+  const [flowRestored, setFlowRestored] = useState(false);
 
   function goToStep(next: 1 | 2 | 3) {
     setStep(next);
@@ -79,17 +95,20 @@ export default function LearningPage() {
     setPlansLoading(false);
   }, []);
 
-  const loadCheck = useCallback(async (lessonId: string) => {
+  const loadCheck = useCallback(async (lessonId: string, draftAnswers: Record<string, string> = {}) => {
     setChecksLoading(true);
     setCheckError("");
     try {
-      setChecks(
-        await api<CheckQuestion[]>(
+      const nextChecks = await api<CheckQuestion[]>(
           `/learning/lessons/${encodeURIComponent(lessonId)}/knowledge-check`,
-        ),
       );
+      setChecks(nextChecks);
       setCheckResult(null);
-      setAnswers({});
+      // Only unanswered choices matching the current public question are restored.
+      // Completion, correctness and hint attribution always come from the server.
+      setAnswers(Object.fromEntries(nextChecks
+        .filter((question) => typeof draftAnswers[question.id] === "string" && question.choices.includes(draftAnswers[question.id]))
+        .map((question) => [question.id, draftAnswers[question.id]])));
       setCheckNeedsReload(false);
     } catch (reason) {
       setCheckError(errorMessage(reason));
@@ -112,7 +131,10 @@ export default function LearningPage() {
   }, []);
 
   const load = useCallback(async () => {
+    if (!user) return;
     setLoading(true);
+    setFlowReady(false);
+    setFlowRestored(false);
     setError("");
     try {
       const nextPath = await api<PathSummary>("/learning/path");
@@ -126,12 +148,16 @@ export default function LearningPage() {
       );
       setPath(nextPath);
       setLesson(nextLesson);
-      setStep(1);
-      if (nextLesson) await loadCheck(nextLesson.id);
+      const draft = nextLesson ? readFlowDraft(flowDraftKey(user.id, nextLesson)) : null;
+      setStep(draft?.step ?? 1);
+      if (nextLesson) await loadCheck(nextLesson.id, draft?.answers);
       else {
         setChecks([]);
         setCheckResult(null);
+        setAnswers({});
       }
+      setFlowRestored(!!draft && (draft.step !== 1 || Object.keys(draft.answers).length > 0));
+      setFlowReady(true);
       void refreshPlans();
     } catch (reason) {
       if (isUnauthorized(reason)) router.replace("/auth");
@@ -139,7 +165,7 @@ export default function LearningPage() {
     } finally {
       setLoading(false);
     }
-  }, [loadCheck, refreshPlans, router]);
+  }, [user, loadCheck, refreshPlans, router]);
 
   useEffect(() => {
     if (user) {
@@ -150,6 +176,14 @@ export default function LearningPage() {
   useEffect(() => {
     if (!loading && lesson) headingRef.current?.focus();
   }, [loading, lesson]);
+  useEffect(() => {
+    if (!user || !lesson || !flowReady || loading || checksLoading || checkNeedsReload) return;
+    try {
+      const draft: LessonFlowDraft = { step, answers: checkResult ? {} : answers };
+      const serialized = JSON.stringify(draft);
+      if (serialized.length <= 12000) window.localStorage.setItem(flowDraftKey(user.id, lesson), serialized);
+    } catch { /* Optional browser storage must never prevent learning. */ }
+  }, [user, lesson, flowReady, loading, checksLoading, checkNeedsReload, step, answers, checkResult]);
 
   async function afterReview() {
     await Promise.allSettled([refreshPlans(), loadMistakes()]);
@@ -177,6 +211,10 @@ export default function LearningPage() {
     } catch (reason) {
       setCheckError(errorMessage(reason));
       setCheckNeedsReload(reason instanceof ApiError && reason.status === 409);
+      if (reason instanceof ApiError && reason.status === 409) {
+        setAnswers({});
+        try { window.localStorage.removeItem(flowDraftKey(user!.id, lesson)); } catch { /* Optional storage. */ }
+      }
     } finally {
       setBusy(false);
     }
@@ -254,6 +292,12 @@ export default function LearningPage() {
               раньше. После её завершения маршрут подберёт следующий шаг.
             </p>
           </div>
+        )}
+        {flowRestored && !loading && lesson && (
+          <p className="lesson-draft-note" role="status">
+            Восстановлен шаг урока и черновик выбранных ответов на этом устройстве.
+            Результат проверки появится после отправки ответов.
+          </p>
         )}
         {user && (
           <>
@@ -602,7 +646,7 @@ export default function LearningPage() {
                               </span>
                               <span>
                                 {item.kind === "review" ? (
-                                  <a href="#reviews-today">
+                                  <a href="/learning/reviews">
                                     Открыть повторение
                                   </a>
                                 ) : item.lesson_id ? (

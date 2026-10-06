@@ -57,6 +57,8 @@ export default function CoursePath({
   const [error, setError] = useState("");
   const [requestNumber, setRequestNumber] = useState(0);
   const [activePhase, setActivePhase] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<LessonStatus | "all">("all");
   const compact = variant === "dashboard";
 
   useEffect(() => {
@@ -136,7 +138,9 @@ export default function CoursePath({
   );
   const visibleLessons =
     path?.lessons.filter(
-      (lesson) => activePhase === null || (lesson.phase ?? 0) === activePhase,
+      (lesson) => (activePhase === null || (lesson.phase ?? 0) === activePhase)
+        && (statusFilter === "all" || lesson.status === statusFilter)
+        && lesson.title.toLocaleLowerCase("ru-RU").includes(query.trim().toLocaleLowerCase("ru-RU")),
     ) ?? [];
 
   return (
@@ -371,10 +375,30 @@ export default function CoursePath({
                   </div>
                   <span className="badge">{visibleLessons.length} уроков</span>
                 </div>
+                <div className="course-search-controls settings-form">
+                  <label htmlFor="course-search">Найти урок
+                    <input id="course-search" type="search" value={query}
+                      placeholder="Например, функции или базы данных"
+                      onChange={(event) => { setQuery(event.target.value); setActivePhase(null); }} />
+                  </label>
+                  <div>
+                    <label htmlFor="course-status">Статус урока</label>
+                    <select id="course-status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as LessonStatus | "all")}>
+                      <option value="all">Все статусы</option>
+                      <option value="available">Доступные</option>
+                      <option value="completed">Пройденные</option>
+                      <option value="locked">Откроются позже</option>
+                    </select>
+                  </div>
+                </div>
+                <p className="muted" role="status">Найдено уроков: {visibleLessons.length}.</p>
                 {visibleLessons.length === 0 ? (
-                  <p className="empty-state">
-                    В этом этапе пока нет опубликованных уроков.
+                  <div className="empty-state">
+                  <p>
+                    По этим условиям уроки не найдены. Попробуйте другое название или статус.
                   </p>
+                  <button type="button" className="button-secondary" onClick={() => { setQuery(""); setStatusFilter("all"); setActivePhase(null); }}>Сбросить фильтры</button>
+                  </div>
                 ) : (
                   <ol className="course-path-list">
                     {visibleLessons.map((lesson) => (

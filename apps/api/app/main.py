@@ -27,6 +27,7 @@ from app.projects import router as projects_router
 from app.generated_practice import router as generated_practice_router
 from app.jobs_api import router as jobs_router
 from app.health_api import router as health_router
+from app.study_progress import router as study_progress_router
 from app.http_limits import RequestSizeLimit
 from app.db.session import engine
 
@@ -68,6 +69,7 @@ app.include_router(projects_router)
 app.include_router(generated_practice_router)
 app.include_router(jobs_router)
 app.include_router(health_router)
+app.include_router(study_progress_router)
 
 
 def report_gateway_status() -> None:
