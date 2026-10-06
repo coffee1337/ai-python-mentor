@@ -86,6 +86,18 @@ def main() -> None:
         shutil.rmtree(invalid_venv)  # Only the disposable fixture created above.
         print("PASS: incomplete existing venv is preserved and reported")
 
+        python311 = env.get("STARTUP_TEST_PYTHON311")
+        if python311:
+            subprocess.run([python311, "-m", "venv", str(invalid_venv)], check=True, timeout=60)
+            run(launch(api_script, "-UseSqlite", "-PrepareOnly"), cwd=work, env=env,
+                success=False, contains="does not use Python 3.12")
+            assert (invalid_venv / "Scripts" / "python.exe").is_file() and not database.exists()
+            shutil.rmtree(invalid_venv)
+            run(launch(api_script, "-PythonPath", python311, "-UseSqlite", "-PrepareOnly"),
+                cwd=work, env=env, success=False, contains="Python 3.12 was not found")
+            assert not invalid_venv.exists() and not database.exists()
+            print("PASS: actual Python 3.11 is rejected both as an existing venv and as a bootstrap interpreter")
+
         requirements = api / "requirements.lock"
         locked = requirements.read_bytes()
         requirements.write_text("mentor-startup-test-nonexistent-package==0.0.0\n", encoding="ascii")
@@ -112,9 +124,20 @@ def main() -> None:
 
         run(launch(api_script, "-SkipInstall", "-UseSqlite", "-PrepareOnly"), cwd=work,
             env=env, success=True, contains="API environment and schema are ready")
+        expected_revision = subprocess.check_output([
+            str(api / ".venv" / "Scripts" / "python.exe"), "-m", "alembic", "heads",
+        ], cwd=api, env=env, text=True).split()[0]
         with sqlite3.connect(database) as connection:
-            assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0].startswith("0037_")
+            assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == expected_revision
         print("PASS: explicit SQLite selection applies all migrations under a project path containing spaces")
+
+        failing_npm = work / "failed npm"
+        failing_npm.mkdir()
+        (failing_npm / "npm.cmd").write_text("@exit /b 17\n", encoding="ascii")
+        run(launch(ROOT / "scripts" / "start-web.ps1", "-PrepareOnly"), cwd=work,
+            env={**env, "PATH": str(failing_npm) + os.pathsep + env["PATH"]},
+            success=False, contains="npm ci failed. Frontend was not started")
+        print("PASS: failed npm installation stops before frontend startup")
 
         run(launch(ROOT / "scripts" / "start-web.ps1", "-PrepareOnly"), cwd=work, env=env,
             success=True, contains="Frontend dependencies and local API proxy configuration are ready")

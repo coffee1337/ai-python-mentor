@@ -168,6 +168,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
+        id: python311
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
@@ -180,3 +184,5 @@ jobs:
       # The test itself invokes Windows PowerShell 5.1, creates a venv,
       # installs both lockfiles and starts the real API and Next.js proxy.
       - run: python scripts/check-windows-startup.py
+        env:
+          STARTUP_TEST_PYTHON311: ${{ steps.python311.outputs.python-path }}
