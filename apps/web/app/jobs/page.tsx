@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import AppHeader from "../components/app-header";
 import { api, errorMessage } from "../lib/api";
 import { useUser } from "../lib/use-user";
+import { skillLabel } from "../learning/skill-labels";
 
 type VacancySummary = {
   id: string;
@@ -47,7 +48,7 @@ function RoadmapItem({
         {index + 1}
       </span>
       <div>
-        <strong>{step.name}</strong>
+        <strong>{skillLabel(step.skill_id)}</strong>
         <p>
           {step.inferred_prerequisite
             ? "Основа для следующих тем"
@@ -401,11 +402,7 @@ export default function JobsPage() {
                       {current.requirements.map((item, index) => (
                         <li key={`${item.skill_id}.${index}`}>
                           <div className="product-inline-heading">
-                            <strong>
-                              {current.roadmap.find(
-                                (step) => step.skill_id === item.skill_id,
-                              )?.name ?? item.skill_id}
-                            </strong>
+                            <strong>{skillLabel(item.skill_id)}</strong>
                             <span className="badge">{LEVELS[item.level]}</span>
                           </div>
                           <blockquote>{item.evidence}</blockquote>

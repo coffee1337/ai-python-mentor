@@ -298,6 +298,12 @@ test("beginner learns before questions and uses the personal workspace", async (
   await expect(page.locator(".jobs-roadmap-list > li:visible")).toHaveCount(
     Math.min(6, vacancy.roadmap.length),
   );
+  await expect(page.locator(".jobs-roadmap-list > li").first()).toContainText(
+    "Переменные",
+  );
+  await expect(page.locator(".jobs-roadmap-list > li").nth(2)).toContainText(
+    "Условия",
+  );
   if (vacancy.roadmap.length > 6) {
     const remainingTopics = page.locator(".jobs-roadmap-disclosure > summary");
     await remainingTopics.click();
