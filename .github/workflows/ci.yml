@@ -35,8 +35,60 @@ jobs:
         working-directory: apps/web
       - run: npm run lint
         working-directory: apps/web
+      - name: Rich text renderer regression
+        run: timeout 10s node ../../scripts/check-rich-text.cjs
+        working-directory: apps/web
       - run: npm run build
         working-directory: apps/web
+
+  browser:
+    name: Beginner journey and responsive browser UI
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # This file is disposable and belongs only to this job.
+      DATABASE_URL: sqlite:////tmp/mentor-browser-ci.sqlite3
+      APP_ENV: development
+      COOKIE_SECURE: "false"
+      WEB_ORIGINS: http://127.0.0.1:3000
+      NEXT_PUBLIC_API_URL: /api
+      API_INTERNAL_URL: http://127.0.0.1:8000
+      UI_ARTIFACT_DIR: ${{ github.workspace }}/scripts/ui-smoke/artifacts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/requirements.lock
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            apps/web/package-lock.json
+            scripts/ui-smoke/package-lock.json
+      - run: python -m pip install -r apps/api/requirements.lock
+      - run: python -m alembic upgrade head
+        working-directory: apps/api
+      - run: npm ci
+        working-directory: apps/web
+      - run: npm run build
+        working-directory: apps/web
+      # Playwright stays in a separate, pinned test-only package.
+      - run: npm ci
+        working-directory: scripts/ui-smoke
+      - run: npx playwright install --with-deps chromium
+        working-directory: scripts/ui-smoke
+      - run: npm test
+        working-directory: scripts/ui-smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-ui-desktop-mobile
+          path: scripts/ui-smoke/artifacts/
+          retention-days: 14
+          if-no-files-found: warn
 
   migrations:
     name: Migration round trip

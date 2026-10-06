@@ -1508,11 +1508,13 @@ validate_hint_ladders()
 
 # Publish corrections under new IDs; keep historical IDs available to bound flows.
 from app.completion_content import COMPLETION_LESSONS, COMPLETION_LADDERS
-from app.content_publication import corrected_lessons, corrected_ladders
-HISTORICAL_LESSONS = tuple(item for item in LESSONS if item["id"] in {"imports-v1", "fixtures-v1"})
-_replacements = {item["skill_id"]: item for item in corrected_lessons(LESSONS)}
+from app.content_publication import PUBLICATION_REPLACEMENTS, corrected_lessons, corrected_ladders
+from app.beginner_content import BEGINNER_LESSONS, BEGINNER_LADDERS
+HISTORICAL_LESSONS = tuple(item for item in LESSONS if item["id"] in PUBLICATION_REPLACEMENTS)
+_replacements = {item["skill_id"]: item for item in (*corrected_lessons(LESSONS), *BEGINNER_LESSONS)}
 LESSONS = tuple(_replacements.get(item["skill_id"], item) for item in LESSONS) + COMPLETION_LESSONS
 LESSONS_BY_ID = {item["id"]: item for item in (*HISTORICAL_LESSONS, *LESSONS)}
 EXERCISE_HINT_LADDERS.update(corrected_ladders(EXERCISE_HINT_LADDERS))
 EXERCISE_HINT_LADDERS.update(COMPLETION_LADDERS)
+EXERCISE_HINT_LADDERS.update(BEGINNER_LADDERS)
 validate_hint_ladders()

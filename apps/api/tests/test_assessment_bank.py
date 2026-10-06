@@ -154,7 +154,7 @@ def test_answer_never_reaches_the_client(client):
     assert '"answer"' not in first.text
     question = first.json()["question"]
     assert set(question) == {
-        "id", "skill_id", "difficulty", "prompt", "choices",
+        "id", "skill_id", "difficulty", "prompt", "choices", "code",
         "question_number", "total_questions",
     }
     answered = client.post(
@@ -169,7 +169,7 @@ def test_answer_never_reaches_the_client(client):
     assert body["state"]["question"] is not None
     # The next question is public too, and still carries no answer key.
     assert set(body["state"]["question"]) == {
-        "id", "skill_id", "difficulty", "prompt", "choices",
+        "id", "skill_id", "difficulty", "prompt", "choices", "code",
         "question_number", "total_questions",
     }
 

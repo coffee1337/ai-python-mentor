@@ -5,6 +5,7 @@ Next.js 15 / React 19, FastAPI, SQLAlchemy, Alembic и PostgreSQL. Модуль�
 ## Возможности
 
 - Cookie-сессии, Argon2, CSRF, onboarding, профиль и цель; подтверждение email, смена и одноразовый сброс пароля, отзыв сессий, экспорт и удаление аккаунта.
+- Старт с нуля без обязательной диагностики: объяснение первой программы, построчный разбор, словарь и практика после изучения необходимых основ.
 - 90 активных авторских уроков для всех 90 навыков, 3 backend-фазы, адаптивная диагностика, серверные quiz/knowledge checks, лестницы подсказок и отложенные повторения.
 - Immutable content snapshots и append-only evidence; отдельные показатели знаний, практики, самостоятельности и retention. Порядок вариантов ответа стабилен внутри серверной сессии и меняется между сессиями.
 - 90 отдельных Python-заданий `solve(payload)` с публичными примерами и закрытыми тестами. API сохраняет код и ставит задания в долговечную очередь; исполнение происходит на отдельном защищённом host.
@@ -70,6 +71,8 @@ cd ../web
 npm run lint
 npm run build
 ```
+
+Браузерный CI проверяет путь новичка и основные экраны при 1440×900 и 390×844. Снимки страниц и отчёт доступны в артефакте `browser-ui-desktop-mobile`. Дополнительная QA-зависимость Playwright изолирована в `scripts/ui-smoke`; в bundle приложения она не попадает.
 
 Из корня: `python -m unittest discover -s apps/runner/tests -v`. CI отдельно выполняет PostgreSQL migration round trip с sentinel-данными, `alembic check`, PG-specific tests, API tests, frontend types/build и worker policy/journal tests. Оркестрационные тесты worker не подтверждают фактическую изоляцию deployment host.
 

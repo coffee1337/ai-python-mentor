@@ -1,8 +1,7 @@
 "use client";
-
 import { FormEvent } from "react";
 import type { CheckQuestion, CheckResult } from "./lesson-types";
-
+import RichText, { InlineText } from "./rich-text";
 type KnowledgeCheckSectionProps = {
   questions: CheckQuestion[];
   answers: Record<string, string>;
@@ -13,15 +12,9 @@ type KnowledgeCheckSectionProps = {
   busy: boolean;
   loading?: boolean;
   error?: string;
+  reloadRequired?: boolean;
   onReload?: () => void;
 };
-
-/**
- * Authored knowledge check. Per the project invariant the server decides what is
- * correct, so this component only renders the verdict it was given and never
- * grades locally. The score is shown as a count of correct answers, not as a
- * mastery percentage: mastery is a model estimate, not a level of the learner.
- */
 export default function KnowledgeCheckSection({
   questions,
   answers,
@@ -32,91 +25,176 @@ export default function KnowledgeCheckSection({
   busy,
   loading = false,
   error = "",
+  reloadRequired = false,
   onReload,
 }: KnowledgeCheckSectionProps) {
-  if (loading || error) {
-    return <section aria-label="Проверка знаний"><h3>Проверка усвоения</h3>
-      {loading && <p role="status">Загружаем вопросы…</p>}
-      {error && <div role="alert"><p className="form-error">{error}</p><button className="text-button" type="button" disabled={loading} onClick={onReload}>Повторить загрузку вопросов</button></div>}
-    </section>;
-  }
-  if (questions.length === 0 && !result) {
-    return (
-      <section aria-label="Проверка знаний">
-        <h3>Проверка усвоения</h3>
-        <p role="status">
-          Для этого урока ещё нет вопросов. Проверка появится, когда наставник
-          опубликует вопросы.
-        </p>
-      </section>
-    );
-  }
-
-  if (result) {
-    const correctCount = result.explanations.filter((item) => item.correct === "true").length;
-    return (
-      <section aria-label="Проверка знаний">
-        <h3>Проверка усвоения</h3>
-        <p role="status">
-          Верных ответов: {correctCount} из {result.explanations.length}.{" "}
-          {result.passed
-            ? "Урок засчитан как пройденный."
-            : "Пока недостаточно правильных ответов."}
-        </p>
-        <ul>
-          {result.explanations.map((item) => (
-            <li key={item.question_id}>
-              {item.correct === "true" ? "Верно. " : "Ответ неверный. "}
-              {item.selected_explanation ?? item.explanation}
-            </li>
-          ))}
-        </ul>
-        <p className="muted">{result.recommendation}</p>
-        {!result.passed && (
-          <button type="button" className="text-button" onClick={onRetry} disabled={busy}>
-            Повторить проверку
-          </button>
-        )}
-        {result.passed && result.recommended_lesson_id && (
-          <p>
-            <a href={"/learning?lesson=" + encodeURIComponent(result.recommended_lesson_id)}>
-              Открыть следующий рекомендованный урок →
-            </a>
-          </p>
-        )}
-      </section>
-    );
-  }
-
+  const correctCount =
+    result?.explanations.filter((item) => item.correct === "true").length ?? 0;
   const incomplete = questions.some((question) => !answers[question.id]);
 
   return (
-    <section aria-label="Проверка знаний">
-      <h3>Проверка усвоения</h3>
-      <form onSubmit={onSubmit}>
-        {questions.map((question) => (
-          <fieldset key={question.id} disabled={busy}>
-            <legend>{question.prompt}</legend>
-            {question.choices.map((choice) => (
-              <label key={choice} className="knowledge-choice">
-                <input
-                  type="radio"
-                  name={question.id}
-                  value={choice}
-                  checked={answers[question.id] === choice}
-                  onChange={() => onAnswerChange(question.id, choice)}
-                  required
+    <section
+      className="knowledge-check"
+      aria-labelledby="knowledge-check-title"
+      aria-busy={loading || busy}
+    >
+      <p className="page-kicker">Шаг 2 · вопросы по уроку</p>
+      <h2 id="knowledge-check-title">Проверим понимание</h2>
+      <p className="muted">
+        Прочитайте вопрос и выберите один ответ. Объяснение можно открыть снова
+        в первом шаге. Ошибка покажет, что нужно разобрать подробнее, — это
+        часть обучения.
+      </p>
+      {loading && (
+        <p className="status-message" role="status">
+          Загружаем вопросы…
+        </p>
+      )}
+      {error && (
+        <div className="status-message" role="alert">
+          <p>{error}</p>
+          {(questions.length === 0 || reloadRequired) && (
+            <button
+              className="button-secondary"
+              type="button"
+              disabled={loading || busy}
+              onClick={onReload}
+            >
+              {reloadRequired
+                ? "Загрузить проверку заново"
+                : "Повторить загрузку вопросов"}
+            </button>
+          )}
+          {reloadRequired && (
+            <p className="muted">
+              Перед отправкой нужно загрузить проверку заново. После успешной
+              загрузки появится новая форма; выбранные варианты сбросятся.
+            </p>
+          )}
+        </div>
+      )}
+      {!loading && questions.length === 0 && !result && !error && (
+        <div className="empty-state">
+          <h3>Проверка пока не опубликована</h3>
+          <p>
+            Материал можно изучать, но завершение урока ещё не подтвердится.
+            Выберите другой доступный урок в маршруте.
+          </p>
+          <a href="/learning/path">Открыть учебный путь</a>
+        </div>
+      )}
+      {!loading && result && (
+        <div className="knowledge-result">
+          <div
+            className={
+              result.passed
+                ? "check-verdict check-verdict-passed"
+                : "check-verdict"
+            }
+            role="status"
+          >
+            <strong>
+              {result.passed ? "Урок пройден" : "Есть что разобрать ещё раз"}
+            </strong>
+            <p>
+              Верных ответов: {correctCount} из {result.explanations.length}.{" "}
+              {result.passed
+                ? "Завершение подтверждено проверкой на сервере."
+                : "Вернитесь к объяснению, затем попробуйте снова."}
+            </p>
+          </div>
+          <ol className="check-feedback">
+            {result.explanations.map((item, index) => (
+              <li key={item.question_id}>
+                <span className="badge">
+                  Вопрос {index + 1} ·{" "}
+                  {item.correct === "true" ? "Верно" : "Разберём ответ"}
+                </span>
+                <RichText
+                  text={item.selected_explanation ?? item.explanation}
                 />
-                {" "}
-                {choice}
-              </label>
+              </li>
             ))}
-          </fieldset>
-        ))}
-        <button type="submit" className="form-button" disabled={busy || incomplete}>
-          {busy ? "Проверяем…" : "Проверить усвоение"}
-        </button>
-      </form>
+          </ol>
+          <RichText text={result.recommendation} />
+          {!result.passed && (
+            <button
+              type="button"
+              className="button"
+              onClick={onRetry}
+              disabled={busy}
+            >
+              Попробовать ещё раз
+            </button>
+          )}
+          {result.passed && result.recommended_lesson_id && (
+            <a
+              className="button"
+              href={`/learning?lesson=${encodeURIComponent(result.recommended_lesson_id)}`}
+            >
+              Следующий рекомендованный урок →
+            </a>
+          )}
+        </div>
+      )}
+      {!loading && !result && questions.length > 0 && (
+        <form onSubmit={onSubmit} className="knowledge-check-form">
+          {questions.map((question, index) => (
+            <fieldset
+              className="knowledge-question"
+              key={question.id}
+              disabled={busy}
+            >
+              <legend>
+                <span className="question-number">
+                  Вопрос {index + 1} из {questions.length}
+                </span>
+                <InlineText text={question.prompt} />
+              </legend>
+              <div className="knowledge-choices">
+                {question.choices.map((choice) => (
+                  <label
+                    key={choice}
+                    className={
+                      answers[question.id] === choice
+                        ? "knowledge-choice knowledge-choice-selected"
+                        : "knowledge-choice"
+                    }
+                  >
+                    <input
+                      type="radio"
+                      name={question.id}
+                      value={choice}
+                      checked={answers[question.id] === choice}
+                      onChange={() => onAnswerChange(question.id, choice)}
+                      required
+                    />
+                    <span>
+                      <InlineText text={choice} />
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ))}
+          <div className="check-submit-row">
+            <button
+              type="submit"
+              className="button"
+              disabled={busy || incomplete || reloadRequired}
+            >
+              {busy ? "Проверяем ответы…" : "Проверить ответы"}
+            </button>
+            <p className="muted">
+              {reloadRequired
+                ? "Сначала загрузите проверку заново."
+                : incomplete
+                  ? "Выберите ответ на каждый вопрос."
+                  : "После отправки появится объяснение каждого ответа."}
+            </p>
+          </div>
+        </form>
+      )}
     </section>
   );
 }

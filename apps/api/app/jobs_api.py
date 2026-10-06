@@ -14,7 +14,7 @@ from app.auth import csrf_protected, current_auth
 from app.db.models import AuthSession, CodingAttempt, User
 from app.db.job_models import ExecutionJob
 from app.db.session import get_db
-from app.learning import require_onboarding
+from app.learning import coding_practice_ready, require_onboarding
 from app.practice import AttemptRequest, _persist_result_and_evidence, _unavailable_result
 from app.runner import PROTOCOL_VERSION, RunnerUnavailable, configuration
 
@@ -50,6 +50,8 @@ def capabilities(auth=Depends(current_auth)):
 def coding_specification(lesson_id: str, auth=Depends(current_auth), db: Session=Depends(get_db)):
     from app.coding_exercises import resolve_coding_exercise
     require_onboarding(auth[0])
+    if not coding_practice_ready(db, auth[0]):
+        raise HTTPException(409, "Сначала изучите функции, параметры, возврат значений и словари. Сейчас доступна практика чтения и проверка понимания.")
     contract, version = resolve_coding_exercise(db, auth[0], f"{lesson_id}-code")
     db.commit()
     return {"exercise_id": version.exercise_id, "lesson_id": contract["lesson_id"], "version": version.version,

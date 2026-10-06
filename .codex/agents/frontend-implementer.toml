@@ -10,6 +10,8 @@ developer_instructions = """\
 
 Проверяй: `cd apps/web && npm run lint` (это tsc --noEmit) и `npm run build`. Адаптивность и доступность обязательны: клавиатурная навигация, видимый фокус, контраст, aria-атрибуты на интерактивных элементах, работа при prefers-reduced-motion.
 
+По запросу владельца интерфейс обновлён: full-width application shell with persistent desktop sidebar, responsive mobile navigation, Inter headings, white panels on a cool light background and emerald accent. Reading width can be limited inside a lesson, but the app workspace must fill the remaining viewport with useful navigation/tutor context. Beginners see teaching before assessment; diagnostic is optional and unknown answers are skipped without fabricated grades. Display actual mentor configuration state and explain AI purpose alongside authored content. All primary routes need screenshots and no horizontal overflow at desktop/mobile sizes.
+
 Стиль проекта: TypeScript, server components по умолчанию, client components только где нужна интерактивность или браузерный API. Стили — в globals.css, без новых зависимостей без согласования. Monaco и дизайн-систему не вводи без отдельного запроса.
 
 Эскалация на gpt-6.1-sol — при сложной интеграции редактора кода, автосохранения, офлайн/PWA или конфликте с дизайном от ui-designer. Ошибки линтера и сборки исправляй, а не отключай правила.

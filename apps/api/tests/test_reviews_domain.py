@@ -47,11 +47,11 @@ def add_due_skill(c):
 
 def review_answers(correct=True):
     return {
-        "variables-output-v1": "6" if correct else "4",
-        "variables-reassignment-v1": (
-            "Увеличивает текущее значение x на 1"
+        "variables-text-v2": "Текст books" if correct else "Число из переменной books",
+        "variables-order-v2": (
+            "7"
             if correct
-            else "Создаёт вторую переменную x"
+            else "4"
         ),
     }
 

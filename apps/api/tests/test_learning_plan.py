@@ -20,20 +20,21 @@ def finish_assessment(c, answers=None):
         state=c.post("/assessment/answers",headers=headers,json={"question_id":q["id"],"answer":value}).json()["state"]
     return state
 
-def test_plan_requires_assessment_and_is_owned(client):
+def test_plan_is_available_before_optional_assessment_and_is_owned(client):
     assert client.get("/learning/plan").status_code == 401
     setup_user(client)
     pending=client.get("/learning/plan")
-    assert pending.status_code == 200 and pending.json()["status"] == "assessment_required"
+    assert pending.status_code == 200 and pending.json()["status"] == "ready"
+    assert pending.json()["learning_mode"] == "starter"
+    assert pending.json()["assessment_run_id"] is None
     finish_assessment(client, ["6", "float", "adult", "3"])
     plan=client.get("/learning/plan").json()
     assert plan["status"] == "ready"
     # The first recommendation is a prerequisite-ready course root; the bank now
-    # samples several early skills, so the plan starts data-types-v1 and
-    # variables-v1 stays available behind it.
-    assert plan["recommended_lesson_id"] in {"variables-v1", "data-types-v1"}
-    assert {item["lesson_id"] for item in plan["items"] if item["status"] != "locked"} >= {"variables-v1", "data-types-v1"}
-    assert {item["lesson_id"] for item in plan["items"]} >= {"variables-v1", "conditions-v1"}
+    # samples several early skills; the active replacements preserve readiness.
+    assert plan["recommended_lesson_id"] in {"variables-v2", "data-types-v2"}
+    assert {item["lesson_id"] for item in plan["items"] if item["status"] != "locked"} >= {"variables-v2", "data-types-v2"}
+    assert {item["lesson_id"] for item in plan["items"]} >= {"variables-v2", "conditions-v2"}
     assert all(
         item["status"] != "recommended"
         or item["lesson_id"] == plan["recommended_lesson_id"]
@@ -43,7 +44,7 @@ def test_plan_requires_assessment_and_is_owned(client):
     assert plan["skill_profile"]
     client.post("/auth/logout",headers={"X-CSRF-Token":csrf(client)})
     setup_user(client,"other-plan@example.com")
-    assert client.get("/learning/plan").json()["status"] == "assessment_required"
+    assert client.get("/learning/plan").json()["learning_mode"] == "starter"
 
 def _correct_choice(exercise_id, index):
     """Resolve the authored answer key from the immutable exercise snapshot.

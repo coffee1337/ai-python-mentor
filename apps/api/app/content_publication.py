@@ -1,6 +1,14 @@
 """New corrected publications; the original v1 authoring remains historical."""
 from copy import deepcopy
 
+# A publication alias transfers only the existing completion of the same
+# primary skill. It never rewrites the completion row or creates evidence.
+PUBLICATION_REPLACEMENTS = {
+    'imports-v1': 'imports-v2', 'fixtures-v1': 'fixtures-v2',
+    'variables-v1': 'variables-v2', 'data-types-v1': 'data-types-v2',
+    'conditions-v1': 'conditions-v2',
+}
+
 
 def corrected_lessons(lessons):
     originals = {lesson['id']: lesson for lesson in lessons}

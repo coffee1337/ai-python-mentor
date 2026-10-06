@@ -43,8 +43,8 @@ def add_due_skill() -> None:
 
 def review_answers() -> dict[str, str]:
     return {
-        "variables-output-v1": "6",
-        "variables-reassignment-v1": "Увеличивает текущее значение x на 1",
+        "variables-text-v2": "Текст books",
+        "variables-order-v2": "7",
     }
 
 

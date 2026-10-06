@@ -192,4 +192,24 @@ FALLBACK_TOLERANCE = 0.1
 
 QUESTIONS_BY_ID = {question["id"]: question for question in QUESTIONS}
 
+# The published one-line compound statements were not executable Python.
+# Keep their exact records for old runs, and publish distinct corrected IDs.
+_FORMATTED_REPLACEMENTS = {
+    "conditions-chain-v1": {
+        "id": "conditions-chain-formatted-v1",
+        "code": 'age = 18\nif age > 18:\n    print("adult")\nelse:\n    print("minor")',
+    },
+    "loops-accumulate-v1": {
+        "id": "loops-accumulate-formatted-v1",
+        "code": 'total = 0\nfor n in [1, 2, 3]:\n    total = total + n\nprint(total)',
+    },
+}
+HISTORICAL_QUESTIONS = tuple(question for question in QUESTIONS if question["id"] in _FORMATTED_REPLACEMENTS)
+QUESTIONS = tuple(
+    {**question, **_FORMATTED_REPLACEMENTS[question["id"]], "prompt": "Что выведет эта программа?"}
+    if question["id"] in _FORMATTED_REPLACEMENTS else question
+    for question in QUESTIONS
+)
+QUESTIONS_BY_ID.update({question["id"]: question for question in QUESTIONS})
+
 validate_bank(QUESTIONS)

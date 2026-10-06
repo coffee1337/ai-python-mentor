@@ -225,8 +225,9 @@ def submit_check(lesson_id:str,payload:AnswersRequest,auth:tuple[User,AuthSessio
         generate_personalized_plan(db, user, trigger="evidence")
     except Exception:
         db.rollback()
-    refreshed=plan_response(db,user) if assessment_run is not None else None
-    recommended=refreshed.recommended_lesson_id if refreshed else None
+    # A starter route is valid before the optional diagnostic, too.
+    refreshed=plan_response(db,user)
+    recommended=refreshed.recommended_lesson_id
     return CheckResponse(
         lesson_id=lesson_id,
         score=score,

@@ -1,16 +1,181 @@
-const steps = ["Основы Python", "Работа с данными", "Web и API", "Backend-проекты"];
+import AppIcon from "./components/app-icon";
+
+const stages = [
+  {
+    number: "01",
+    title: "Первые строки Python",
+    body: "Что такое программа, как читать код и зачем нужны переменные.",
+  },
+  {
+    number: "02",
+    title: "Уверенная база",
+    body: "Условия, циклы, функции и работа с данными — с понятными примерами.",
+  },
+  {
+    number: "03",
+    title: "Веб и backend",
+    body: "Как устроены сервер, запросы, API и базы данных.",
+  },
+  {
+    number: "04",
+    title: "Проектные этапы",
+    body: "Соберите изученное в проектах и сохраняйте результаты работы.",
+  },
+];
 
 export default function Home() {
   return (
-    <main className="shell">
-      <header className="topbar"><a className="brand" href="#home"><span className="brand-mark">↗</span> наставник<span className="brand-dot">.</span></a><span className="top-note">PYTHON BACKEND · ПУТЬ НАЧИНАЕТСЯ ЗДЕСЬ</span></header>
-      <section className="hero" id="home">
-        <div className="hero-copy"><span className="eyebrow"><i /> ВАШ ПЕРСОНАЛЬНЫЙ AI-НАСТАВНИК</span><h1>От первого<br/>шага — к <em>Backend.</em></h1><p className="lead">Учитесь программировать на Python в своём темпе. Понятные объяснения, практика и путь к вашим целям — шаг за шагом.</p><a className="primary-button" href="/auth">Начать обучение <span>↘</span></a><div className="micro-copy">Без гонки. С пониманием того, что вы пишете.</div></div>
-        <div className="visual" aria-label="Иллюстрация учебного маршрута"><div className="orb orb-one"/><div className="orb orb-two"/><div className="code-card"><div className="card-head"><span><b/> <b/> <b/></span><small>your_learning_path.py</small><span>•••</span></div><div className="code-lines"><p><span>01</span> <i># маленькие шаги, большой путь</i></p><p><span>02</span> <strong>goal</strong> = <em>"Python Backend"</em></p><p><span>03</span> <strong>while</strong> curious:</p><p><span>04</span> &nbsp;&nbsp;learn(<em>"something new"</em>)</p><p><span>05</span> &nbsp;&nbsp;build(<em>"real things"</em>)</p></div><div className="progress"><div><span>ВАШ МАРШРУТ</span><span>01 — 04</span></div><div className="progress-track"><i/></div></div></div><span className="float-label label-top">01 <b>ОСНОВА</b></span><span className="float-label label-bottom">✳ <b>ВАШ ТЕМП</b></span></div>
+    <main className="landing-shell">
+      <header className="landing-header">
+        <a className="brand" href="/">
+          <span className="brand-mark">
+            <AppIcon name="code" size={18} />
+          </span>
+          наставник<span className="brand-dot">.</span>
+        </a>
+        <nav aria-label="Навигация сайта">
+          <a href="#program">Программа</a>
+          <a href="#mentor">Как помогает AI</a>
+          <a className="button-secondary" href="/auth">
+            Войти <AppIcon name="arrow" size={16} />
+          </a>
+        </nav>
+      </header>
+      <section className="landing-hero">
+        <div className="landing-hero-copy">
+          <span className="landing-tag">
+            <span aria-hidden="true" /> PYTHON · ОТ НУЛЯ К BACKEND
+          </span>
+          <h1>
+            Первые строки кода.
+            <br />
+            <em>Понятный следующий шаг.</em>
+          </h1>
+          <p>
+            Научитесь программировать на Python: объяснение, пример, небольшое
+            задание. Персональный наставник поможет, когда что-то не
+            складывается.
+          </p>
+          <div className="landing-actions">
+            <a className="button" href="/auth">
+              Начать с нуля <AppIcon name="arrow" size={18} />
+            </a>
+            <a className="landing-secondary-link" href="#program">
+              Посмотреть программу
+            </a>
+          </div>
+          <div className="landing-reassurance">
+            <span>
+              <AppIcon name="check" size={16} /> Опыт не нужен
+            </span>
+            <span>
+              <AppIcon name="check" size={16} /> В вашем темпе
+            </span>
+            <span>
+              <AppIcon name="check" size={16} /> Практика после объяснения
+            </span>
+          </div>
+        </div>
+        <div
+          className="lesson-preview"
+          aria-label="Пример того, как устроен урок"
+        >
+          <div className="preview-heading">
+            <span className="preview-topic">
+              <AppIcon name="book" size={18} /> Первый урок
+            </span>
+            <span className="badge">ОСНОВЫ PYTHON</span>
+          </div>
+          <div className="preview-content">
+            <span className="page-kicker">СНАЧАЛА РАЗБЕРЁМСЯ</span>
+            <h2>Как программа говорит «Привет»</h2>
+            <p>
+              <code>print</code> — команда, которая показывает текст на экране.
+              Текст пишут в кавычках.
+            </p>
+            <div className="preview-code">
+              <span>PYTHON</span>
+              <pre>
+                <code>
+                  <span>print</span>(<em>"Привет, мир!"</em>)
+                </code>
+              </pre>
+            </div>
+            <div className="preview-output">
+              <span>Результат программы</span>
+              <strong>Привет, мир!</strong>
+            </div>
+            <div className="preview-mentor">
+              <span className="tutor-icon">
+                <AppIcon name="sparkles" size={20} />
+              </span>
+              <div>
+                <strong>Непонятно, зачем кавычки?</strong>
+                <p>Спросите наставника — он разберёт строку вместе с вами.</p>
+              </div>
+            </div>
+          </div>
+          <div className="preview-footer">
+            <span>Разобраться → Попробовать → Закрепить</span>
+            <AppIcon name="arrow" size={18} />
+          </div>
+        </div>
       </section>
-      <section className="approach" id="approach"><div><span className="eyebrow">НЕ ПРОСТО КУРС</span><h2>Понимать важнее,<br/><em>чем просто пройти.</em></h2></div><p>Начинаем с основ Python и постепенно движемся к backend-разработке. Практика помогает закрепить знания, а наставник — разобраться в сложном.</p></section>
-      <section className="path" aria-label="Направления обучения">{steps.map((step, i) => <div className="path-step" key={step}><span>0{i + 1}</span><b>{step}</b><i>↗</i></div>)}</section>
-      <footer><span>НАЧИНАЕМ С PYTHON. СТРОИМ ОСНОВУ BACKEND.</span><span>Создано для обучения, шаг за шагом.</span></footer>
+      <section className="landing-program" id="program">
+        <div className="landing-section-heading">
+          <div>
+            <span className="page-kicker">ПРОГРАММА ОБУЧЕНИЯ</span>
+            <h2>От простого к тому, что вы хотите создавать</h2>
+          </div>
+          <p>
+            Backend — часть приложения на сервере. Он принимает запросы,
+            работает с данными и отправляет ответы. К этому придём после основ
+            Python.
+          </p>
+        </div>
+        <div className="landing-stage-grid">
+          {stages.map((stage) => (
+            <article key={stage.number}>
+              <span>{stage.number}</span>
+              <h3>{stage.title}</h3>
+              <p>{stage.body}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+      <section className="landing-mentor" id="mentor">
+        <div className="landing-mentor-copy">
+          <span className="page-kicker">КУРС + ПЕРСОНАЛЬНАЯ ПОМОЩЬ</span>
+          <h2>
+            Материал общий.
+            <br />
+            Ваши вопросы — свои.
+          </h2>
+          <p>
+            В уроках есть проверенная основа. AI-наставник помогает объяснить её
+            иначе, проследить пример по строкам и обсудить вашу ошибку. Он
+            доступен в чате урока после подключения AI-сервиса.
+          </p>
+          <a className="button-secondary" href="/auth">
+            Создать учебное пространство <AppIcon name="arrow" size={16} />
+          </a>
+        </div>
+        <div className="mentor-example">
+          <span className="badge">ПРИМЕР ВОПРОСА НАСТАВНИКУ</span>
+          <blockquote>
+            «Я ещё не понимаю, что такое переменная. Объясни на бытовом примере,
+            а потом покажи одну строку кода».
+          </blockquote>
+          <p>Не нужно знать правильный термин, чтобы попросить помощи.</p>
+        </div>
+      </section>
+      <footer className="landing-footer">
+        <a className="brand" href="/">
+          наставник<span className="brand-dot">.</span>
+        </a>
+        <span>Python Backend. Учиться, понимать, пробовать.</span>
+        <a href="/auth">Войти в аккаунт →</a>
+      </footer>
     </main>
   );
 }

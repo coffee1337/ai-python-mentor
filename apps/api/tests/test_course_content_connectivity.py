@@ -250,7 +250,7 @@ def test_legacy_variables_completion_does_not_open_conditions_without_data_types
     path = client.get("/learning/path")
     assert path.status_code == 200
     lessons = {lesson["id"]: lesson for lesson in path.json()["lessons"]}
-    assert lessons["variables-v1"]["status"] == "completed"
-    assert lessons["conditions-v1"]["status"] == "locked"
-    assert path.json()["next_lesson_id"] != "conditions-v1"
+    assert lessons["variables-v2"]["status"] == "completed"
+    assert lessons["conditions-v2"]["status"] == "locked"
+    assert path.json()["next_lesson_id"] != "conditions-v2"
     assert client.get("/learning/lessons/conditions-v1").status_code == 409
