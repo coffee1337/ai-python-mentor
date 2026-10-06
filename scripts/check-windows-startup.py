@@ -1,6 +1,7 @@
 """Exercise the documented launchers on Windows PowerShell 5.1, without Docker."""
 from __future__ import annotations
 
+from contextlib import closing
 import http.cookiejar
 import json
 import os
@@ -54,6 +55,10 @@ def stop_tree(process: subprocess.Popen | None) -> None:
 
 
 def main() -> None:
+    # Captured Windows console output otherwise defaults to cp1252 and cannot
+    # print Next.js diagnostics (or a project path containing Cyrillic).
+    sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
     assert os.name == "nt" and sys.version_info[:2] == (3, 12)
     env = dict(os.environ)
     for name in ("DATABASE_URL", "APP_ENV", "COOKIE_SECURE", "WEB_ORIGINS", "PYTHONPATH"):
@@ -127,7 +132,7 @@ def main() -> None:
         expected_revision = subprocess.check_output([
             str(api / ".venv" / "Scripts" / "python.exe"), "-m", "alembic", "heads",
         ], cwd=api, env=env, text=True).split()[0]
-        with sqlite3.connect(database) as connection:
+        with closing(sqlite3.connect(database)) as connection:
             assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == expected_revision
         print("PASS: explicit SQLite selection applies all migrations under a project path containing spaces")
 
@@ -151,7 +156,7 @@ def main() -> None:
                 web_process = subprocess.Popen(launch(ROOT / "scripts" / "start-web.ps1", "-SkipInstall"),
                                                cwd=work, env=env, stdout=web_log, stderr=subprocess.STDOUT)
                 assert wait_http("http://127.0.0.1:3000/api/ready", web_process) == {"status": "ready"}
-                html = wait_http("http://127.0.0.1:3000/register", web_process)
+                html = wait_http("http://127.0.0.1:3000/auth", web_process)
                 assert isinstance(html, str) and "<html" in html
                 cookies = http.cookiejar.CookieJar()
                 client = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookies))
@@ -164,7 +169,7 @@ def main() -> None:
                     assert json.load(response)["onboarding_required"] is True
                 with client.open("http://127.0.0.1:3000/api/me", timeout=20) as response:
                     assert json.load(response)["email"] == account["email"]
-                with sqlite3.connect(database) as connection:
+                with closing(sqlite3.connect(database)) as connection:
                     assert connection.execute("SELECT COUNT(*) FROM users WHERE email = ?", (account["email"],)).fetchone()[0] == 1
                 print("PASS: Windows API + Next.js proxy, registration and session-backed profile work without Docker")
         except Exception:
@@ -180,7 +185,7 @@ def main() -> None:
         # A second run must preserve the account, not recreate the file database.
         run(launch(api_script, "-SkipInstall", "-UseSqlite", "-PrepareOnly"), cwd=work,
             env=env, success=True, contains="API environment and schema are ready")
-        with sqlite3.connect(database) as connection:
+        with closing(sqlite3.connect(database)) as connection:
             assert connection.execute("SELECT COUNT(*) FROM users WHERE email = ?", (account["email"],)).fetchone()[0] == 1
         print("PASS: repeated preparation preserves the existing account")
 
