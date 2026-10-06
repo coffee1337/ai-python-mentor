@@ -47,7 +47,7 @@ jobs:
     timeout-minutes: 20
     env:
       # This file is disposable and belongs only to this job.
-      DATABASE_URL: sqlite:///${{ runner.temp }}/mentor-ui.sqlite3
+      DATABASE_URL: sqlite:////tmp/mentor-browser-ci.sqlite3
       APP_ENV: development
       COOKIE_SECURE: "false"
       WEB_ORIGINS: http://127.0.0.1:3000
