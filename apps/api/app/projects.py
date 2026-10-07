@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,7 @@ from app.auth import csrf_protected, current_auth
 from app.db.models import AuthSession, User
 from app.db.product_models import LearnerProject, PortfolioEntry, ProjectSubmission
 from app.db.session import get_db
+from app.db.study_draft_models import StudyDraft
 from app.learning import require_onboarding
 from app.vacancies import public_source_url
 
@@ -244,7 +245,15 @@ def public_portfolio(public_token: str, db: Session = Depends(get_db)):
 
 @router.delete("/projects/{project_id}", status_code=204)
 def delete(project_id: UUID, auth: tuple[User, AuthSession] = Depends(csrf_protected), db: Session = Depends(get_db)):
+    # Draft allocation uses this same owner lock. Keep native SQLite deletion
+    # safe even when foreign-key cascading is disabled on that connection.
+    if db.get_bind().dialect.name == "sqlite":
+        db.execute(update(User).where(User.id == auth[0].id).values(id=User.id, updated_at=User.updated_at))
+    else:
+        db.execute(select(User.id).where(User.id == auth[0].id).with_for_update()).scalar_one()
     project = _owned(db, auth[0], project_id)
+    for row in db.scalars(select(StudyDraft).where(StudyDraft.project_id == project_id)):
+        db.delete(row)
     for row in db.scalars(select(PortfolioEntry).where(PortfolioEntry.project_id == project_id)):
         db.delete(row)
     for row in db.scalars(select(ProjectSubmission).where(ProjectSubmission.project_id == project_id)):

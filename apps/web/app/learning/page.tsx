@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { ApiError, api, errorMessage, isUnauthorized } from "../lib/api";
 import { useUser } from "../lib/use-user";
 import AppHeader from "../components/app-header";
+import StudySessionPanel from "../components/study-session-panel";
 import CoursePathSummary from "./course-path-summary";
 import KnowledgeCheckSection from "./knowledge-check-section";
 import LessonTheory from "./lesson-theory";
@@ -14,6 +15,8 @@ import CodingPractice from "./coding-practice";
 import ReflectionSection from "./reflection";
 import PersonalizedPlan from "./personalized-plan";
 import RichText from "./rich-text";
+import DraftSyncStatus from "../components/draft-sync-status";
+import { publicDraftVersion, useSyncedDraft } from "../lib/use-synced-draft";
 import { skillLabel } from "./skill-labels";
 import type {
   AIPlan,
@@ -68,10 +71,15 @@ export default function LearningPage() {
   const [plansLoading, setPlansLoading] = useState(true);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [flowReady, setFlowReady] = useState(false);
+  const [flowReadyKey, setFlowReadyKey] = useState<string | null>(null);
   const [flowRestored, setFlowRestored] = useState(false);
+  const [hasLocalFlowDraft, setHasLocalFlowDraft] = useState(false);
 
   function goToStep(next: 1 | 2 | 3) {
+    if (flowSync.isAccountInvalid()) return;
     setStep(next);
+    setHasLocalFlowDraft(true);
+    flowSync.changed({ step: next, answers: checkResult ? {} : answers });
     window.requestAnimationFrame(() =>
       document.getElementById("lesson-step-heading")?.focus(),
     );
@@ -118,6 +126,34 @@ export default function LearningPage() {
     }
   }, []);
 
+  const publicVersion = publicDraftVersion(lesson?.version);
+  const flowKey = user && lesson ? flowDraftKey(user.id, lesson) : "mentor.lesson.draft.v3.pending.flow";
+  const flowSync = useSyncedDraft<LessonFlowDraft>({
+    userId: user?.id ?? "pending", localKey: flowKey,
+    ready: !!user && !!lesson && flowReady && flowReadyKey === flowKey && !loading && !checksLoading && !checkNeedsReload,
+    identity: lesson && publicVersion ? { kind: "lesson_flow", resource_id: lesson.id, version: publicVersion, milestone_id: "" } : null,
+    current: { step, answers: checkResult ? {} : answers }, empty: { step: 1, answers: {} }, hasLocalDraft: hasLocalFlowDraft,
+    validate: (value) => {
+      const candidate = value as Partial<LessonFlowDraft> | null;
+      if (!candidate || ![1, 2, 3].includes(candidate.step ?? 0) || !candidate.answers || typeof candidate.answers !== "object" || Array.isArray(candidate.answers)) return null;
+      const selected = Object.entries(candidate.answers);
+      if (selected.length > checks.length || selected.some(([id, choice]) => typeof choice !== "string" || !checks.some((question) => question.id === id && question.choices.includes(choice)))) return null;
+      return { step: candidate.step as 1 | 2 | 3, answers: Object.fromEntries(selected) };
+    },
+    onApply: (value) => {
+      const next = value ?? { step: 1 as const, answers: {} };
+      setStep(next.step);
+      setAnswers(next.answers);
+      setCheckResult(null);
+      setHasLocalFlowDraft(value !== null);
+      try {
+        if (value) window.localStorage.setItem(flowKey, JSON.stringify(next));
+        else window.localStorage.removeItem(flowKey);
+      } catch { /* Keep a restored flow usable even when browser storage is unavailable. */ }
+    },
+  });
+  const accountChanged = flowSync.phase === "account_changed";
+
   const loadMistakes = useCallback(async () => {
     setMistakesLoading(true);
     setMistakesError("");
@@ -134,7 +170,9 @@ export default function LearningPage() {
     if (!user) return;
     setLoading(true);
     setFlowReady(false);
+    setFlowReadyKey(null);
     setFlowRestored(false);
+    setHasLocalFlowDraft(false);
     setError("");
     try {
       const nextPath = await api<PathSummary>("/learning/path");
@@ -149,6 +187,7 @@ export default function LearningPage() {
       setPath(nextPath);
       setLesson(nextLesson);
       const draft = nextLesson ? readFlowDraft(flowDraftKey(user.id, nextLesson)) : null;
+      setHasLocalFlowDraft(!!draft);
       setStep(draft?.step ?? 1);
       if (nextLesson) await loadCheck(nextLesson.id, draft?.answers);
       else {
@@ -158,6 +197,7 @@ export default function LearningPage() {
       }
       setFlowRestored(!!draft && (draft.step !== 1 || Object.keys(draft.answers).length > 0));
       setFlowReady(true);
+      setFlowReadyKey(nextLesson ? flowDraftKey(user.id, nextLesson) : null);
       void refreshPlans();
     } catch (reason) {
       if (isUnauthorized(reason)) router.replace("/auth");
@@ -177,13 +217,13 @@ export default function LearningPage() {
     if (!loading && lesson) headingRef.current?.focus();
   }, [loading, lesson]);
   useEffect(() => {
-    if (!user || !lesson || !flowReady || loading || checksLoading || checkNeedsReload) return;
+    if (!user || !lesson || !flowReady || flowReadyKey !== flowDraftKey(user.id, lesson) || loading || checksLoading || checkNeedsReload) return;
     try {
       const draft: LessonFlowDraft = { step, answers: checkResult ? {} : answers };
       const serialized = JSON.stringify(draft);
       if (serialized.length <= 12000) window.localStorage.setItem(flowDraftKey(user.id, lesson), serialized);
     } catch { /* Optional browser storage must never prevent learning. */ }
-  }, [user, lesson, flowReady, loading, checksLoading, checkNeedsReload, step, answers, checkResult]);
+  }, [user, lesson, flowReady, flowReadyKey, loading, checksLoading, checkNeedsReload, step, answers, checkResult]);
 
   async function afterReview() {
     await Promise.allSettled([refreshPlans(), loadMistakes()]);
@@ -191,15 +231,17 @@ export default function LearningPage() {
 
   async function submitCheck(event: FormEvent) {
     event.preventDefault();
-    if (!lesson || busy || checkNeedsReload) return;
+    if (!lesson || busy || flowSync.isAccountInvalid() || !flowSync.guardHeaders || checkNeedsReload) return;
     setBusy(true);
     setCheckError("");
     try {
       const result = await api<CheckResult>(
         `/learning/lessons/${encodeURIComponent(lesson.id)}/knowledge-check`,
-        { method: "POST", body: JSON.stringify({ answers }) },
+        { method: "POST", headers: flowSync.guardHeaders, body: JSON.stringify({ answers }) },
       );
       setCheckResult(result);
+      setAnswers({});
+      flowSync.changed({ step, answers: {} });
       await Promise.allSettled([loadMistakes(), refreshPlans()]);
       try {
         setPath(await api<PathSummary>("/learning/path"));
@@ -209,10 +251,12 @@ export default function LearningPage() {
         );
       }
     } catch (reason) {
+      if (flowSync.handleAccountError(reason)) return;
       setCheckError(errorMessage(reason));
       setCheckNeedsReload(reason instanceof ApiError && reason.status === 409);
       if (reason instanceof ApiError && reason.status === 409) {
         setAnswers({});
+        setHasLocalFlowDraft(false);
         try { window.localStorage.removeItem(flowDraftKey(user!.id, lesson)); } catch { /* Optional storage. */ }
       }
     } finally {
@@ -301,6 +345,7 @@ export default function LearningPage() {
         )}
         {user && (
           <>
+            <StudySessionPanel />
             {lesson && (
               <div className="learning-workspace">
                 <article
@@ -338,6 +383,7 @@ export default function LearningPage() {
                         }
                         aria-current={step === item.id ? "step" : undefined}
                         aria-controls="lesson-current-step"
+                        disabled={accountChanged}
                         onClick={() => goToStep(item.id)}
                       >
                         <span className="lesson-step-number" aria-hidden="true">
@@ -350,6 +396,11 @@ export default function LearningPage() {
                       </button>
                     ))}
                   </nav>
+                  <DraftSyncStatus
+                    sync={flowSync}
+                    preview={(value) => `Шаг ${value.step}: ${value.step === 1 ? "Материал" : value.step === 2 ? "Проверка понимания" : "Практика"}${Object.entries(value.answers).map(([id, choice]) => `\n${checks.find((question) => question.id === id)?.prompt ?? "Вопрос"}\nВыбран ответ: ${choice}`).join("")}`}
+                    disabled={busy || checksLoading || accountChanged}
+                  />
                   <div id="lesson-current-step" className="lesson-current-step">
                     <h2
                       id="lesson-step-heading"
@@ -373,6 +424,7 @@ export default function LearningPage() {
                           <button
                             className="button"
                             type="button"
+                            disabled={accountChanged}
                             onClick={() => goToStep(2)}
                           >
                             Перейти к вопросам →
@@ -385,20 +437,21 @@ export default function LearningPage() {
                         <KnowledgeCheckSection
                           questions={checks}
                           answers={answers}
-                          onAnswerChange={(questionId, choice) =>
-                            setAnswers((current) => ({
-                              ...current,
-                              [questionId]: choice,
-                            }))
-                          }
+                          onAnswerChange={(questionId, choice) => {
+                            if (flowSync.isAccountInvalid()) return;
+                            const next = { ...answers, [questionId]: choice };
+                            setAnswers(next);
+                            setHasLocalFlowDraft(true);
+                            flowSync.changed({ step, answers: next });
+                          }}
                           result={checkResult}
                           onSubmit={submitCheck}
-                          onRetry={() => void loadCheck(lesson.id)}
-                          busy={busy}
-                          loading={checksLoading}
+                          onRetry={() => { if (!flowSync.isAccountInvalid()) void loadCheck(lesson.id); }}
+                          busy={busy || accountChanged}
+                          loading={checksLoading || !flowSync.guardHeaders}
                           error={checkError}
                           reloadRequired={checkNeedsReload}
-                          onReload={() => void loadCheck(lesson.id)}
+                          onReload={() => { if (!flowSync.isAccountInvalid()) void loadCheck(lesson.id); }}
                         />
                         <details className="lesson-detail">
                           <summary>Нужна подсказка по проверке</summary>

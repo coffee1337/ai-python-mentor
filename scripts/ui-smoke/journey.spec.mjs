@@ -413,21 +413,26 @@ test("beginner learns before questions and uses the personal workspace", async (
       .getByText("Код не выполнялся.", { exact: false }),
   ).toBeVisible();
   await capture(page, testInfo, "16-project-artifact", true);
-  await page.evaluate(() => {
-    const key = Object.keys(localStorage).find((item) => item.startsWith("mentor.project.draft"));
-    if (!key) throw new Error("Expected an owned project draft");
-    const draft = JSON.parse(localStorage.getItem(key));
-    draft.saved_at = Date.now() - 31 * 24 * 60 * 60 * 1000;
-    localStorage.setItem(key, JSON.stringify(draft));
-  });
+  const projectOwner = await (await page.request.get("/api/me")).json();
+  const unfinished = "Незавершённый материал следующего этапа: сохранить через 31 день.";
+  await page.evaluate(({ owner, projectId, milestoneId, text }) => {
+    const key = `mentor.project.draft.v1.${owner}.${projectId}.${milestoneId}`;
+    localStorage.setItem(key, JSON.stringify({ schema: 1,
+      saved_at: Date.now() - 31 * 24 * 60 * 60 * 1000,
+      artifact_text: text, repository_url: "",
+    }));
+  }, { owner: projectOwner.id, projectId: project.id, milestoneId: project.milestones[1].id, text: unfinished });
   await page.reload();
   const milestones = page.locator(".project-milestone");
   await expect(milestones.nth(1)).toHaveAttribute("open", "");
+  await expect(milestones.nth(1).locator('textarea[name="artifact_text"]')).toHaveValue(unfinished);
   await milestones.first().locator("summary").click();
   const firstEditor = milestones.first();
   await firstEditor.getByRole("button", { name: "Посмотреть материал", exact: true }).click();
   await expect(firstEditor.locator(".project-source-preview")).toHaveText(artifact);
   const artifactField = firstEditor.locator('textarea[name="artifact_text"]');
+  await expect(artifactField).toHaveValue("");
+  await firstEditor.getByRole("button", { name: "Скопировать в черновик и редактировать", exact: true }).click();
   await expect(artifactField).toHaveValue(artifact);
   await artifactField.fill("Свой новый черновик — сохранить при отмене замены.");
   await firstEditor.getByRole("button", { name: "Скопировать в черновик и редактировать", exact: true }).click();

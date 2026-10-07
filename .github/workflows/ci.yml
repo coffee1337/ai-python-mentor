@@ -135,7 +135,7 @@ jobs:
           alembic check
           python ../../scripts/migration-sentinel.py verify
           python ../../scripts/migration-sentinel.py create
-          alembic downgrade 0036_content_completion
+          alembic downgrade 0038_study_drafts
           alembic upgrade head
           python ../../scripts/migration-sentinel.py verify
       - name: PostgreSQL concurrency and evidence
