@@ -339,13 +339,12 @@ export default function LearningPage() {
         )}
         {flowRestored && !loading && lesson && (
           <p className="lesson-draft-note" role="status">
-            Восстановлен шаг урока и черновик выбранных ответов на этом устройстве.
+            Восстановлены шаг урока и черновик выбранных ответов.
             Результат проверки появится после отправки ответов.
           </p>
         )}
         {user && (
           <>
-            <StudySessionPanel />
             {lesson && (
               <div className="learning-workspace">
                 <article
@@ -584,6 +583,7 @@ export default function LearningPage() {
                 </a>
               </section>
             )}
+            <StudySessionPanel />
             <section
               className="learning-tools"
               aria-label="Дополнительные инструменты обучения"

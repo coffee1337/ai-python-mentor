@@ -90,19 +90,20 @@ test("two devices preserve drafts, conflicts and a paused study session", async 
     const identity = { kind: "project_milestone", resource_id: project.id, version: 0, milestone_id: project.milestones[0].id };
     const url = `/projects?project=${project.id}`;
     await page.goto(url);
-    const editor = page.locator('textarea[name="artifact_text"]');
+    const editor = page.locator(`[id="artifact-${identity.milestone_id}"]`);
+    const remoteEditor = remote.locator(`[id="artifact-${identity.milestone_id}"]`);
     const initial = "Первый приватный черновик этапа — café и 🐍.";
     await editor.fill(initial);
     await expect.poll(async () => (await draft(page.context(), identity, auth)).content?.artifact_text).toBe(initial);
     await remote.goto(url);
-    await expect(remote.locator('textarea[name="artifact_text"]')).toHaveValue(initial);
+    await expect(remoteEditor).toHaveValue(initial);
 
     await page.route("**/api/learning/drafts", (route) => route.request().method() === "POST" ? route.abort() : route.continue());
     const local = "Мой вариант без сети: сохранить исходный текст.";
     await editor.fill(local);
     await expect(page.locator('.draft-sync-status[data-sync-phase="error"]')).toBeVisible();
     const account = "Второе устройство: уточнённое описание этапа.";
-    await remote.locator('textarea[name="artifact_text"]').fill(account);
+    await remoteEditor.fill(account);
     await expect.poll(async () => (await draft(other, identity, otherAuth)).content?.artifact_text).toBe(account);
     await page.unroute("**/api/learning/drafts");
     await page.getByRole("button", { name: "Повторить синхронизацию", exact: true }).click();

@@ -49,7 +49,6 @@ export default function TodayFocus() {
 
   return (
     <>
-      <StudySessionPanel />
       <section
         className="panel today-focus"
         aria-labelledby="today-focus-title"
@@ -218,6 +217,7 @@ export default function TodayFocus() {
           </>
         )}
       </section>
+      <StudySessionPanel />
     </>
   );
 }
