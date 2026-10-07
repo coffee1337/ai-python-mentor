@@ -147,6 +147,6 @@ def delete_account(db: Session, user_id: UUID, *, email: str) -> None:
     for table, predicate in reversed(list(predicates.items())):
         db.execute(delete(table).where(predicate))
     keys = [throttle_key(scope, email) for scope in ("auth_account", "reset_account")]
-    keys += [throttle_key(scope, str(user_id)) for scope in ("verify_user", "delete_user", "telegram_bind_user", "checkout_user", "telegram_tutor", "coding_submission", "password_user")]
+    keys += [throttle_key(scope, str(user_id)) for scope in ("verify_user", "delete_user", "telegram_bind_user", "checkout_user", "telegram_tutor", "coding_submission", "password_user", "study_draft_user", "study_session_user", "study_session_heartbeat")]
     db.execute(delete(AuthThrottle).where(AuthThrottle.key.in_(keys)))
     db.commit()

@@ -2,6 +2,9 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { api, errorMessage, newRequestId } from "../lib/api";
 import RichText from "./rich-text";
+import DraftSyncStatus from "../components/draft-sync-status";
+import { publicDraftVersion, useSyncedDraft } from "../lib/use-synced-draft";
+type ReflectionDraft = { text: string };
 type Reflection = {
   id: string;
   lesson_id: string;
@@ -25,31 +28,79 @@ export default function ReflectionSection({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
+  const [draftReadyKey, setDraftReadyKey] = useState<string | null>(null);
+  const [hasLocalDraft, setHasLocalDraft] = useState(false);
   const pending = useRef<{ key: string; text: string } | null>(null);
+  const generation = useRef(0);
+  const historyRequest = useRef(0);
   const path = `/learning/lessons/${encodeURIComponent(lessonId)}/reflections`;
   const key = `mentor.lesson.draft.v2.${userId}.${lessonId}.${version}.reflection`;
-  const load = useCallback(async () => {
+  const publicVersion = publicDraftVersion(version);
+  const sync = useSyncedDraft<ReflectionDraft>({
+    userId, localKey: key, ready: draftReadyKey === key,
+    identity: publicVersion ? { kind: "reflection", resource_id: lessonId, version: publicVersion, milestone_id: "" } : null,
+    current: { text }, empty: { text: "" }, hasLocalDraft,
+    validate: (value) => {
+      const candidate = value as Partial<ReflectionDraft> | null;
+      return candidate && typeof candidate.text === "string" && candidate.text.length <= 10000 ? { text: candidate.text } : null;
+    },
+    onApply: (value) => {
+      const next = value?.text ?? "";
+      setText(next);
+      setHasLocalDraft(!!next);
+      pending.current = null;
+      try {
+        if (next) window.localStorage.setItem(key, next);
+        else window.localStorage.removeItem(key);
+      } catch { /* Keep the restored text editable even when cache storage fails. */ }
+    },
+  });
+  const accountChanged = sync.phase === "account_changed";
+  const load = useCallback(async (signal?: AbortSignal) => {
+    const request = ++historyRequest.current;
     setLoading(true);
     setError("");
     try {
-      setRows(await api<Reflection[]>(path));
+      const next = await api<Reflection[]>(path, { signal });
+      if (!signal?.aborted && request === historyRequest.current) setRows(next);
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (!signal?.aborted && request === historyRequest.current) setError(errorMessage(reason));
     } finally {
-      setLoading(false);
+      if (!signal?.aborted && request === historyRequest.current) setLoading(false);
     }
-  }, [path]);
+  }, [path, userId]);
   useEffect(() => {
+    ++generation.current;
+    const controller = new AbortController();
+    pending.current = null;
+    setRows([]);
+    setFeedback("");
+    setBusy(false);
+    setDraftReadyKey(null);
+    setText("");
+    setHasLocalDraft(false);
     try {
       const draft = window.localStorage.getItem(key);
-      if (draft !== null && draft.length <= 10000) setText(draft);
+      if (draft !== null && draft.length <= 10000) {
+        setText(draft);
+        setHasLocalDraft(!!draft);
+      }
     } catch {
       /* Storage optional. */
     }
-    void load();
+    setDraftReadyKey(key);
+    void load(controller.signal);
+    return () => {
+      ++generation.current;
+      ++historyRequest.current;
+      controller.abort();
+    };
   }, [key, load]);
   function change(value: string) {
+    if (sync.isAccountInvalid()) return;
     setText(value);
+    setHasLocalDraft(!!value);
+    sync.changed({ text: value });
     pending.current = null;
     try {
       window.localStorage.setItem(key, value);
@@ -59,25 +110,28 @@ export default function ReflectionSection({
   }
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (busy || !text.trim()) return;
+    if (busy || sync.isAccountInvalid() || !sync.guardHeaders || draftReadyKey !== key || !text.trim()) return;
     setBusy(true);
+    const currentGeneration = generation.current;
     setError("");
     pending.current ??= { key: newRequestId(), text };
     try {
       const row = await api<Reflection>(path, {
         method: "POST",
-        headers: { "Idempotency-Key": pending.current.key },
+        headers: { ...sync.guardHeaders, "Idempotency-Key": pending.current.key },
         body: JSON.stringify({ text: pending.current.text }),
       });
+      if (currentGeneration !== generation.current) return;
       setRows((current) =>
         [row, ...current.filter((item) => item.id !== row.id)].slice(0, 20),
       );
       setFeedback(row.feedback);
       pending.current = null;
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (currentGeneration === generation.current && sync.handleAccountError(reason)) return;
+      if (currentGeneration === generation.current) setError(errorMessage(reason));
     } finally {
-      setBusy(false);
+      if (currentGeneration === generation.current) setBusy(false);
     }
   }
   return (
@@ -98,9 +152,10 @@ export default function ReflectionSection({
           required
           maxLength={10000}
           rows={6}
-          disabled={busy}
+          disabled={busy || accountChanged || draftReadyKey !== key}
         />
-        <button className="button" disabled={busy || !text.trim()}>
+        <DraftSyncStatus sync={sync} preview={(value) => value.text || "Пустое объяснение."} disabled={busy || accountChanged} />
+        <button className="button" disabled={busy || accountChanged || !sync.guardHeaders || draftReadyKey !== key || !text.trim()}>
           {busy ? "Сохраняем…" : "Сохранить разбор"}
         </button>
       </form>
@@ -110,7 +165,7 @@ export default function ReflectionSection({
           <p className="form-error">{error}</p>
           <button
             className="text-button"
-            disabled={loading || busy}
+            disabled={loading || busy || accountChanged}
             onClick={() => void load()}
           >
             Обновить историю

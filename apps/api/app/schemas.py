@@ -67,6 +67,7 @@ class UserResponse(BaseModel):
     id: UUID
     email: str
     email_verified: bool
+    account_scope: str | None = None
     profile: ProfileResponse | None = None
     goal: GoalResponse | None = None
 

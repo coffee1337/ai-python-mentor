@@ -1,5 +1,31 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
+let authNotificationsReady = false;
+let authChannel: BroadcastChannel | null = null;
+
+function prepareAuthNotifications() {
+  if (typeof window === "undefined" || authNotificationsReady) return;
+  authNotificationsReady = true;
+  if (typeof BroadcastChannel !== "undefined") {
+    authChannel = new BroadcastChannel("mentor-account-change");
+    authChannel.onmessage = (event) => {
+      if (event.data === "changed") window.dispatchEvent(new CustomEvent("mentor:auth-changed"));
+    };
+  } else {
+    window.addEventListener("storage", (event) => {
+      if (event.key === "mentor.auth.changed") window.dispatchEvent(new CustomEvent("mentor:auth-changed"));
+    });
+  }
+}
+
+function notifyAuthChange() {
+  window.dispatchEvent(new CustomEvent("mentor:auth-changed"));
+  if (authChannel) authChannel.postMessage("changed");
+  else {
+    try { window.localStorage.setItem("mentor.auth.changed", newRequestId()); } catch { /* Server account scope remains the final guard. */ }
+  }
+}
+
 const STATUS_MESSAGES: Record<number, string> = {
   401: "Войдите в аккаунт, чтобы продолжить.",
   403: "Не удалось подтвердить запрос. Обновите страницу и попробуйте снова.",
@@ -17,6 +43,12 @@ const KNOWN_MESSAGES: Record<string, string> = {
   "Hint level was already revealed": "Эта подсказка уже открыта. Обновите список подсказок.",
   "All hints have already been revealed": "Все подсказки уже открыты.",
   "Reveal the next hint level first": "Открывайте подсказки по порядку.",
+  "No study focus is available": "Сейчас нет доступных заданий для нового занятия. Откройте программу курса или повторения.",
+  "Study session is paused; resume explicitly": "Таймер остановлен после простоя. Нажмите «Продолжить занятие», когда будете готовы.",
+  "Study session time limit reached; finish this session": "Достигнут предел времени одного занятия. Завершите его перед началом следующего.",
+  "Study session changed; reload before continuing": "Занятие изменилось на другой вкладке или устройстве. Загружаем его текущее состояние.",
+  "Study session has ended": "Это занятие уже завершено. Можно начать новое.",
+  "Account changed; reload before continuing": "Аккаунт изменился в другой вкладке. Обновите страницу перед продолжением.",
 };
 
 export class ApiError extends Error {
@@ -53,6 +85,7 @@ function validationMessage(type: unknown): string {
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  prepareAuthNotifications();
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (init.method && !["GET", "HEAD"].includes(init.method.toUpperCase())) {
@@ -77,10 +110,18 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
         }
       }
     }
-    const message = typeof body.detail === "string" && KNOWN_MESSAGES[body.detail]
-      ? KNOWN_MESSAGES[body.detail]
+    const detail = body.detail && typeof body.detail === "object" && !Array.isArray(body.detail)
+      ? body.detail as Record<string, unknown>
+      : {};
+    const knownMessage = typeof body.detail === "string" ? body.detail : detail.message;
+    const message = typeof knownMessage === "string" && KNOWN_MESSAGES[knownMessage]
+      ? KNOWN_MESSAGES[knownMessage]
       : STATUS_MESSAGES[response.status] ?? "Сервис временно недоступен. Попробуйте позже.";
-    throw new ApiError(message, response.status, typeof body.code === "string" ? body.code : `http_${response.status}`, fieldErrors);
+    const code = typeof body.code === "string" ? body.code : typeof detail.code === "string" ? detail.code : `http_${response.status}`;
+    throw new ApiError(message, response.status, code, fieldErrors);
+  }
+  if (typeof window !== "undefined" && ["/auth/register", "/auth/login", "/auth/logout", "/me/delete"].includes(path)) {
+    notifyAuthChange();
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -109,6 +150,7 @@ export type User = {
   id: string;
   email: string;
   email_verified: boolean;
+  account_scope: string;
   profile: { display_name: string | null; experience_level: string | null; onboarding_completed: boolean } | null;
   goal: { target_role: string; weekly_minutes: number; motivation: string | null } | null;
 };

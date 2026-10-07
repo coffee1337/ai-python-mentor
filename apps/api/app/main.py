@@ -3,7 +3,10 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -28,6 +31,8 @@ from app.generated_practice import router as generated_practice_router
 from app.jobs_api import router as jobs_router
 from app.health_api import router as health_router
 from app.study_progress import router as study_progress_router
+from app.study_drafts import router as study_drafts_router
+from app.study_sessions import router as study_sessions_router
 from app.http_limits import RequestSizeLimit
 from app.db.session import engine
 
@@ -47,7 +52,7 @@ app.add_middleware(
     allow_origins=[origin.strip() for origin in os.getenv("WEB_ORIGINS", "http://localhost:3000").split(",") if origin.strip()],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "X-CSRF-Token", "Idempotency-Key"],
+    allow_headers=["Content-Type", "X-CSRF-Token", "X-Account-Scope", "Idempotency-Key"],
 )
 app.include_router(auth_router)
 app.include_router(learning_router)
@@ -70,6 +75,26 @@ app.include_router(generated_practice_router)
 app.include_router(jobs_router)
 app.include_router(health_router)
 app.include_router(study_progress_router)
+app.include_router(study_drafts_router)
+app.include_router(study_sessions_router)
+
+
+@app.exception_handler(RequestValidationError)
+async def private_workspace_validation(request, error):
+    private = request.url.path == "/learning/drafts" or request.url.path.startswith("/learning/study-session")
+    if not private:
+        return await request_validation_exception_handler(request, error)
+    # Pydantic's default errors include the rejected input. Private source and
+    # unfinished answers must not be reflected by outer schema validation.
+    public_fields = {
+        "body", "query", "path", "identity", "content", "kind", "resource_id",
+        "version", "milestone_id", "expected_revision", "limit", "session_id", "action",
+    }
+    detail = [{
+        "loc": [part if isinstance(part, int) or part in public_fields else "field" for part in item.get("loc", ())],
+        "type": item.get("type", "invalid_value"), "msg": "Invalid request value",
+    } for item in error.errors()]
+    return JSONResponse(status_code=422, content={"detail": detail}, headers={"Cache-Control": "no-store"})
 
 
 def report_gateway_status() -> None:
@@ -112,6 +137,10 @@ async def request_observation(request, call_next):
         logging.getLogger("mentor.request").error("request_failed id=%s type=%s", request_id, type(error).__name__)
         response = JSONResponse({"detail":"Service is temporarily unavailable","request_id":request_id},status_code=503 if isinstance(error, SQLAlchemyError) else 500)
     response.headers["X-Request-ID"] = request_id
+    if request.url.path in {"/me", "/learning/drafts"} or request.url.path.startswith(("/me/", "/auth/", "/learning/study-session")):
+        # Include auth and validation failures: private drafts and timer state
+        # must never be retained in a shared HTTP cache.
+        response.headers["Cache-Control"] = "no-store"
     route = getattr(request.scope.get("route"), "path", "unmatched")
     logging.getLogger("mentor.request").info("request_finished id=%s method=%s route=%s status=%s duration_ms=%d",request_id,request.method,route,response.status_code,int((monotonic()-started)*1000))
     return response
