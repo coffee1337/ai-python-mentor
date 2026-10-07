@@ -1,132 +1,595 @@
-# AI-наставник Python Backend
+<div align="center">
 
-Next.js 15 / React 19, FastAPI, SQLAlchemy, Alembic и PostgreSQL. Модульный монолит для обучения Python → Python Backend.
+# 🧠 AI Python Mentor
 
-## Возможности
+### AI-powered platform for learning Python and backend development
 
-- Cookie-сессии, Argon2, CSRF, onboarding, профиль и цель; подтверждение email, смена и одноразовый сброс пароля, отзыв сессий, экспорт и удаление аккаунта.
-- Старт с нуля без обязательной диагностики: объяснение первой программы, построчный разбор, словарь и практика после изучения необходимых основ.
-- 90 активных авторских уроков для всех 90 навыков, 3 backend-фазы, адаптивная диагностика, серверные quiz/knowledge checks, лестницы подсказок и отложенные повторения.
-- Immutable content snapshots и append-only evidence; отдельные показатели знаний, практики, самостоятельности и retention. Порядок вариантов ответа стабилен внутри серверной сессии и меняется между сессиями.
-- 90 отдельных Python-заданий `solve(payload)` с публичными примерами и закрытыми тестами. API сохраняет код и ставит задания в долговечную очередь; исполнение происходит на отдельном защищённом host.
-- Письменные разборы с историей, авторские сигналы ошибок, детерминированный и AI-план; AI free-text feedback имеет рекомендательный статус и не начисляет mastery.
-- AI Gateway, локальный RAG по точной версии урока, явный rebuild индекса, durable quotas/leases и учёт usage/стоимости.
-- Анализ вставленного текста вакансии, требования с фрагментами источника, skill gaps, выбор целевой вакансии и перестройка плана.
-- 9 шаблонов проектов, история milestone-артефактов и явная публикация портфолио. Комплектность артефакта отделена от проверки корректности кода.
-- Тарифы/entitlements, подписанный webhook биллинга, настроенный checkout adapter; email/Telegram outbox, напоминания и краткий Telegram tutor; ограниченные административные операции с аудитом.
+**FastAPI · Next.js · PostgreSQL · RAG · Docker · AI/LLM**
 
-## Запуск
+Платформа обучения Python и backend-разработке с персонализированным учебным планом, практическими заданиями, AI-наставником и отслеживанием прогресса.
 
-### Windows без Docker
+</div>
 
-Для локального запуска нужны **Python 3.12 и Node.js 22**. PostgreSQL необязателен: можно явно выбрать SQLite, которая хранит данные в файле `apps/api/mentor-local.db`.
+---
 
-Если нужные версии ещё не установлены, выполните в PowerShell:
+## ✨ Overview
 
-```powershell
-winget install --exact --id Python.Python.3.12 --source winget
-winget install --exact --id OpenJS.NodeJS.22 --source winget
+AI Python Mentor — full-stack приложение для изучения Python с нуля до backend-разработки.
+
+Платформа объединяет:
+
+- структурированную программу обучения;
+- практические Python-задания;
+- AI-наставника;
+- персональный roadmap;
+- систему прогресса и повторений;
+- анализ вакансий и skill gaps;
+- проектную практику;
+- Telegram-интеграцию.
+
+Проект построен как production-oriented система с отдельными backend/frontend слоями, PostgreSQL, миграциями, фоновой обработкой задач, CI и изолированной архитектурой исполнения пользовательского Python-кода.
+
+---
+
+## 🚀 Key Features
+
+### 🎓 Learning Platform
+
+- 90 учебных навыков и уроков;
+- обучение от Python basics до backend;
+- knowledge checks и quiz;
+- практические задания;
+- система подсказок;
+- spaced repetition;
+- персонализированный learning roadmap;
+- отслеживание прогресса и mastery.
+
+### 🤖 AI Tutor
+
+- AI-чат с учебным контекстом;
+- локальный RAG по актуальной версии урока;
+- разбор ошибок и пользовательского кода;
+- AI-feedback для письменных заданий;
+- ограничение AI usage;
+- учёт использования и стоимости AI-вызовов.
+
+### 💻 Python Practice
+
+Каждое практическое задание использует контракт:
+
+```python
+def solve(payload):
+    ...
 ```
 
-Затем закройте PowerShell и откройте заново. Если `winget` отсутствует, установите [Python 3.12 для Windows](https://www.python.org/downloads/release/python-31210/) и [Node.js 22](https://nodejs.org/en/download/archive/v22) через официальные установщики.
+Система поддерживает:
 
-Из корня скачанного проекта запустите API:
+- публичные примеры;
+- скрытые тесты;
+- сохранение решений;
+- историю попыток;
+- асинхронную постановку выполнения в очередь.
 
-```powershell
-cd C:\ai_bot_ai-main
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-api.ps1 -UseSqlite
+Исполнение пользовательского кода вынесено за пределы основного API и проектируется как отдельный защищённый Runner.
+
+---
+
+## 🏗 Architecture
+
+```text
+                        ┌──────────────────┐
+                        │     Browser      │
+                        └────────┬─────────┘
+                                 │
+                                 ▼
+                        ┌──────────────────┐
+                        │     Next.js      │
+                        │     Frontend     │
+                        └────────┬─────────┘
+                                 │
+                                 ▼
+┌───────────────┐       ┌──────────────────┐       ┌─────────────────┐
+│   Telegram    │──────▶│     FastAPI      │◀─────▶│   PostgreSQL    │
+└───────────────┘       │       API        │       └─────────────────┘
+                        └────────┬─────────┘
+                                 │
+                 ┌───────────────┼────────────────┐
+                 │               │                │
+                 ▼               ▼                ▼
+        ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+        │  AI Gateway  │ │ Background   │ │ Python Runner│
+        │    + RAG     │ │   Workers    │ │  (isolated)  │
+        └──────────────┘ └──────────────┘ └──────────────┘
 ```
 
-Скрипт проверит Python, создаст `apps/api/.venv`, установит `requirements.lock`, проверит соединение с выбранной базой, выполнит миграции и запустит API. Активация окружения и отдельная команда `alembic` не нужны. При любой ошибке следующий этап не запускается. Параметр `-ExecutionPolicy Bypass` относится только к запущенному процессу; настройки политики системы не изменяются.
+Основное приложение организовано как модульный монолит.
 
-В **другом окне PowerShell** запустите frontend:
+Отдельными процессами могут работать:
 
-```powershell
-cd C:\ai_bot_ai-main
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-web.ps1
+- notification dispatcher;
+- execution dispatcher;
+- Python Runner;
+- внешние email / Telegram / billing adapters.
+
+---
+
+## 🛠 Tech Stack
+
+### Backend
+
+- Python 3.12
+- FastAPI
+- SQLAlchemy
+- Alembic
+- PostgreSQL
+- Pydantic
+- Argon2
+- AsyncIO
+
+### Frontend
+
+- Next.js 15
+- React 19
+- TypeScript
+
+### AI
+
+- LLM Gateway
+- Retrieval-Augmented Generation
+- local knowledge index
+- usage quotas
+- token / cost accounting
+
+### Infrastructure
+
+- Docker
+- Docker Compose
+- GitHub Actions
+- background workers
+- PostgreSQL migrations
+
+### Integrations
+
+- Telegram Bot API
+- Email delivery adapter
+- Billing adapter
+- AI providers
+
+---
+
+## 🔐 Authentication & Security
+
+В приложении реализованы:
+
+- cookie-based sessions;
+- Argon2 password hashing;
+- CSRF protection;
+- email confirmation;
+- password reset;
+- session revocation;
+- account export;
+- account deletion;
+- audit logging для административных операций.
+
+Production-конфигурация требует HTTPS и secure cookies.
+
+```env
+APP_ENV=production
+COOKIE_SECURE=true
 ```
 
-Откройте http://localhost:3000. API: http://127.0.0.1:8000/docs. Проверка готовности: http://127.0.0.1:8000/ready. Оба сервера доступны только с этого компьютера; `Ctrl+C` останавливает соответствующий сервер. Frontend обращается к API через `/api`, а proxy использует `127.0.0.1`, чтобы не зависеть от разрешения `localhost` в IPv6.
+Секреты не должны храниться в Git-репозитории.
 
-`-UseSqlite` — явный выбор отдельной файловой базы. Аккаунты и история из PostgreSQL остаются там и автоматически не переносятся. Повторный запуск сохраняет файл и аккаунты. Не удаляйте `mentor-local.db`, если хотите сохранить прогресс; для резервной копии остановите API и скопируйте файл.
+---
 
-Для AI и других интеграций можно создать `.env` в корне по образцу `.env.example`. API читает его до миграций; переменные текущего процесса имеют приоритет. Секреты из этого файла не загружаются скриптом frontend. Без настроенного AI Gateway обучение по авторским материалам работает, AI-чат показывает недоступность. Исполнение кода требует отдельно развёрнутого защищённого Runner и при обычном локальном запуске отключено.
+## 🧠 RAG
 
-Если хотите использовать **свою установленную службу PostgreSQL**, задайте её `DATABASE_URL` в корневом `.env` или в текущем PowerShell и запустите API **без** `-UseSqlite`:
+AI-наставник использует Retrieval-Augmented Generation для получения контекста из учебных материалов.
 
-```powershell
-cd C:\ai_bot_ai-main
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-api.ps1
-```
+Knowledge base строится на основе immutable snapshots опубликованных уроков.
 
-При недоступном PostgreSQL скрипт остановится и предложит проверить `DATABASE_URL`, службу (`Get-Service *postgres*`) и порт. Автоматического перехода на другую базу нет. Не используйте этот launcher для production: он рассчитан на локальную разработку и HTTP; `APP_ENV=production` отклоняется.
-
-Дополнительные параметры: `-SkipInstall` пропускает установку уже установленных зависимостей; `-PrepareOnly` проверяет окружение и выполняет подготовку без запуска сервера. У API есть `-PythonPath 'C:\путь\к\python.exe'`, если Python 3.12 не находится через launcher/PATH. Неполное окружение или `.venv` другой версии сохраняется: переименуйте его и повторите запуск, чтобы создать новое.
-
-### Linux/macOS без Docker
-
-Требуются Python 3.12, Node.js 22 и установленный PostgreSQL либо явный выбор SQLite:
-
-```sh
+```bash
 cd apps/api
+
+python -m app.knowledge_base
+```
+
+Это позволяет AI работать с конкретной версией учебного материала, которую изучает пользователь.
+
+---
+
+## 📊 Learning Model
+
+Платформа разделяет несколько показателей прогресса:
+
+```text
+Knowledge
+Practice
+Independence
+Retention
+```
+
+Результат обучения не определяется только количеством правильных ответов.
+
+Система учитывает:
+
+- знания;
+- практическое применение;
+- самостоятельность;
+- сохранение знаний со временем.
+
+---
+
+## 💼 Career Features
+
+Платформа может анализировать текст вакансии и выделять:
+
+- требования;
+- необходимые технологии;
+- подтверждающие фрагменты вакансии;
+- skill gaps пользователя.
+
+На основе выбранной вакансии learning roadmap может перестраиваться под конкретную карьерную цель.
+
+---
+
+## 📦 Project Practice
+
+В платформу входят шаблоны проектов для портфолио.
+
+Для каждого проекта поддерживаются:
+
+- milestones;
+- история артефактов;
+- проверка комплектности;
+- публикация проекта в портфолио.
+
+---
+
+## ⚡ Quick Start
+
+### Requirements
+
+Для локальной разработки:
+
+```text
+Python 3.12
+Node.js 22
+```
+
+PostgreSQL рекомендуется, но для локального запуска можно использовать SQLite.
+
+---
+
+## 🪟 Windows
+
+### Backend
+
+```powershell
+git clone https://github.com/Coffee1337/ai-python-mentor.git
+cd ai-python-mentor
+
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\start-api.ps1 `
+  -UseSqlite
+```
+
+Backend:
+
+```text
+http://127.0.0.1:8000
+```
+
+Swagger:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+Health check:
+
+```text
+http://127.0.0.1:8000/ready
+```
+
+### Frontend
+
+В новом терминале:
+
+```powershell
+cd ai-python-mentor
+
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\start-web.ps1
+```
+
+Откройте:
+
+```text
+http://localhost:3000
+```
+
+---
+
+## 🐧 Linux / macOS
+
+### Backend
+
+```bash
+cd apps/api
+
 python3.12 -m venv .venv
+
 .venv/bin/python -m pip install -r requirements.lock
+
 .venv/bin/python ../../scripts/local-api.py --use-sqlite
 ```
 
-Без `--use-sqlite` используется `DATABASE_URL` из окружения или корневого `.env`. В другом терминале из `apps/web`: `npm ci`, затем `API_INTERNAL_URL=http://127.0.0.1:8000 NEXT_PUBLIC_API_URL=/api npm run dev`.
+### Frontend
 
-### Docker Compose
+```bash
+cd apps/web
 
-Этот способ запуска независим от нативного; PostgreSQL здесь запускается отдельным сервисом.
+npm ci
 
-```sh
+API_INTERNAL_URL=http://127.0.0.1:8000 \
+NEXT_PUBLIC_API_URL=/api \
+npm run dev
+```
+
+---
+
+## 🐳 Docker
+
+Создайте конфигурацию:
+
+```bash
 cp .env.example .env
-# Задайте свой POSTGRES_PASSWORD в .env.
-docker compose build
+```
+
+Запустите PostgreSQL:
+
+```bash
 docker compose up -d db
+```
+
+Примените миграции:
+
+```bash
 docker compose run --rm api alembic upgrade head
+```
+
+Запустите приложение:
+
+```bash
 docker compose up -d api web
 ```
 
-Web: http://localhost:3000. API: http://localhost:8000/docs. `/health` проверяет соединение с БД; `/ready` дополнительно требует актуальную ревизию схемы. Frontend использует `/api` через Next.js proxy, поэтому удалённый браузер не обращается к своему localhost. Миграции запускаются явно. `docker compose down` сохраняет volume БД; `down -v` удаляет данные.
+После запуска:
 
-## Настройка интеграций
+```text
+Frontend
+http://localhost:3000
 
-Все поля находятся в `.env.example`; Compose передаёт их только backend-сервисам. В production задайте `APP_ENV=production`, HTTPS, `COOKIE_SECURE=true`, точный `WEB_ORIGINS` и секреты из deployment secret storage. Не публикуйте `.env`, приватные ключи или Runner-каталог.
+API
+http://localhost:8000
 
-- AI: `AI_GATEWAY_URL`, `AI_GATEWAY_MODEL`, `AI_GATEWAY_API_KEY`. Без них детерминированное обучение работает, а AI возвращает явный unavailable. Лимиты тарифа и `AI_DAILY_CALL_LIMIT` применяются совместно. Денежный бюджет требует верхней резервации цены вызова; точная стоимость требует exact provider usage и deployment-owned цен для конкретной модели. Платный query embedding имеет отдельную квоту и ledger; без embedding usage стоимость остаётся оценочной. Operator CLI rebuild индекса — отдельная явно запускаемая операция, не запрос ученика.
-- Email: HTTPS `EMAIL_DELIVERY_URL` / `EMAIL_DELIVERY_API_KEY`. Adapter принимает `{to,template,data}` и стабильный `Idempotency-Key`; account templates содержат одноразовый token/expiry. В разработке можно явно включить `DEV_ACCOUNT_TOKENS=true`; production никогда не возвращает эти токены клиенту.
-- Telegram: bot token/username и webhook secret; webhook — `/webhooks/telegram`, secret передаётся в стандартном `X-Telegram-Bot-Api-Secret-Token`. Связь подтверждается одноразовым `/start <token>` в личном чате. Обычный текст после связи ставит ответ наставника в outbox; повтор update не создаёт повторный запрос.
-- Уведомления: `docker compose --profile notifications up -d notification-dispatcher`. Без настроенного транспорта сообщения не отправляются. Транспортные повторы имеют семантику at-least-once; Telegram может повторить доставку после неопределённого сетевого исхода.
-- Биллинг: HTTPS checkout service принимает `{user_id,plan_id}` и возвращает `{checkout_url}`; секрет сервиса хранится только backend. `/webhooks/billing` принимает строгий provider-neutral event с HMAC-SHA256 и timestamp; конкретный платёжный провайдер подключается adapter-ом. Без него оплата недоступна, платный тариф нельзя получить запросом из браузера. Цены не выдумываются.
-- Admin: `ADMIN_USER_IDS` содержит точные UUID администраторов. `/admin/metrics`, `/admin/usage`, отзыв сессий и bounded enqueue/dispatch защищены сессией, а записи — дополнительно CSRF.
+Swagger
+http://localhost:8000/docs
+```
 
-## Исполнение Python
+---
 
-[Развёртывание Runner](docs/runner-deployment.md), [протокол](docs/runner-protocol.md) и [условия безопасности](docs/runner-security-review.md). По умолчанию код сохраняется, но исполнение отключено. Для включения нужен отдельный проверенный Linux host, Docker cgroups v2 / runsc, pinned image, reviewed seccomp/AppArmor/user namespaces, mTLS и независимый reaper. Затем настройте API client certificates/policy через secret mounts, `RUNNER_*`, `EXECUTION_JOBS_ENABLED=true` и запустите `execution-dispatcher` с профилем `execution`.
+## ⚙️ Configuration
 
-Backend-упражнения моделируют отдельные правила чистыми функциями; они не разворачивают произвольный FastAPI/SQL/Redis-проект ученика. Проектные артефакты проверяются на комплектность, не исполняются. Эти ограничения отражены в API/UI.
+Пример конфигурации находится в:
 
-## Проверки и эксплуатация
+```text
+.env.example
+```
 
-```sh
+Основные группы настроек:
+
+```text
+Database
+AI Gateway
+Email
+Telegram
+Billing
+Runner
+Security
+```
+
+Пример AI-конфигурации:
+
+```env
+AI_GATEWAY_URL=
+AI_GATEWAY_MODEL=
+AI_GATEWAY_API_KEY=
+```
+
+При отсутствии AI Gateway основная учебная система продолжает работать, а AI-функции становятся недоступными.
+
+---
+
+## 🧪 Testing
+
+Backend:
+
+```bash
 cd apps/api
+
 python -m pytest -q
-# На выделенной тестовой PostgreSQL БД:
-RUN_POSTGRES_TESTS=1 python -m pytest -q tests/test_postgres_specific.py
+```
+
+PostgreSQL-specific tests:
+
+```bash
+RUN_POSTGRES_TESTS=1 \
+python -m pytest -q tests/test_postgres_specific.py
+```
+
+Проверка миграций:
+
+```bash
 alembic check
-cd ../web
+```
+
+Frontend:
+
+```bash
+cd apps/web
+
 npm run lint
 npm run build
 ```
 
-Браузерный CI проверяет путь новичка и основные экраны при 1440×900 и 390×844. Снимки страниц и отчёт доступны в артефакте `browser-ui-desktop-mobile`. Дополнительная QA-зависимость Playwright изолирована в `scripts/ui-smoke`; в bundle приложения она не попадает.
+Runner tests:
 
-Windows CI отдельно проверяет нативные launcher-ы под **Windows PowerShell 5.1**: отсутствие Python, неполное окружение и реальный Python 3.11, ошибки pip/npm, недоступный PostgreSQL без fallback, отказ в production, миграции SQLite в каталоге с пробелами, реальный запуск API и Next.js, регистрацию через `/api`, cookie-сессию и сохранение аккаунта при повторной подготовке. Docker в этом job не используется. Локально на Windows проверку можно повторить командой `py -3.12 scripts/check-windows-startup.py`; она использует временную тестовую базу и порты 8000/3000, поэтому сначала остановите локальные серверы.
+```bash
+python -m unittest discover -s apps/runner/tests -v
+```
 
-Из корня: `python -m unittest discover -s apps/runner/tests -v`. CI отдельно выполняет PostgreSQL migration round trip с sentinel-данными, `alembic check`, PG-specific tests, API tests, frontend types/build и worker policy/journal tests. Оркестрационные тесты worker не подтверждают фактическую изоляцию deployment host.
+---
 
-RAG: из `apps/api` команда `python -m app.knowledge_base` строит локальный индекс опубликованных immutable snapshots; для платного embedding rebuild используйте явный флаг из `--help`. Существующие learner-bound версии не переписываются.
+## 🔄 CI
 
-[Backup и restore drill](docs/backup.md). [Статус и границы реализации](UNIMPLEMENTED_STAGES.md). Проектные инструкции находятся в `AGENTS.md`, `.agents/skills/`, `.codex/agents/`; полная исходная спецификация — `ai_programming_tutor_full_spec.md`.
+GitHub Actions проверяет:
+
+- backend tests;
+- PostgreSQL migrations;
+- PostgreSQL-specific tests;
+- frontend types;
+- frontend build;
+- worker logic;
+- Windows native startup;
+- browser UI flows.
+
+Отдельные проверки выполняются для Windows без Docker.
+
+---
+
+## 🖥 Windows Native Development
+
+Для Windows предусмотрены launcher-скрипты, которые проверяют окружение перед запуском приложения.
+
+В частности проверяются:
+
+- версия Python;
+- Node.js;
+- установка dependencies;
+- доступность базы;
+- Alembic migrations;
+- запуск FastAPI;
+- запуск Next.js;
+- регистрация и cookie session;
+- сохранение локальных данных.
+
+Это позволяет запускать development environment без Docker.
+
+---
+
+## 🔒 Python Code Execution
+
+Пользовательский Python-код **не выполняется внутри основного API**.
+
+Архитектура предусматривает отдельный execution host.
+
+Для production Runner предполагаются:
+
+- Linux host;
+- cgroups v2;
+- isolated containers / sandbox;
+- resource limits;
+- seccomp / AppArmor;
+- user namespaces;
+- mTLS;
+- отдельный execution dispatcher.
+
+По умолчанию выполнение пользовательского кода отключено.
+
+Подробнее:
+
+```text
+docs/runner-deployment.md
+docs/runner-protocol.md
+docs/runner-security-review.md
+```
+
+---
+
+## 📂 Project Structure
+
+```text
+ai-python-mentor/
+│
+├── apps/
+│   ├── api/             # FastAPI backend
+│   ├── web/             # Next.js frontend
+│   └── runner/          # isolated Python execution
+│
+├── docs/                # architecture / deployment docs
+├── scripts/             # development and maintenance scripts
+├── .github/
+│   └── workflows/       # CI
+│
+├── docker-compose.yml
+├── .env.example
+└── README.md
+```
+
+---
+
+## 📚 Documentation
+
+Дополнительная техническая документация находится в `docs/`.
+
+Особенно:
+
+```text
+docs/runner-deployment.md
+docs/runner-protocol.md
+docs/runner-security-review.md
+docs/backup.md
+```
+
+Статус реализованных и запланированных компонентов:
+
+```text
+UNIMPLEMENTED_STAGES.md
+```
+
+---
+
+## 🎯 Project Goals
+
+Проект создаётся как практика разработки сложной full-stack системы с акцентом на:
+
+- backend architecture;
+- reliable data processing;
+- AI integration;
+- security;
+- infrastructure;
+- testing;
+- observability;
+- scalable application design.
+
+---
+
+## 👨‍💻 Author
+
+**Egor Trefilov / Coffee1337**
+
+GitHub:  
+https://github.com/Coffee1337
+
+Portfolio:  
+https://coffee1337.github.io
+
+---
+
+<div align="center">
+
+Built with Python, FastAPI, PostgreSQL, Next.js and AI.
+
+</div>
