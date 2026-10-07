@@ -4,6 +4,8 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import AppHeader from "../components/app-header";
 import { api, errorMessage, newRequestId } from "../lib/api";
 import { useUser } from "../lib/use-user";
+import DraftSyncStatus from "../components/draft-sync-status";
+import { useSyncedDraft } from "../lib/use-synced-draft";
 
 type MilestoneTemplate = {
   id: string;
@@ -91,7 +93,8 @@ function storeDraft(key: string, draft: Draft): boolean {
       window.localStorage.removeItem(key);
     } else {
       const existing = window.localStorage.getItem(key) !== null;
-      const keys = Object.keys(window.localStorage).filter((item) => item.startsWith(DRAFT_PREFIX));
+      const keys = Object.keys(window.localStorage).filter((item) => item.startsWith(DRAFT_PREFIX) &&
+        !item.endsWith(".sync-meta") && !item.endsWith(".sync-backup"));
       // Refuse an additional draft instead of discarding another unsent text.
       if (!existing && keys.length >= DRAFT_LIMIT) return false;
       window.localStorage.setItem(key, JSON.stringify({ schema: 1, saved_at: Date.now(), ...draft }));
@@ -148,6 +151,7 @@ function MilestoneEditor({
   const [sourceLoading, setSourceLoading] = useState(false);
   const [sourceError, setSourceError] = useState("");
   const [replacePending, setReplacePending] = useState(false);
+  const [hasLocalDraft, setHasLocalDraft] = useState(false);
   const pending = useRef<{ fingerprint: string; key: string } | null>(null);
   const latest = milestone.latest_submission;
   const recent = project.submissions.filter((item) => item.milestone_id === milestone.id);
@@ -156,10 +160,31 @@ function MilestoneEditor({
     : recent;
   const next = project.milestones.find((item) => item.id !== milestone.id && item.latest_submission?.validation.status === "needs_revision") ??
     project.milestones.find((item) => item.id !== milestone.id && !item.latest_submission);
+  const sync = useSyncedDraft<Draft>({
+    userId, localKey: key, ready: draftLoaded,
+    identity: { kind: "project_milestone", resource_id: project.id, version: 0, milestone_id: milestone.id },
+    current: draft, empty: { artifact_text: "", repository_url: "" }, hasLocalDraft,
+    validate: (value) => {
+      const candidate = value as Partial<Draft> | null;
+      return candidate && typeof candidate.artifact_text === "string" && candidate.artifact_text.length <= 25000 &&
+        typeof candidate.repository_url === "string" && candidate.repository_url.length <= 2048
+        ? { artifact_text: candidate.artifact_text, repository_url: candidate.repository_url } : null;
+    },
+    onApply: (value) => {
+      const next = value ?? { artifact_text: "", repository_url: "" };
+      setDraft(next);
+      setHasLocalDraft(!!next.artifact_text || !!next.repository_url);
+      pending.current = null;
+      setDraftNote(storeDraft(key, next) ? "" : "Текст доступен в текущем окне; локальное хранилище недоступно.");
+      setReplacePending(false);
+    },
+  });
+  const accountChanged = sync.phase === "account_changed";
 
   useEffect(() => {
     const saved = readDraft(key);
     setDraft(saved);
+    setHasLocalDraft(!!saved.artifact_text || !!saved.repository_url);
     setDraftLoaded(true);
     if (saved.artifact_text || saved.repository_url) {
       setDraftNote("Восстановлен черновик с этого устройства.");
@@ -167,7 +192,10 @@ function MilestoneEditor({
   }, [key]);
 
   function edit(value: Draft) {
+    if (sync.isAccountInvalid()) return;
     setDraft(value);
+    setHasLocalDraft(!!value.artifact_text || !!value.repository_url);
+    sync.changed(value);
     setDraftNote(storeDraft(key, value)
       ? "Черновик сохранён на этом устройстве."
       : "Черновик доступен в текущем окне. Отправьте материал или освободите место для черновиков на устройстве.");
@@ -175,7 +203,7 @@ function MilestoneEditor({
   }
 
   async function preview() {
-    if (!sourceId || sourceLoading) return;
+    if (!sourceId || sourceLoading || sync.isAccountInvalid()) return;
     setSourceLoading(true);
     setSourceError("");
     setSource(null);
@@ -193,7 +221,7 @@ function MilestoneEditor({
   }
 
   function restore() {
-    if (!source) return;
+    if (!source || sync.isAccountInvalid()) return;
     const old = {
       artifact_text: source.artifact_text,
       repository_url: source.repository_url ?? "",
@@ -202,6 +230,7 @@ function MilestoneEditor({
       setReplacePending(true);
       return;
     }
+    if (JSON.stringify(old) !== JSON.stringify(draft) && !sync.preserve()) return;
     edit(old);
     setReplacePending(false);
     setMessage("Материал скопирован в черновик. Измените его и отправьте как новую версию.");
@@ -210,7 +239,7 @@ function MilestoneEditor({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || !draftLoaded) return;
+    if (busy || sync.isAccountInvalid() || !sync.guardHeaders || !draftLoaded) return;
     const payload = {
       artifact_text: draft.artifact_text,
       repository_url: draft.repository_url || null,
@@ -227,14 +256,17 @@ function MilestoneEditor({
         `/projects/${encodeURIComponent(project.id)}/milestones/${encodeURIComponent(milestone.id)}/submissions`,
         {
           method: "POST",
+          headers: sync.guardHeaders,
           body: JSON.stringify({ ...payload, idempotency_key: pending.current.key }),
         },
       );
       pending.current = null;
+      sync.clear();
       onSubmitted(result);
       setSourceId(result.id);
       setMessage(result.validation.message);
     } catch (reason) {
+      if (sync.handleAccountError(reason)) return;
       setError(errorMessage(reason));
     } finally {
       setBusy(false);
@@ -244,7 +276,7 @@ function MilestoneEditor({
   return (
     <>
       <form className="settings-form" onSubmit={submit}>
-        <fieldset disabled={busy || !draftLoaded}>
+        <fieldset disabled={busy || accountChanged || !draftLoaded}>
           <label htmlFor={`artifact-${milestone.id}`}>
             Материал этапа
             <textarea
@@ -280,12 +312,17 @@ function MilestoneEditor({
         {draftNote && (
           <p className="product-field-hint project-draft-note" role="status">{draftNote}</p>
         )}
+        <DraftSyncStatus
+          sync={sync}
+          preview={(value) => `${value.artifact_text || "Пустой материал."}${value.repository_url ? `\n\nРепозиторий: ${value.repository_url}` : ""}`}
+          disabled={busy || accountChanged}
+        />
         {error && (
           <p className="status-message product-error" role="alert">
             {error} Текст сохранён в форме; повторите отправку.
           </p>
         )}
-        <button className="button" disabled={busy || !draftLoaded}>
+        <button className="button" disabled={busy || accountChanged || !sync.guardHeaders || !draftLoaded}>
           {busy ? "Обрабатываем запрос…" : latest
             ? "Отправить обновлённый материал" : "Отправить материал этапа"}
         </button>
@@ -309,7 +346,7 @@ function MilestoneEditor({
             Код не выполнялся. Проверка не меняет оценку освоения навыков.
           </p>
           {latest.validation.status === "artifact_received" && next && (
-            <button className="button button-secondary" disabled={busy} onClick={() => onNext(next.id)}>
+            <button className="button button-secondary" disabled={busy || accountChanged} onClick={() => { if (!sync.isAccountInvalid()) onNext(next.id); }}>
               Продолжить: {next.title}
             </button>
           )}
@@ -328,7 +365,7 @@ function MilestoneEditor({
             Версия материала
             <select
               value={sourceId}
-              disabled={busy || sourceLoading}
+              disabled={busy || accountChanged || sourceLoading}
               onChange={(event) => {
                 setSourceId(event.target.value);
                 setSource(null);
@@ -345,7 +382,7 @@ function MilestoneEditor({
           </label>
           <button
             className="button button-secondary"
-            disabled={busy || sourceLoading || !sourceId}
+            disabled={busy || accountChanged || sourceLoading || !sourceId}
             onClick={() => void preview()}
           >
             {sourceLoading ? "Загружаем материал…" : "Посмотреть материал"}
@@ -353,7 +390,7 @@ function MilestoneEditor({
           {sourceError && (
             <div className="status-message product-error" role="alert">
               <p>{sourceError}</p>
-              <button className="button button-secondary" onClick={() => void preview()} disabled={sourceLoading}>
+              <button className="button button-secondary" onClick={() => void preview()} disabled={sourceLoading || accountChanged}>
                 Повторить загрузку материала
               </button>
             </div>
@@ -368,12 +405,12 @@ function MilestoneEditor({
                 <div className="project-restore-confirm" role="group" aria-label="Замена текущего черновика">
                   <p>В форме уже есть черновик. Заменить его выбранным материалом и ссылкой?</p>
                   <div className="product-action-row">
-                    <button className="button" disabled={busy} onClick={restore}>Заменить черновик</button>
+                    <button className="button" disabled={busy || accountChanged} onClick={restore}>Заменить черновик</button>
                     <button className="button button-secondary" onClick={() => setReplacePending(false)}>Отмена</button>
                   </div>
                 </div>
               ) : (
-                <button className="button button-secondary" disabled={busy} onClick={restore}>
+                <button className="button button-secondary" disabled={busy || accountChanged} onClick={restore}>
                   Скопировать в черновик и редактировать
                 </button>
               )}

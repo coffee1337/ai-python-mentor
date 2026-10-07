@@ -28,7 +28,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 # Register extension tables for create_all, Alembic and privacy traversal.
-from app.db import account_models, domain_models, job_models, product_models, reflection_models  # noqa: F401
+from app.db import account_models, domain_models, job_models, product_models, reflection_models, study_draft_models, study_session_models  # noqa: F401
 
 
 class User(Base):

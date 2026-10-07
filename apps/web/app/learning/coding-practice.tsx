@@ -6,6 +6,8 @@ import LessonPractice, { SOURCE_LIMIT } from "./lesson-practice";
 import AttemptHistory, { type AttemptSource } from "./attempt-history";
 import HintLadder from "./hint-ladder";
 import type { Attempt } from "./lesson-types";
+import DraftSyncStatus from "../components/draft-sync-status";
+import { useSyncedDraft } from "../lib/use-synced-draft";
 type CodingSpec = {
   exercise_id: string;
   lesson_id: string;
@@ -33,6 +35,7 @@ type Job = {
 };
 type Submission = { key: string; source: string };
 type DraftBackup = { key: string; source: string };
+type CodingDraft = { source_code: string; backup_source: string | null };
 const CODE_LANGUAGE = "python";
 const CODE_MODE = "function";
 const ACTIVE = new Set(["queued", "running"]);
@@ -78,12 +81,41 @@ export default function CodingPractice({
   const [restoreError, setRestoreError] = useState("");
   const [focusRequest, setFocusRequest] = useState(0);
   const [pollStopped, setPollStopped] = useState(false);
+  const [hasLocalDraft, setHasLocalDraft] = useState(false);
   const requestInFlight = useRef(false);
   const historyRequest = useRef(0);
   const practiceRef = useRef<HTMLElement>(null);
   const draftKey = spec
     ? `mentor.lesson.draft.v2.${userId}.${spec.exercise_id}.${spec.version}`
     : null;
+  const sync = useSyncedDraft<CodingDraft>({
+    userId, localKey: draftKey ?? `mentor.lesson.draft.v2.${userId}.${lessonId}.pending`,
+    ready: !loading && !!spec,
+    identity: spec ? { kind: "coding", resource_id: spec.exercise_id, version: spec.version, milestone_id: "" } : null,
+    current: { source_code: source, backup_source: draftBackup?.key === draftKey ? draftBackup.source : null },
+    empty: { source_code: spec?.starter_code ?? "", backup_source: null }, hasLocalDraft,
+    validate: (value) => {
+      const candidate = value as Partial<CodingDraft> | null;
+      if (!candidate || typeof candidate.source_code !== "string" || candidate.source_code.length > SOURCE_LIMIT ||
+        !(candidate.backup_source === null || (typeof candidate.backup_source === "string" && candidate.backup_source.length <= SOURCE_LIMIT))) return null;
+      return { source_code: candidate.source_code, backup_source: candidate.backup_source };
+    },
+    onApply: (value) => {
+      const next = value?.source_code ?? spec?.starter_code ?? "";
+      const backup = value?.backup_source ?? null;
+      setSource(next);
+      setDraftBackup(draftKey && backup !== null ? { key: draftKey, source: backup } : null);
+      setHasLocalDraft(value !== null);
+      setPending(null);
+      if (draftKey) try {
+        if (value) window.localStorage.setItem(draftKey, next);
+        else window.localStorage.removeItem(draftKey);
+        if (backup !== null) window.localStorage.setItem(`${draftKey}.backup`, backup);
+        else window.localStorage.removeItem(`${draftKey}.backup`);
+      } catch { /* Restored text remains in the editor when browser storage is unavailable. */ }
+    },
+  });
+  const accountChanged = sync.phase === "account_changed";
 
   const history = useCallback(async (exerciseId: string, signal?: AbortSignal) => {
     const request = ++historyRequest.current;
@@ -120,6 +152,7 @@ export default function CodingPractice({
     setRestoreMessage("");
     setRestoreError("");
     setFocusRequest(0);
+    setHasLocalDraft(false);
     try {
       const nextSpec = await api<CodingSpec>(
         `/learning/exercises/${encodeURIComponent(lessonId)}/coding-specification`,
@@ -141,6 +174,7 @@ export default function CodingPractice({
         /* Storage is optional. */
       }
       setDraftBackup(backup !== null ? { key, source: backup } : null);
+      setHasLocalDraft(draft !== null && draft.length <= SOURCE_LIMIT || backup !== null);
       setSource(
         draft !== null && draft.length <= SOURCE_LIMIT
           ? draft
@@ -223,9 +257,11 @@ export default function CodingPractice({
     };
   }, [job?.id, job?.status, pollStopped, history]);
 
-  function changeSource(value: string) {
-    if (value.length > SOURCE_LIMIT) return;
+  function changeSource(value: string, backupSource = draftBackup?.key === draftKey ? draftBackup.source : null) {
+    if (sync.isAccountInvalid() || value.length > SOURCE_LIMIT) return;
     setSource(value);
+    setHasLocalDraft(true);
+    sync.changed({ source_code: value, backup_source: backupSource });
     if (draftKey)
       try {
         window.localStorage.setItem(draftKey, value);
@@ -252,14 +288,14 @@ export default function CodingPractice({
 
   function restoreAttempt(attempt: AttemptSource): boolean {
     if (
-      !spec || !draftKey || busy || pending || (job && ACTIVE.has(job.status)) ||
+      !spec || !draftKey || busy || sync.isAccountInvalid() || pending || (job && ACTIVE.has(job.status)) ||
       !attempt.version_verified || attempt.exercise_id !== spec.exercise_id ||
       attempt.exercise_version !== spec.version || attempt.language !== CODE_LANGUAGE ||
       attempt.mode !== CODE_MODE || attempt.source_code.length > SOURCE_LIMIT
     ) return false;
     if (source !== attempt.source_code && !preserveDraftBeforeReplacement())
       return false;
-    changeSource(attempt.source_code);
+    changeSource(attempt.source_code, source !== attempt.source_code ? source : draftBackup?.source ?? null);
     setRestoreError("");
     setRestoreMessage("Код восстановлен в редакторе. Сохраните новую попытку, когда будете готовы.");
     setFocusRequest((value) => value + 1);
@@ -268,19 +304,20 @@ export default function CodingPractice({
 
   function restorePreviousDraft() {
     if (
-      !draftBackup || draftBackup.key !== draftKey || busy || pending ||
+      !draftBackup || draftBackup.key !== draftKey || busy || sync.isAccountInvalid() || pending ||
       (job && ACTIVE.has(job.status))
     ) return;
     // Swap the two drafts so restoring the backup also preserves later edits.
     const previous = draftBackup.source;
     if (!preserveDraftBeforeReplacement()) return;
-    changeSource(previous);
+    changeSource(previous, source);
     setRestoreMessage("Предыдущий черновик возвращён в редактор. Заменённый текст доступен ниже.");
     setFocusRequest((value) => value + 1);
   }
 
   async function send(submission: Submission) {
-    if (!spec || busy) return;
+    if (!spec || busy || sync.isAccountInvalid() || !sync.guardHeaders) return;
+    sync.changed({ source_code: source, backup_source: draftBackup?.key === draftKey ? draftBackup.source : null });
     setBusy(true);
     setError("");
     setPending(submission);
@@ -289,7 +326,7 @@ export default function CodingPractice({
         `/learning/exercises/${encodeURIComponent(spec.exercise_id)}/jobs`,
         {
           method: "POST",
-          headers: { "Idempotency-Key": submission.key },
+          headers: { ...sync.guardHeaders, "Idempotency-Key": submission.key },
           body: JSON.stringify({
             language: CODE_LANGUAGE,
             mode: CODE_MODE,
@@ -302,6 +339,7 @@ export default function CodingPractice({
       setPollStopped(false);
       await history(spec.exercise_id);
     } catch (reason) {
+      if (sync.handleAccountError(reason)) return;
       setError(errorMessage(reason));
     } finally {
       setBusy(false);
@@ -310,20 +348,22 @@ export default function CodingPractice({
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (sync.isAccountInvalid()) return;
     if (source.trim()) void send(pending ?? { key: newRequestId(), source });
   }
 
   async function cancel() {
-    if (!job || busy) return;
+    if (!job || busy || sync.isAccountInvalid() || !sync.guardHeaders) return;
     setBusy(true);
     try {
       const next = await api<Job>(
         `/learning/jobs/${encodeURIComponent(job.id)}/cancel`,
-        { method: "POST" },
+        { method: "POST", headers: sync.guardHeaders },
       );
       setJob(next);
       await history(next.exercise_id);
     } catch (reason) {
+      if (sync.handleAccountError(reason)) return;
       setError(errorMessage(reason));
     } finally {
       setBusy(false);
@@ -387,9 +427,14 @@ export default function CodingPractice({
             source={source}
             onSourceChange={changeSource}
             onSubmit={submit}
-            busy={busy}
-            disabled={!!pending || (!!job && ACTIVE.has(job.status))}
+            busy={busy || accountChanged}
+            disabled={accountChanged || !sync.guardHeaders || !!pending || (!!job && ACTIVE.has(job.status))}
             executionConfigured={capabilities?.configured ?? false}
+          />
+          <DraftSyncStatus
+            sync={sync}
+            preview={(value) => `${value.source_code || "Пустой код."}${value.backup_source !== null ? `\n\nПредыдущий черновик кода:\n${value.backup_source}` : ""}`}
+            disabled={busy || accountChanged || !!pending || (!!job && ACTIVE.has(job.status))}
           />
           {restoreMessage && <p role="status">{restoreMessage}</p>}
           {restoreError && <p className="form-error" role="alert">{restoreError}</p>}
@@ -407,7 +452,7 @@ export default function CodingPractice({
               <button
                 className="text-button"
                 type="button"
-                disabled={busy || !!pending || (!!job && ACTIVE.has(job.status))}
+                disabled={busy || accountChanged || !!pending || (!!job && ACTIVE.has(job.status))}
                 onClick={restorePreviousDraft}
               >
                 Вернуть предыдущий черновик
@@ -431,7 +476,7 @@ export default function CodingPractice({
             <button
               className="text-button"
               type="button"
-              disabled={busy}
+              disabled={busy || accountChanged || !sync.guardHeaders}
               onClick={() => void cancel()}
             >
               Отменить проверку
@@ -443,6 +488,7 @@ export default function CodingPractice({
               <button
                 className="text-button"
                 type="button"
+                disabled={accountChanged}
                 onClick={() => setPollStopped(false)}
               >
                 Продолжить проверку статуса
@@ -458,7 +504,7 @@ export default function CodingPractice({
                 <button
                   className="text-button"
                   type="button"
-                  disabled={historyLoading}
+                  disabled={historyLoading || accountChanged}
                   onClick={() => void history(spec.exercise_id)}
                 >
                   Обновить историю
@@ -477,7 +523,7 @@ export default function CodingPractice({
                   mode: CODE_MODE,
                   maxSourceLength: SOURCE_LIMIT,
                 }}
-                restoreDisabled={busy || !!pending || (!!job && ACTIVE.has(job.status))}
+                restoreDisabled={busy || accountChanged || !!pending || (!!job && ACTIVE.has(job.status))}
                 onRestore={restoreAttempt}
               />
             )}
@@ -491,15 +537,15 @@ export default function CodingPractice({
             <>
               <button
                 className="text-button"
-                disabled={busy}
+                disabled={busy || accountChanged || !sync.guardHeaders}
                 onClick={() => void send(pending)}
               >
                 Повторить отправку
               </button>
               <button
                 className="text-button"
-                disabled={busy}
-                onClick={() => setPending(null)}
+                disabled={busy || accountChanged}
+                onClick={() => { if (!sync.isAccountInvalid()) setPending(null); }}
               >
                 Изменить решение
               </button>
@@ -508,7 +554,7 @@ export default function CodingPractice({
             !spec && (
               <button
                 className="text-button"
-                disabled={loading}
+                disabled={loading || accountChanged}
                 onClick={() => void load()}
               >
                 Повторить загрузку

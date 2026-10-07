@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import hashlib
+import hmac
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
@@ -57,7 +59,18 @@ def _create_session(db: Session, user: User) -> tuple[str, str]:
 
 
 def _user_response(user: User) -> UserResponse:
-    return UserResponse.model_validate(user)
+    return UserResponse.model_validate(user).model_copy(update={"account_scope": account_scope(user)})
+
+
+def account_scope(user: User) -> str:
+    """Opaque account precondition, never a credential or an owner selector.
+
+    An old tab retains this value when another tab changes the shared cookies.
+    It can then fail closed before copying private work to the new account.
+    Password rotation invalidates the old precondition as well.
+    """
+    return hmac.new(user.password_hash.encode("utf-8"),
+        ("mentor-workspace-scope-v1\0" + str(user.id)).encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def _onboarding_required(user: User) -> bool:
@@ -84,12 +97,34 @@ def current_auth(request: Request, db: Session = Depends(get_db)) -> tuple[User,
     return auth
 
 
-def csrf_protected(request: Request, auth: tuple[User, AuthSession] = Depends(current_auth), x_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token")) -> tuple[User, AuthSession]:
+def csrf_protected(request: Request, auth: tuple[User, AuthSession] = Depends(current_auth),
+                   x_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
+                   x_account_scope: str | None = Header(default=None, alias="X-Account-Scope", max_length=64)) -> tuple[User, AuthSession]:
     _, session = auth
     cookie_token = request.cookies.get(CSRF_COOKIE)
     if not cookie_token or not x_csrf_token or cookie_token != x_csrf_token or token_digest(x_csrf_token) != session.csrf_token_hash:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="CSRF validation failed")
+    if x_account_scope is not None:
+        _check_account_scope(auth, x_account_scope)
     return auth
+
+
+def _check_account_scope(auth: tuple[User, AuthSession], expected: str | None) -> tuple[User, AuthSession]:
+    if (expected is None or len(expected) != 64 or any(part not in "0123456789abcdef" for part in expected)
+            or not hmac.compare_digest(expected, account_scope(auth[0]))):
+        raise HTTPException(409, {"code": "account_changed", "message": "Account changed; reload before continuing"},
+                            headers={"Cache-Control": "no-store"})
+    return auth
+
+
+def account_scoped_auth(auth: tuple[User, AuthSession] = Depends(current_auth),
+                        expected: str | None = Header(default=None, alias="X-Account-Scope", max_length=64)):
+    return _check_account_scope(auth, expected)
+
+
+def account_scoped_csrf(auth: tuple[User, AuthSession] = Depends(csrf_protected),
+                        expected: str | None = Header(default=None, alias="X-Account-Scope", max_length=64)):
+    return _check_account_scope(auth, expected)
 
 
 @router.post("/auth/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)

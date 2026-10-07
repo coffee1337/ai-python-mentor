@@ -480,3 +480,129 @@ def test_progress_calendar_uses_device_offset_not_postgres_connection_timezone(p
             assert len(course.lessons) == 90
             assert course.next is not None
         db.rollback()
+
+
+def _prepare_study_owner(engine, user_id):
+    from app.db.models import Profile
+    from app.db.product_models import LearnerProject
+    from app.projects import PROJECT_TEMPLATES
+
+    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    with factory() as db:
+        db.add(Profile(user_id=user_id, experience_level="beginner", onboarding_completed=True))
+        template = PROJECT_TEMPLATES[0]
+        project = LearnerProject(user_id=user_id, template_id=template["id"], template_snapshot=template)
+        db.add(project)
+        db.commit()
+        return project.id, template["milestones"][0]["id"]
+
+
+def test_postgres_draft_conflict_preserves_one_committed_variant(postgres_engine, sandbox):
+    """Exercise the real route's owner lock, throttle and revision CAS together."""
+    from fastapi import HTTPException, Response
+    from app.db.study_draft_models import StudyDraft
+    from app.study_drafts import DraftIdentity, SaveDraft, save_draft
+
+    project_id, milestone = _prepare_study_owner(postgres_engine, sandbox.user_id)
+    identity = DraftIdentity(kind="project_milestone", resource_id=str(project_id),
+                             version=0, milestone_id=milestone)
+    factory = sessionmaker(bind=postgres_engine, autoflush=False, expire_on_commit=False)
+    with factory() as db:
+        user = db.get(User, sandbox.user_id)
+        initial = save_draft(SaveDraft(identity=identity, expected_revision=0,
+            content={"artifact_text": "Исходный черновик", "repository_url": ""}), Response(), auth=(user, None), db=db)
+        assert initial.revision == 1
+
+    barrier = Barrier(2)
+
+    def edit(text_value):
+        with factory() as db:
+            user = db.get(User, sandbox.user_id)
+            barrier.wait(timeout=15)
+            try:
+                result = save_draft(SaveDraft(identity=identity, expected_revision=1,
+                    content={"artifact_text": text_value, "repository_url": ""}), Response(), auth=(user, None), db=db)
+                return 200, result.content["artifact_text"]
+            except HTTPException as error:
+                db.rollback()
+                return error.status_code, error.detail.get("code")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(edit, ["Первый вариант 🐍", "Второй вариант café"]))
+    assert sorted(code for code, _ in results) == [200, 409]
+    assert next(value for code, value in results if code == 409) == "draft_conflict"
+    winner = next(value for code, value in results if code == 200)
+    with factory() as db:
+        row = db.scalar(select(StudyDraft).where(StudyDraft.user_id == sandbox.user_id))
+        assert row.revision == 2 and row.content["artifact_text"] == winner
+        assert db.scalar(select(func.count()).select_from(SkillEvidence).where(SkillEvidence.user_id == sandbox.user_id)) == 0
+        # Clearing is a new revision, never a deletion that a stale client can resurrect.
+        user = db.get(User, sandbox.user_id)
+        tombstone = save_draft(SaveDraft(identity=identity, expected_revision=2, content=None),
+                              Response(), auth=(user, None), db=db)
+        assert tombstone.revision == 3 and tombstone.content is None
+        with pytest.raises(HTTPException) as conflict:
+            save_draft(SaveDraft(identity=identity, expected_revision=2,
+                content={"artifact_text": "Устаревший вариант", "repository_url": ""}), Response(), auth=(user, None), db=db)
+        assert conflict.value.status_code == 409
+        db.rollback()
+        row = db.scalar(select(StudyDraft).where(StudyDraft.user_id == sandbox.user_id))
+        assert row.revision == 3 and row.content is None
+
+
+def test_postgres_concurrent_starts_share_one_open_study_timer(postgres_engine, sandbox):
+    from fastapi import Response
+    from app.db.study_session_models import StudySession
+    from app.study_sessions import StartRequest, start_session
+
+    _prepare_study_owner(postgres_engine, sandbox.user_id)
+    factory = sessionmaker(bind=postgres_engine, autoflush=False, expire_on_commit=False)
+    barrier = Barrier(2)
+
+    def start():
+        with factory() as db:
+            user = db.get(User, sandbox.user_id)
+            barrier.wait(timeout=15)
+            return start_session(StartRequest(), Response(), auth=(user, None), db=db).id
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(start) for _ in range(2)]
+        ids = [future.result(timeout=30) for future in futures]
+    assert ids[0] == ids[1]
+    with factory() as db:
+        rows = db.scalars(select(StudySession).where(StudySession.user_id == sandbox.user_id)).all()
+        assert len(rows) == 1 and rows[0].revision == 1
+        assert db.scalar(select(func.count()).select_from(SkillEvidence).where(SkillEvidence.user_id == sandbox.user_id)) == 0
+
+
+def test_postgres_stale_timer_action_cannot_double_accrue(postgres_engine, sandbox):
+    from fastapi import HTTPException, Response
+    from app.db.study_session_models import StudySession
+    from app.study_sessions import StartRequest, _transition, start_session
+    from datetime import timedelta
+
+    _prepare_study_owner(postgres_engine, sandbox.user_id)
+    factory = sessionmaker(bind=postgres_engine, autoflush=False, expire_on_commit=False)
+    with factory() as db:
+        current = start_session(StartRequest(), Response(), auth=(db.get(User, sandbox.user_id), None), db=db)
+        now = current.started_at + timedelta(seconds=35)
+    barrier = Barrier(2)
+
+    def pause():
+        with factory() as db:
+            barrier.wait(timeout=15)
+            try:
+                return 200, _transition(db, sandbox.user_id, current.id, "pause", 1, now).active_seconds
+            except HTTPException as error:
+                db.rollback()
+                return error.status_code, None
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(pause) for _ in range(2)]
+        results = [future.result(timeout=30) for future in futures]
+    assert sorted(code for code, _ in results) == [200, 409]
+    assert next(seconds for code, seconds in results if code == 200) == 35
+    with factory() as db:
+        row = db.get(StudySession, current.id)
+        assert row.status == "paused" and row.revision == 2
+        assert row.accumulated_milliseconds == 35000 and row.last_activity_at is None

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "@fontsource-variable/inter";
 import "./globals.css";
+import StudySessionProvider from "./components/study-session-provider";
 
 export const metadata: Metadata = {
   title: "Наставник — Python Backend",
@@ -12,7 +13,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ru">
-      <body>{children}</body>
+      <body><StudySessionProvider>{children}</StudySessionProvider></body>
     </html>
   );
 }

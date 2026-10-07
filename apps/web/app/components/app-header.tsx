@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, clearLocalDrafts } from "../lib/api";
 import AppIcon, { type IconName } from "./app-icon";
+import { useStudySession } from "./study-session-provider";
 
 const navigation: { href: string; label: string; icon: IconName }[] = [
   { href: "/dashboard", label: "Моё обучение", icon: "home" },
@@ -12,6 +13,7 @@ const navigation: { href: string; label: string; icon: IconName }[] = [
   { href: "/learning", label: "Текущий урок", icon: "book" },
   { href: "/learning/progress", label: "Мой прогресс", icon: "route" },
   { href: "/learning/reviews", label: "Повторения", icon: "check" },
+  { href: "/learning/sessions", label: "История занятий", icon: "book" },
   { href: "/projects", label: "Мои проекты", icon: "folder" },
   { href: "/jobs", label: "Карьерная цель", icon: "briefcase" },
 ];
@@ -23,6 +25,7 @@ const settings: { href: string; label: string; icon: IconName }[] = [
 export default function AppHeader() {
   const pathname = usePathname();
   const router = useRouter();
+  const { clear: clearStudySession } = useStudySession();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -82,6 +85,7 @@ export default function AppHeader() {
     setError("");
     try {
       await api<void>("/auth/logout", { method: "POST" });
+      clearStudySession();
       clearLocalDrafts();
       router.replace("/auth");
     } catch {

@@ -5975,3 +5975,335 @@ small {
     margin-bottom: .25rem;
   }
 }
+
+/* Server-backed study timer and history. */
+.study-session-panel,
+.study-session-history {
+  min-width: 0;
+  width: 100%;
+}
+
+.study-session-panel > .panel-heading,
+.study-session-history > .panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.study-session-summary {
+  display: grid;
+  grid-template-columns: minmax(150px, .6fr) minmax(0, 1.4fr);
+  gap: 1.5rem;
+  align-items: center;
+  padding: 1rem 0;
+}
+
+.study-session-clock {
+  display: grid;
+  gap: .25rem;
+}
+
+.study-session-clock > span,
+.study-history-duration dt {
+  font-size: .8125rem;
+  color: var(--muted);
+}
+
+.study-session-clock > strong {
+  font-family: var(--sans);
+  font-size: clamp(1.75rem, 3vw, 2.25rem);
+  line-height: 1.2;
+  letter-spacing: -.04em;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.study-session-state {
+  min-width: 0;
+}
+
+.study-session-state p {
+  margin: .5rem 0 0;
+  font-size: .8125rem;
+  line-height: 1.65;
+}
+
+.study-session-state-badge {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+}
+
+.study-session-state-badge.is-active,
+.study-session-state-badge.is-completed {
+  color: var(--green-deep);
+  background: var(--accent-soft);
+}
+
+.study-session-state-badge.is-paused,
+.study-session-state-badge.is-abandoned {
+  color: var(--muted);
+}
+
+.study-session-actions,
+.draft-sync-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .75rem;
+}
+
+.study-session-actions > button,
+.study-session-start > button,
+.draft-sync-actions > button {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.study-session-start {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: .5rem 0;
+}
+
+.study-session-start > div {
+  flex: 1 1 250px;
+  min-width: 0;
+}
+
+.study-session-start h3 {
+  margin: 0 0 .5rem;
+}
+
+.study-session-start .badge {
+  margin-top: 0;
+}
+
+.study-session-start p {
+  margin-bottom: 0;
+}
+
+.study-session-note {
+  font-size: .75rem;
+  line-height: 1.65;
+  padding-top: 1rem;
+  margin: 1rem 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.study-session-confirm,
+.draft-sync-conflict {
+  padding: 1rem;
+  margin: 1rem 0;
+  border: 1px solid var(--green-deep);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+}
+
+.study-session-confirm h3,
+.draft-sync-conflict h4 {
+  margin-top: 0;
+}
+
+.study-session-error {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+
+.study-session-error > p {
+  margin-top: 0;
+}
+
+.study-session-plan {
+  margin-top: 1rem;
+}
+
+.study-session-focus {
+  padding: 0;
+  margin: 1rem 0 0;
+  list-style: none;
+}
+
+.study-session-focus > li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: .75rem 1rem;
+  padding: .85rem 0;
+  border-top: 1px solid var(--line);
+  font-size: .875rem;
+}
+
+.study-session-focus > li > div {
+  display: grid;
+  gap: .25rem;
+  overflow-wrap: anywhere;
+}
+
+.study-session-focus > li > a {
+  white-space: nowrap;
+}
+
+.study-history-limit {
+  display: grid;
+  gap: .35rem;
+  max-width: 100%;
+  font-size: .8125rem;
+}
+
+.study-history-limit select {
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+  padding: .6rem .75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--sans);
+}
+
+.study-session-history-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.study-session-history-list > li {
+  padding: 1.25rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.study-history-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .75rem 1.5rem;
+}
+
+.study-history-heading h3 {
+  font-size: 1rem;
+  margin: .5rem 0;
+}
+
+.study-history-heading p {
+  font-size: .8125rem;
+  margin-bottom: 0;
+}
+
+.study-history-duration {
+  margin: 0;
+  display: grid;
+  gap: .25rem;
+}
+
+.study-history-duration dd {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Cross-device drafts remain private text, without grading or execution. */
+.draft-sync-status {
+  display: grid;
+  gap: .75rem;
+  min-width: 0;
+  margin: 1rem 0;
+  padding: 1rem;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: .875rem;
+}
+
+.draft-sync-status > p,
+.draft-sync-conflict > p {
+  margin: 0;
+}
+
+.draft-sync-status[data-sync-phase="conflict"] {
+  border-color: var(--green-deep);
+}
+
+.draft-sync-conflict {
+  margin: 0;
+  display: grid;
+  gap: .75rem;
+  min-width: 0;
+}
+
+.draft-sync-versions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.draft-sync-versions > div {
+  min-width: 0;
+}
+
+.draft-sync-versions > div > strong {
+  display: block;
+  font-size: .8125rem;
+  margin-bottom: .5rem;
+}
+
+.draft-sync-preview {
+  max-width: 100%;
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: .875rem;
+  margin: .5rem 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: .8125rem;
+  line-height: 1.65;
+}
+
+@media (max-width: 700px) {
+  .study-session-summary,
+  .draft-sync-versions {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .study-session-focus > li {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .study-session-focus > li > a,
+  .study-session-focus > li > span.muted {
+    grid-column: 2;
+  }
+
+  .study-session-start > button {
+    width: 100%;
+  }
+
+  .study-session-actions > .button,
+  .study-session-actions > .button-secondary,
+  .draft-sync-actions > .button,
+  .draft-sync-actions > .button-secondary {
+    flex: 1 1 160px;
+  }
+
+  .study-session-confirm,
+  .draft-sync-status,
+  .draft-sync-conflict {
+    padding: .875rem;
+  }
+}

@@ -8,7 +8,7 @@ const artifacts = process.env.UI_ARTIFACT_DIR || path.join(directory, "artifacts
 
 export default defineConfig({
   testDir: directory,
-  testMatch: "journey.spec.mjs",
+  testMatch: ["journey.spec.mjs", "study-sync.spec.mjs"],
   timeout: 180_000,
   expect: { timeout: 15_000 },
   workers: 1,

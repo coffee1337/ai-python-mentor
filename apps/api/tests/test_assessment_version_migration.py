@@ -32,6 +32,6 @@ def test_0018_version_capacity_roundtrip(tmp_path, monkeypatch):
     command.upgrade(config, "head")
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0037_lesson_reflections"
+            "0039_study_sessions"
         )
     engine.dispose()
