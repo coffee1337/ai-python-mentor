@@ -73,12 +73,14 @@ test("two devices preserve drafts, conflicts and a paused study session", async 
     await expect(remote.locator(".check-feedback")).toHaveCount(0);
 
     await page.getByRole("button", { name: "Открыть практику", exact: true }).click();
+    await page.getByText("Объяснить своими словами · необязательно", { exact: true }).click();
     const explanation = "Мой неотправленный разбор: Python выполняет строки по порядку. 🐍";
     await page.locator("#reflection-text").fill(explanation);
     const reflectionIdentity = { ...flowIdentity, kind: "reflection" };
     await expect.poll(async () => (await draft(page.context(), reflectionIdentity, auth)).content?.text).toBe(explanation);
     await expect.poll(async () => (await draft(page.context(), flowIdentity, auth)).content?.step).toBe(3);
     await remote.reload();
+    await remote.getByText("Объяснить своими словами · необязательно", { exact: true }).click();
     await expect(remote.locator("#reflection-text")).toHaveValue(explanation);
 
     const templates = await (await page.request.get("/api/projects/templates")).json();
@@ -157,6 +159,7 @@ test("a stale tab never copies its private draft into a different account", asyn
   const identity = { kind: "reflection", resource_id: lesson.id, version: Number(lesson.version), milestone_id: "" };
   await page.goto(`/learning?lesson=${encodeURIComponent(lesson.id)}`);
   await page.getByRole("button", { name: "Попрактиковаться", exact: false }).click();
+  await page.getByText("Объяснить своими словами · необязательно", { exact: true }).click();
   const privateText = "Этот неотправленный текст принадлежит первому аккаунту.";
   await page.locator("#reflection-text").fill(privateText);
   await expect.poll(async () => (await draft(page.context(), identity, firstAuth)).content?.text).toBe(privateText);
