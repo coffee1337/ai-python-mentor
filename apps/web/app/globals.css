@@ -5983,6 +5983,11 @@ small {
   width: 100%;
 }
 
+.learning-page-content > .study-session-panel,
+.study-session-panel + .study-session-history {
+  margin-top: 24px;
+}
+
 .study-session-panel > .panel-heading,
 .study-session-history > .panel-heading {
   display: flex;
