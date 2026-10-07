@@ -4,9 +4,9 @@
 
 ### AI-powered platform for learning Python and backend development
 
-**FastAPI · Next.js · PostgreSQL · RAG · Docker · AI/LLM**
+[![CI](https://github.com/Coffee1337/ai-python-mentor/actions/workflows/ci.yml/badge.svg)](https://github.com/Coffee1337/ai-python-mentor/actions/workflows/ci.yml)
 
-Платформа обучения Python и backend-разработке с персонализированным учебным планом, практическими заданиями, AI-наставником и отслеживанием прогресса.
+**FastAPI · Next.js · PostgreSQL · RAG · Docker**
 
 </div>
 
@@ -28,6 +28,15 @@ AI Python Mentor — full-stack приложение для изучения Pyt
 - Telegram-интеграцию.
 
 Проект построен как production-oriented система с отдельными backend/frontend слоями, PostgreSQL, миграциями, фоновой обработкой задач, CI и изолированной архитектурой исполнения пользовательского Python-кода.
+
+---
+## 🚧 Project Status
+
+**Active development**
+
+The core learning platform, backend, AI integration, database layer and CI infrastructure are implemented.
+
+Current work focuses on product polish, content quality, AI evaluation and production deployment.
 
 ---
 
