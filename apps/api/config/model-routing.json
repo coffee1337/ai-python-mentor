@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "provider": {
+    "name": "cheapvibecode",
+    "checked_at": "2026-11-10T20:55:00Z"
+  },
+  "models": {
+    "minimax-m3.1-flash": {
+      "input_micro_usd_per_million": 100000,
+      "output_micro_usd_per_million": 100000,
+      "multiplier": 0.1
+    },
+    "glm-5.3-flash": {
+      "input_micro_usd_per_million": 300000,
+      "output_micro_usd_per_million": 300000,
+      "multiplier": 0.3
+    },
+    "gpt-6-luna": {
+      "input_micro_usd_per_million": 300000,
+      "output_micro_usd_per_million": 300000,
+      "multiplier": 0.3
+    },
+    "gpt-6.1-sol": {
+      "input_micro_usd_per_million": 2000000,
+      "output_micro_usd_per_million": 2000000,
+      "multiplier": 2
+    },
+    "gemini-3.1-pro": {
+      "input_micro_usd_per_million": 2000000,
+      "output_micro_usd_per_million": 2000000,
+      "multiplier": 2
+    },
+    "claude-sonnet-5": {
+      "input_micro_usd_per_million": 3000000,
+      "output_micro_usd_per_million": 3000000,
+      "multiplier": 3
+    },
+    "deepseek-v4.1-flash-1017": {
+      "input_micro_usd_per_million": 100000,
+      "output_micro_usd_per_million": 100000,
+      "multiplier": 0.1
+    },
+    "deepseek-v4-flash-0731": {
+      "input_micro_usd_per_million": 100000,
+      "output_micro_usd_per_million": 100000,
+      "multiplier": 0.1
+    }
+  },
+  "tiers": {
+    "fast": [
+      "deepseek-v4.1-flash-1017",
+      "minimax-m3.1-flash",
+      "glm-5.3-flash"
+    ],
+    "balanced": [
+      "gpt-6-luna",
+      "glm-5.3-flash",
+      "deepseek-v4-flash-0731"
+    ],
+    "strong": [
+      "gpt-6.1-sol",
+      "gemini-3.1-pro",
+      "claude-sonnet-5"
+    ]
+  },
+  "tasks": {
+    "tutor_chat": "fast",
+    "hint_ladder": "fast",
+    "error_explanation": "fast",
+    "answer_feedback": "fast",
+    "lesson_generation": "strong",
+    "practice_generation": "strong",
+    "code_review": "strong",
+    "plan_generation": "balanced"
+  },
+  "default_task": "tutor_chat"
+}

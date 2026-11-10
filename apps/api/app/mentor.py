@@ -254,7 +254,7 @@ def chat(lesson_id: str, payload: ChatRequest,
     db.commit()
     config = None
     try:
-        config = ai_gateway.configuration()
+        config = ai_gateway.configuration(task="tutor_chat")
         answer, usage = ai_gateway.generate_with_usage(config, messages)
     except ai_gateway.GatewayError as exc:
         finish_ai_call(db, reservation, status="gateway_error")
@@ -271,11 +271,12 @@ def chat(lesson_id: str, payload: ChatRequest,
         )
         db.commit()
         raise HTTPException(exc.status, exc.detail) from None
-    finish_ai_call(db, reservation, status="completed", usage=usage, model_id=config.model)
+    answered_model = (usage or {}).get("model") or config.model
+    finish_ai_call(db, reservation, status="completed", usage=usage, model_id=answered_model)
     _record_usage(
         db,
         user,
-        model_id=config.model,
+        model_id=answered_model,
         messages=messages,
         output=answer,
         usage=usage,

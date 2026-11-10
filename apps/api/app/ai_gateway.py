@@ -1,11 +1,32 @@
-"""Server-only, opt-in Chat Completions adapter. No retries or vendor defaults."""
+"""Server-only Chat Completions adapter with explicit routing and bounded retries.
+
+The domain knows only this module.  A task name selects a tier from the routing
+catalog, the tier is an ordered chain of models, and each model gets a bounded
+number of attempts with exponential backoff.  Provider error bodies never reach
+callers, prompts and keys never reach logs, and every call reports the tokens it
+actually billed.
+"""
+from __future__ import annotations
+
 import json
+import logging
 import os
+import random
+import time
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError
+
+from app import model_catalog
+
+logger = logging.getLogger("ai.usage")
+
+RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
+MAX_RESPONSE_BYTES = 65536
+ATTEMPTS_PER_MODEL = 2
 
 
 class GatewayError(Exception):
@@ -31,27 +52,108 @@ class ProviderResponse(BaseModel):
 @dataclass(frozen=True)
 class GatewayConfig:
     url: str
-    model: str
+    models: tuple[str, ...]
     key: str
     timeout: float
+    task: str | None = None
+
+    @property
+    def model(self) -> str:
+        return self.models[0]
 
 
-def configuration(*, model_override: str | None = None) -> GatewayConfig:
+def _timeout() -> float:
+    try:
+        value = float(os.getenv("AI_GATEWAY_TIMEOUT_SECONDS", "20"))
+    except ValueError:
+        raise GatewayError(503, "AI mentor is not configured") from None
+    if not 1 <= value <= 60:
+        raise GatewayError(503, "AI mentor is not configured")
+    return value
+
+
+def configuration(*, model_override: str | None = None, task: str | None = None) -> GatewayConfig:
     url = os.getenv("AI_GATEWAY_URL", "").strip()
-    model = os.getenv("AI_GATEWAY_MODEL", "").strip()
     key = os.getenv("AI_GATEWAY_API_KEY", "").strip()
     try:
         parts = urlsplit(url)
-        timeout = float(os.getenv("AI_GATEWAY_TIMEOUT_SECONDS", "20"))
-        model = model_override.strip() if model_override else model
+        timeout = _timeout()
+        if model_override:
+            models = (model_override.strip(),)
+            task = None
+        else:
+            try:
+                catalog = model_catalog.load()
+                models = catalog.chain(task)
+                task = task or catalog.default_task
+            except model_catalog.RoutingError:
+                legacy = os.getenv("AI_GATEWAY_MODEL", "").strip()
+                if not legacy:
+                    raise GatewayError(503, "AI mentor is not configured") from None
+                models, task = (legacy,), None
         valid = (parts.scheme == "https" and parts.hostname and not parts.username
                  and not parts.password and not parts.query and not parts.fragment
-                 and model and key and 1 <= timeout <= 60)
+                 and all(models) and key)
     except ValueError:
         valid = False
     if not valid:
         raise GatewayError(503, "AI mentor is not configured")
-    return GatewayConfig(url, model, key, timeout)
+    return GatewayConfig(url, models, key, timeout, task)
+
+
+def _retry_delay(attempt: int) -> float:
+    try:
+        base = float(os.getenv("AI_RETRY_BASE_SECONDS", "0.4"))
+    except ValueError:
+        base = 0.4
+    base = min(max(base, 0.0), 5.0)
+    return min(base * (2 ** attempt), 4.0) * (1 + random.random() * 0.25)
+
+
+def _call_once(config: GatewayConfig, model: str, messages: list[dict[str, str]],
+               budget: int) -> tuple[str, dict | None]:
+    with httpx.Client(timeout=config.timeout, follow_redirects=False, trust_env=False) as client:
+        with client.stream(
+            "POST", config.url,
+            headers={"Authorization": f"Bearer {config.key}"},
+            json={"model": model, "messages": messages, "max_completion_tokens": budget},
+        ) as response:
+            if response.status_code in RETRY_STATUS:
+                raise httpx.HTTPStatusError("retryable", request=response.request, response=response)
+            response.raise_for_status()
+            raw = bytearray()
+            for chunk in response.iter_bytes():
+                raw.extend(chunk)
+                if len(raw) > MAX_RESPONSE_BYTES:
+                    raise ValueError("Response too large")
+    parsed = ProviderResponse.model_validate(json.loads(raw))
+    choice = parsed.choices[0]
+    if choice.message.role != "assistant" or choice.finish_reason != "stop" or not choice.message.content.strip():
+        raise ValueError("Incomplete response")
+    return choice.message.content.strip(), parsed.usage
+
+
+def _report(task: str | None, model: str, usage: dict | None, attempts: int,
+            latency_ms: int, status: str) -> dict[str, Any]:
+    prompt = usage.get("prompt_tokens") if isinstance(usage, dict) else None
+    completion = usage.get("completion_tokens") if isinstance(usage, dict) else None
+    prompt = prompt if type(prompt) is int and prompt >= 0 else None
+    completion = completion if type(completion) is int and completion >= 0 else None
+    try:
+        price = model_catalog.load().price(model)
+    except model_catalog.RoutingError:
+        price = None
+    micro = (price.micro_usd(prompt or 0, completion or 0)
+             if price and prompt is not None and completion is not None else None)
+    logger.info(json.dumps({"event": "ai_call", "task": task, "model": model, "status": status,
+                            "attempts": attempts, "prompt_tokens": prompt,
+                            "completion_tokens": completion, "micro_usd": micro,
+                            "latency_ms": latency_ms}, sort_keys=True))
+    enriched = dict(usage or {})
+    enriched.update({"model": model, "attempts": attempts, "latency_ms": latency_ms})
+    if micro is not None:
+        enriched["micro_usd"] = micro
+    return enriched
 
 
 def generate(config: GatewayConfig, messages: list[dict[str, str]]) -> str:
@@ -65,28 +167,43 @@ def generate_with_usage(
     *,
     max_completion_tokens: int = 2200,
 ) -> tuple[str, dict | None]:
-    """One HTTP call. Validate the envelope; never expose provider error bodies."""
+    """Walk the tier chain; every model gets a bounded number of attempts.
+
+    Returns the answer plus usage enriched with the answering model, the attempt
+    count and the cost in micro-USD when the model is priced.  Raises 504 when
+    the last failure was a timeout and 502 otherwise.
+    """
     if not 1 <= max_completion_tokens <= 3000:
         raise ValueError("Invalid completion-token budget")
-    try:
-        with httpx.Client(timeout=config.timeout, follow_redirects=False, trust_env=False) as client:
-            with client.stream(
-                "POST", config.url,
-                headers={"Authorization": f"Bearer {config.key}"},
-                json={"model": config.model, "messages": messages, "max_completion_tokens": max_completion_tokens},
-            ) as response:
-                response.raise_for_status()
-                raw = bytearray()
-                for chunk in response.iter_bytes():
-                    raw.extend(chunk)
-                    if len(raw) > 65536:
-                        raise ValueError("Response too large")
-                parsed = ProviderResponse.model_validate(json.loads(raw))
-        choice = parsed.choices[0]
-        if choice.message.role != "assistant" or choice.finish_reason != "stop" or not choice.message.content.strip():
-            raise ValueError("Incomplete response")
-        return choice.message.content.strip(), parsed.usage
-    except httpx.TimeoutException:
-        raise GatewayError(504, "AI mentor timed out; retry later") from None
-    except (httpx.HTTPError, ValidationError, ValueError, UnicodeError):
-        raise GatewayError(502, "AI mentor is temporarily unavailable") from None
+    started = time.monotonic()
+    attempts = 0
+    last_error: Exception | None = None
+    last_status = 502
+    for model in config.models:
+        for attempt in range(ATTEMPTS_PER_MODEL):
+            attempts += 1
+            try:
+                content, usage = _call_once(config, model, messages, max_completion_tokens)
+                return content, _report(config.task, model, usage, attempts,
+                                        int((time.monotonic() - started) * 1000), "ok")
+            except httpx.TimeoutException as exc:
+                last_error, last_status = exc, 504
+            except httpx.HTTPStatusError as exc:
+                last_error, last_status = exc, 502
+                if exc.response.status_code not in RETRY_STATUS:
+                    break
+            except httpx.HTTPError as exc:
+                last_error, last_status = exc, 502
+            except (ValidationError, ValueError, UnicodeError) as exc:
+                # A malformed envelope is not retried on the same model.
+                last_error, last_status = exc, 502
+                break
+            if attempt + 1 < ATTEMPTS_PER_MODEL:
+                time.sleep(_retry_delay(attempt))
+        logger.info(json.dumps({"event": "ai_call_failed", "task": config.task, "model": model,
+                                "status": last_status, "attempts": attempts,
+                                "error": type(last_error).__name__ if last_error else None},
+                               sort_keys=True))
+    raise GatewayError(last_status if last_status == 504 else 502,
+                       "AI mentor timed out; retry later" if last_status == 504
+                       else "AI mentor is temporarily unavailable")

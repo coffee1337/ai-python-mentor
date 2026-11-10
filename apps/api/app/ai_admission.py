@@ -1,5 +1,7 @@
 """Database-backed, short-transaction admission before any external AI I/O."""
 from datetime import datetime, timedelta, timezone
+import json
+import logging
 import os
 from uuid import uuid4
 
@@ -9,6 +11,8 @@ from sqlalchemy.orm import Session
 from app.ai_gateway import GatewayError
 from app.db.domain_models import AICallReservation, AIRequestLease
 from app.db.models import User
+
+logger = logging.getLogger("ai.usage")
 
 
 def _setting(name: str, default: int, *, maximum: int = 2_000_000_000) -> int:
@@ -23,6 +27,31 @@ def _setting(name: str, default: int, *, maximum: int = 2_000_000_000) -> int:
 
 def _utc(value: datetime) -> datetime:
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+_spend_alerts: set[str] = set()
+
+
+def _usd_limit_micro(name: str, default_usd: float) -> int:
+    """Parse a USD limit into micro-USD; 0 disables the guard."""
+    raw = os.getenv(name, "").strip()
+    try:
+        value = float(raw) if raw else float(default_usd)
+    except ValueError:
+        raise GatewayError(503, "AI spend limit is invalid") from None
+    if not 0 <= value <= 100_000:
+        raise GatewayError(503, "AI spend limit is invalid")
+    return int(round(value * 1_000_000))
+
+
+def _alert_daily_spend(day: str, spent: int, limit: int) -> None:
+    """Emit one structured alert per UTC day when the soft threshold is crossed."""
+    if day in _spend_alerts:
+        return
+    _spend_alerts.add(day)
+    logger.info(json.dumps({"event": "ai_spend_alert", "day": day, "spent_micro_usd": spent,
+                            "limit_micro_usd": limit, "ratio": round(spent / limit, 4)},
+                           sort_keys=True))
 
 
 def reserve_ai_call(
@@ -72,6 +101,18 @@ def reserve_ai_call(
     if daily_count >= daily_limit or budget and daily_cost + reservation_cost > budget:
         db.rollback()
         raise GatewayError(429, "Daily AI budget exceeded; retry tomorrow")
+    # Installation-wide guard: every user shares one provider account, so a
+    # single noisy tenant must not drain the day's budget.
+    global_limit = _usd_limit_micro("AI_SPEND_DAILY_LIMIT_USD", 5.0)
+    if global_limit:
+        spent_today = db.scalar(select(
+            func.coalesce(func.sum(AICallReservation.charged_micro_usd), 0),
+        ).where(AICallReservation.created_at >= start)) or 0
+        if spent_today + reservation_cost >= global_limit:
+            db.rollback()
+            raise GatewayError(429, "Daily AI budget exhausted; retry tomorrow")
+        if (spent_today + reservation_cost) * 10 >= global_limit * 8:
+            _alert_daily_spend(start.date().isoformat(), int(spent_today + reservation_cost), global_limit)
     token = uuid4()
     if lease is None:
         lease = AIRequestLease(user_id=user_id, operation=operation, request_key=request_key)
@@ -105,6 +146,22 @@ def finish_ai_call(db: Session, reservation: AICallReservation, *, status: str, 
     input_price = _setting("AI_INPUT_MICROUSD_PER_MILLION_TOKENS", 0)
     output_price = _setting("AI_OUTPUT_MICROUSD_PER_MILLION_TOKENS", 0)
     priced_model = os.getenv("AI_PRICED_MODEL_ID", "").strip()
-    if model_id and model_id == priced_model and type(input_tokens) is int and input_tokens >= 0 and type(output_tokens) is int and output_tokens >= 0 and input_price and output_price:
-        reservation.charged_micro_usd = (input_tokens * input_price + output_tokens * output_price + 999999) // 1000000
+    exact_usage = (type(input_tokens) is int and input_tokens >= 0
+                   and type(output_tokens) is int and output_tokens >= 0)
+    catalog_price = None
+    if model_id and exact_usage:
+        # Prices travel with the routing catalog, so a tier change cannot
+        # silently keep charging the previous model's rate.
+        try:
+            from app.model_catalog import load as load_catalog
+
+            catalog_price = load_catalog().price(model_id)
+        except Exception:
+            catalog_price = None
+    if catalog_price is not None and exact_usage:
+        reservation.charged_micro_usd = catalog_price.micro_usd(int(input_tokens or 0), int(output_tokens or 0))
+        reservation.cost_is_estimate = False
+    elif model_id and model_id == priced_model and exact_usage and input_price and output_price:
+        reservation.charged_micro_usd = (int(input_tokens or 0) * input_price
+                                       + int(output_tokens or 0) * output_price + 999999) // 1000000
         reservation.cost_is_estimate = False
