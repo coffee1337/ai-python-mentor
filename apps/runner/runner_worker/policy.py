@@ -3,9 +3,10 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 POLICY = "python-authored-v1"
@@ -13,8 +14,53 @@ SOURCE_BYTES = 64 * 1024
 BODY_BYTES = 128 * 1024
 OUTPUT_BYTES = 64 * 1024
 WALL_SECONDS = 15
+# CPU backstop sits above the wall clock so the wall deadline is the primary
+# limit and produces a clean `timeout` instead of a SIGKILL from RLIMIT_CPU.
+CPU_SECONDS = WALL_SECONDS + 2
 CLEANUP_SECONDS = 5
 LABEL = "ai-tutor-runner"
+BACKENDS = ("docker", "landlock")
+
+
+def docker_ready(timeout=5) -> bool:
+    """True when a container runtime that supports the pinned policy is usable."""
+    if shutil.which("docker") is None:
+        return False
+    try:
+        result = subprocess.run(
+            ["docker", "info", "--format", "{{json .}}"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            timeout=timeout, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if result.returncode != 0:
+        return False
+    try:
+        return "runsc" in json.loads(result.stdout).get("Runtimes", {})
+    except (ValueError, TypeError):
+        return False
+
+
+def landlock_ready() -> bool:
+    from .sandbox_kernel import landlock_abi
+
+    return landlock_abi() >= 4
+
+
+def select_backend() -> str:
+    """Choose the isolation backend; ``auto`` prefers containers when present."""
+    configured = os.getenv("RUNNER_SANDBOX_BACKEND", "auto").strip().lower()
+    if configured in BACKENDS:
+        return configured
+    if configured != "auto":
+        raise NotReady("policy_invalid")
+    if docker_ready():
+        return "docker"
+    if landlock_ready():
+        return "landlock"
+    raise NotReady("no_sandbox_backend")
+
 
 class NotReady(RuntimeError):
     pass
@@ -38,13 +84,25 @@ class Policy:
     catalog_file: Path
     attestation_file: Path
     runtime: str = "runsc"
+    backend: str = "docker"
 
     @classmethod
     def from_environment(cls):
+        backend = select_backend()
+        try:
+            state = Path(os.environ["RUNNER_STATE_DIR"])
+            catalog = Path(os.environ["RUNNER_CATALOG_FILE"])
+            attestation = Path(os.environ.get(
+                "RUNNER_HOST_ATTESTATION_FILE", str(state / "host-attestation.json")))
+        except KeyError:
+            raise NotReady("policy_missing") from None
+        if backend == "landlock":
+            if not catalog.is_file():
+                raise NotReady("catalog_missing")
+            return cls("", "", state, catalog, attestation, backend="landlock")
         try:
             policy = cls(os.environ["SANDBOX_IMAGE"], os.environ["SANDBOX_SECCOMP_FILE"],
-                         Path(os.environ["RUNNER_STATE_DIR"]), Path(os.environ["RUNNER_CATALOG_FILE"]),
-                         Path(os.environ["RUNNER_HOST_ATTESTATION_FILE"]))
+                         state, catalog, attestation)
         except KeyError:
             raise NotReady("policy_missing") from None
         if not re.fullmatch(r"[a-zA-Z0-9./_-]+@sha256:[a-f0-9]{64}", policy.image):
@@ -53,7 +111,19 @@ class Policy:
             raise NotReady("seccomp_missing")
         return policy
 
+    def sandbox(self):
+        """Isolation backend used for admission and execution."""
+        if self.backend == "landlock":
+            from .sandbox_landlock import LandlockSandbox
+
+            return LandlockSandbox(self.state, wall_seconds=WALL_SECONDS, cpu_seconds=CPU_SECONDS)
+        return None
+
     def verify(self, *, require_reaper=True):
+        backend = self.sandbox()
+        if backend is not None:
+            backend.verify(require_reaper=require_reaper)
+            return
         if self.state.joinpath("quarantined").exists():
             raise NotReady("host_quarantined")
         try:

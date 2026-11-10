@@ -5,6 +5,10 @@ from .execution import cleanup
 from .policy import LABEL, Policy, NotReady, command
 
 def reap(policy, *, force=False):
+    sandbox = policy.sandbox()
+    if sandbox is not None:
+        sandbox.reap(force=force)
+        return
     ids = command(["docker", "ps", "--all", "--filter", f"label={LABEL}=true", "--format", "{{.ID}}"])
     for identifier in ids.decode().splitlines():
         details = json.loads(command(["docker", "inspect", identifier]))[0]

@@ -33,3 +33,6 @@ pytest-of-*/
 %SystemDrive%/
 runner-state/
 certificates/
+
+# Local runner bundle (generated PKI, catalog with hidden tests)
+.runner-dev/

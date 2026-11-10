@@ -77,7 +77,46 @@ def capture(process, deadline, remaining, payload):
     finally:
         selector.close()
 
+def _grade(raw, case):
+    """Compare in the trusted host; the guest never reports its own verdict."""
+    try:
+        value = json.loads(raw)
+        if set(value) != {"value"}:
+            raise ValueError()
+        actual = json.dumps(value["value"], sort_keys=True, allow_nan=False, separators=(",", ":"))
+        expected = json.dumps(case["expected"], sort_keys=True, allow_nan=False, separators=(",", ":"))
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return None
+    return actual == expected
+
+
+def evaluate_landlock(policy, key, request, entry):
+    """Same grading contract as the container path, executed by the kernel sandbox."""
+    sandbox = policy.sandbox()
+    total, passed = len(entry["cases"]), 0
+    deadline = time.monotonic() + WALL_SECONDS
+    for case in entry["cases"]:
+        if time.monotonic() >= deadline:
+            return response(key, "timeout", total=total, error="execution_limit")
+        payload = json.dumps({"source": request["source"], "args": case["args"], "kwargs": case["kwargs"]},
+                             ensure_ascii=False).encode()
+        status, raw, _used = sandbox.run_payload(payload, deadline=deadline)
+        if status == "unavailable":
+            raise NotReady("sandbox_unavailable")
+        if status != "finished":
+            limit = status in {"timeout", "resource_violation"}
+            return response(key, status, total=total,
+                            error="execution_limit" if limit else "execution_error")
+        verdict = _grade(raw, case)
+        if verdict is None:
+            return response(key, "error", total=total, error="invalid_function_result")
+        passed += verdict
+    return response(key, "finished", passed=passed, total=total)
+
+
 def evaluate(policy, key, request, entry):
+    if getattr(policy, "backend", "docker") == "landlock":
+        return evaluate_landlock(policy, key, request, entry)
     job_digest = hashlib.sha256(key.encode()).hexdigest()[:24]
     deadline = time.monotonic() + WALL_SECONDS
     absolute = time.time() + WALL_SECONDS
