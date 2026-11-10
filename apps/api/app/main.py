@@ -1,5 +1,6 @@
 import os
 import logging
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -38,6 +39,10 @@ async def lifespan(_: FastAPI):
     report_gateway_status()
     yield
 
+
+from app.logging_config import configure_logging
+
+configure_logging()
 
 app = FastAPI(title="AI-наставник API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(RequestSizeLimit)
@@ -83,6 +88,7 @@ def report_gateway_status() -> None:
         )
     else:
         logger.info("AI gateway configured; mentor chat and AI curriculum are available.")
+        threading.Thread(target=ai_gateway.warmup, name="ai-warmup", daemon=True).start()
 
 
 @app.get("/health", tags=["health"])

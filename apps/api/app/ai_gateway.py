@@ -81,16 +81,17 @@ def configuration(*, model_override: str | None = None, task: str | None = None)
         if model_override:
             models = (model_override.strip(),)
             task = None
+        elif os.getenv("AI_GATEWAY_MODEL", "").strip():
+            # Explicit pin wins: an operator can freeze one model without
+            # editing the catalog (rollback path during an incident).
+            models, task = (os.getenv("AI_GATEWAY_MODEL", "").strip(),), None
         else:
             try:
                 catalog = model_catalog.load()
                 models = catalog.chain(task)
                 task = task or catalog.default_task
             except model_catalog.RoutingError:
-                legacy = os.getenv("AI_GATEWAY_MODEL", "").strip()
-                if not legacy:
-                    raise GatewayError(503, "AI mentor is not configured") from None
-                models, task = (legacy,), None
+                raise GatewayError(503, "AI mentor is not configured") from None
         valid = (parts.scheme == "https" and parts.hostname and not parts.username
                  and not parts.password and not parts.query and not parts.fragment
                  and all(models) and key)
@@ -110,9 +111,17 @@ def _retry_delay(attempt: int) -> float:
     return min(base * (2 ** attempt), 4.0) * (1 + random.random() * 0.25)
 
 
+def _total_budget() -> float:
+    try:
+        value = float(os.getenv("AI_GATEWAY_TOTAL_BUDGET_SECONDS", "45"))
+    except ValueError:
+        return 45.0
+    return min(max(value, 5.0), 120.0)
+
+
 def _call_once(config: GatewayConfig, model: str, messages: list[dict[str, str]],
-               budget: int) -> tuple[str, dict | None]:
-    with httpx.Client(timeout=config.timeout, follow_redirects=False, trust_env=False) as client:
+               budget: int, timeout: float) -> tuple[str, dict | None]:
+    with httpx.Client(timeout=timeout, follow_redirects=False, trust_env=False) as client:
         with client.stream(
             "POST", config.url,
             headers={"Authorization": f"Bearer {config.key}"},
@@ -156,6 +165,24 @@ def _report(task: str | None, model: str, usage: dict | None, attempts: int,
     return enriched
 
 
+def warmup() -> bool:
+    """One tiny call at startup so the first learner does not pay a cold start.
+
+    Provider-side cold starts were measured at ~40 s for the first request after
+    a pause; later requests to the same model answer in 4-10 s. Warmup is
+    best-effort: a failure is logged and never blocks startup.
+    """
+    if os.getenv("AI_WARMUP_ENABLED", "1").strip() == "0":
+        return False
+    try:
+        config = configuration(task="tutor_chat")
+        generate_with_usage(config, [{"role": "user", "content": "ping"}], max_completion_tokens=8)
+        return True
+    except GatewayError as exc:
+        logger.info(json.dumps({"event": "ai_warmup_failed", "status": exc.status}))
+        return False
+
+
 def generate(config: GatewayConfig, messages: list[dict[str, str]]) -> str:
     content, _ = generate_with_usage(config, messages)
     return content
@@ -176,14 +203,19 @@ def generate_with_usage(
     if not 1 <= max_completion_tokens <= 3000:
         raise ValueError("Invalid completion-token budget")
     started = time.monotonic()
+    deadline = started + _total_budget()
     attempts = 0
     last_error: Exception | None = None
     last_status = 502
     for model in config.models:
         for attempt in range(ATTEMPTS_PER_MODEL):
+            remaining = deadline - time.monotonic()
+            if remaining <= 1:
+                break
             attempts += 1
             try:
-                content, usage = _call_once(config, model, messages, max_completion_tokens)
+                content, usage = _call_once(config, model, messages, max_completion_tokens,
+                                            min(config.timeout, remaining))
                 return content, _report(config.task, model, usage, attempts,
                                         int((time.monotonic() - started) * 1000), "ok")
             except httpx.TimeoutException as exc:

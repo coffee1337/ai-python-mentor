@@ -1,6 +1,7 @@
 """Routing, retry/fallback and global spend accounting for the AI gateway."""
 import json
 import logging
+import time
 from uuid import uuid4
 
 import httpx
@@ -148,6 +149,38 @@ def test_every_call_is_logged_with_tokens_and_cost(routed, monkeypatch, caplog):
     assert call["prompt_tokens"] == 100 and call["completion_tokens"] == 20
     assert call["micro_usd"] == 12
     assert "hi" not in json.dumps(call)
+
+
+def test_warmup_issues_one_short_call(routed, monkeypatch):
+    seen = []
+
+    def handler(request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json=answer("cheap-a", "pong"))
+
+    fake_client(monkeypatch, handler)
+    assert ai_gateway.warmup() is True
+    assert len(seen) == 1
+    assert seen[0]["max_completion_tokens"] == 8
+
+
+def test_total_budget_stops_the_chain(routed, monkeypatch):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        time.sleep(0.9)
+        raise httpx.ReadTimeout("slow", request=request)
+
+    fake_client(monkeypatch, handler)
+    monkeypatch.setattr(ai_gateway, "_total_budget", lambda: 2.0)
+    started = time.monotonic()
+    with pytest.raises(GatewayError) as exc:
+        ai_gateway.generate_with_usage(ai_gateway.configuration(task="tutor_chat"),
+                                       [{"role": "user", "content": "hi"}])
+    assert exc.value.status == 504
+    assert time.monotonic() - started < 4
+    assert 1 <= len(requests) <= 3
 
 
 def session():

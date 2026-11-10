@@ -20,6 +20,7 @@ def provider(monkeypatch):
     monkeypatch.setenv("AI_GATEWAY_URL", "https://provider.example/v1/chat/completions")
     monkeypatch.setenv("AI_GATEWAY_MODEL", "test-model")
     monkeypatch.setenv("AI_GATEWAY_API_KEY", "secret-test-key")
+    monkeypatch.setenv("AI_RETRY_BASE_SECONDS", "0")
     calls = []
     state = {"status": 200, "timeout": False, "body": {
         "choices": [{"message": {"role": "assistant", "content": "Что меняет присваивание?"},
@@ -192,11 +193,14 @@ def test_failure_saved_and_explicit_retry(client, provider, failure, expected):
     response = send(client, request_id)
     assert response.status_code == expected
     assert "secret-test-key" not in response.text
-    assert len(calls) == 1
+    # Transport failures and 5xx are retried on the same model; a malformed
+    # envelope is not, because a retry cannot fix a broken provider answer.
+    expected_attempts = 1 if failure == "schema" else ai_gateway.ATTEMPTS_PER_MODEL
+    assert len(calls) == expected_attempts
     assert client.get(PATH).json()[0]["status"] == "failed"
     state.update(timeout=False, status=200, body=good_body)
     assert send(client, request_id).status_code == 200
-    assert len(calls) == 2
+    assert len(calls) == expected_attempts + 1
     assert len(client.get(PATH).json()) == 2
 
 

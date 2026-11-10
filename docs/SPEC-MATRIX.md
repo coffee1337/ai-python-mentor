@@ -9,8 +9,8 @@
 | Показатель | Значение |
 |---|---|
 | Всего строк | 250 |
-| done | 68 |
-| partial | 126 |
+| done | 67 |
+| partial | 127 |
 | missing | 35 |
 | out-of-scope | 21 |
 | строк без статуса | 0 |
@@ -190,7 +190,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 |---|---|---|---|---|---|
 | 17.1 | Profile Memory: цель, опыт, стек, язык, время, интересы, стиль, target vacancy | `partial` | `apps/api/app/db/models.py:50; apps/api/app/db/models.py:64` | `tests/test_learning.py::test_auth_onboarding_csrf_and_validation` | нет языка, стиля объяснений и интересов; стек фиксирован |
 | 17.2 | Skill Memory: структурированное mastery по навыку | `done` | `apps/api/app/db/models.py:756` | `tests/test_skill_graph.py::test_mastery_fallback_is_consistent_across_path_plan_and_curriculum` | UserSkill — проекция evidence |
-| 17.3 | Mistake Memory: тип, описание, first/last seen, count, resolved | `done` | `apps/api/app/db/models.py:388` | `tests/test_mistake_memory.py::test_distinct_mapped_mistakes_increment_but_reprocessing_is_idempotent` | occurrence_count и last_seen_at обновляются идемпотентно |
+| 17.3 | Mistake Memory: тип, описание, first/last seen, count | `partial` | `apps/api/app/db/models.py:388` | `tests/test_mistake_memory.py::test_distinct_mapped_mistakes_increment_but_reprocessing_is_idempotent` | нет resolved-статуса; описание берётся из MisconceptionVersion, category/fingerprint отсутствуют |
 | 17.4 | Misconception Memory: отличие механической ошибки от неверной модели | `partial` | `apps/api/app/db/models.py:306; apps/api/app/db/models.py:351` | `tests/test_mistake_memory.py::test_assessment_wrong_response_uses_only_its_exact_authored_mapping` | только authored misconception versions, авто-извлечения нет |
 | 17.5 | Interaction Summary и Behavioral Memory | `missing` | `нет` | `нет` | сводок сессий и поведенческих сигналов нет |
 
@@ -342,7 +342,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 |---|---|---|---|---|---|
 | 35.1 | Код не исполняется в процессе API | `done` | `apps/api/app/runner.py:1; apps/api/app/practice.py:252` | `tests/test_practice.py::test_runner_unavailable_configuration_stays_fail_closed` | RunnerUnavailable, статус unavailable |
 | 35.2 | Каждый запуск — отдельная короткоживущая среда | `done` | `apps/runner/runner_worker/execution.py:39` | `tests/runner/tests/test_worker.py::WorkerTests::test_runtime_cleanup_runs_when_cli_wait_times_out` | контейнер удаляется, cleanup подтверждается |
-| 35.3 | Лимиты: memory, CPU, wall-clock, PID, FS, network off, non-root, ro FS, tmp, no host mounts, no docker socket, no env, seccomp | `done` | `apps/runner/runner_worker/policy.py:10; apps/runner/runner_worker/sandbox_landlock.py:1` | `tests/runner/tests/test_landlock_sandbox.py::LandlockSandboxTests::test_memory_bomb_is_a_resource_violation` | плюс отдельные тесты на сеть, процессы и секреты |
+| 35.3 | Лимиты: memory, CPU, wall-clock, PID, FS, network off, non-root, ro FS, tmp, no host mounts, no docker socket, no env, seccomp | `done` | `apps/runner/runner_worker/policy.py:155; apps/runner/runner_worker/sandbox_landlock.py:1` | `tests/runner/tests/test_landlock_sandbox.py::LandlockSandboxTests::test_memory_bomb_is_a_resource_violation` | docker create: network none, read-only, uid 65532, cap-drop ALL, pids 32, cpus 1, memory 512m |
 | 35.4 | Этапы зрелости sandbox: alpha/beta/growth | `partial` | `docs/runner-deployment.md:1` | `нет` | описано; развёртывание на целевом host не выполнялось |
 | 35.5 | Компрометация runner не даёт доступ к БД, secrets и AI keys | `done` | `apps/runner/runner_worker/policy.py:1; apps/runner/runner_worker/server.py:1` | `tests/runner/tests/test_landlock_sandbox.py::LandlockSandboxTests::test_no_environment_secrets_are_visible` | отдельный host, mTLS, нет env API |
 
