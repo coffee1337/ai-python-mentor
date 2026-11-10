@@ -1,4 +1,5 @@
 """Routing, retry/fallback and global spend accounting for the AI gateway."""
+import contextlib
 import json
 import logging
 import time
@@ -48,6 +49,32 @@ def routed(monkeypatch, tmp_path):
     monkeypatch.delenv("AI_GATEWAY_MODEL", raising=False)
     monkeypatch.setenv("AI_RETRY_BASE_SECONDS", "0")
     return path
+
+
+class _Records(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+
+@contextlib.contextmanager
+def captured(name="ai.usage"):
+    """Capture this logger's records directly, independent of root handlers."""
+    logger = logging.getLogger(name)
+    handler = _Records()
+    previous_level, previous_disabled = logger.level, logger.disabled
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.disabled = False
+    try:
+        yield handler.records
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(previous_level)
+        logger.disabled = previous_disabled
 
 
 def fake_client(monkeypatch, handler):
@@ -138,12 +165,12 @@ def test_timeouts_exhaust_the_chain_and_return_504(routed, monkeypatch):
     assert exc.value.status == 504
 
 
-def test_every_call_is_logged_with_tokens_and_cost(routed, monkeypatch, caplog):
+def test_every_call_is_logged_with_tokens_and_cost(routed, monkeypatch):
     fake_client(monkeypatch, lambda request: httpx.Response(200, json=answer("cheap-a")))
-    with caplog.at_level(logging.INFO, logger="ai.usage"):
+    with captured() as messages:
         ai_gateway.generate_with_usage(ai_gateway.configuration(task="tutor_chat"),
                                        [{"role": "user", "content": "hi"}])
-    records = [json.loads(r.message) for r in caplog.records if r.message.startswith("{")]
+    records = [json.loads(r.message) for r in messages if r.message.startswith("{")]
     call = next(r for r in records if r["event"] == "ai_call")
     assert call["model"] == "cheap-a"
     assert call["prompt_tokens"] == 100 and call["completion_tokens"] == 20
@@ -208,12 +235,12 @@ def test_global_daily_limit_blocks_the_next_reservation(client, monkeypatch):
         assert db.query(AICallReservation).count() == 1
 
 
-def test_eighty_percent_threshold_emits_one_alert_per_day(client, monkeypatch, caplog):
+def test_eighty_percent_threshold_emits_one_alert_per_day(client, monkeypatch):
     user_id = learner(client)
     ai_admission._spend_alerts.clear()
     monkeypatch.setenv("AI_SPEND_DAILY_LIMIT_USD", "0.001")
     monkeypatch.setenv("AI_MAX_CALL_COST_MICROUSD", "850")
-    with caplog.at_level(logging.INFO, logger="ai.usage"), session() as db:
+    with captured() as messages, session() as db:
         reserve_ai_call(db, user_id, "mentor_chat", str(uuid4()), limit=10, window_seconds=3600, input_chars=10)
-    alerts = [json.loads(r.message) for r in caplog.records if r.message.startswith("{")]
+    alerts = [json.loads(r.message) for r in messages if r.message.startswith("{")]
     assert len([a for a in alerts if a["event"] == "ai_spend_alert"]) == 1
