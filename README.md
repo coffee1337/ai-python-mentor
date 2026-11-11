@@ -46,7 +46,8 @@ AI Python Mentor — full-stack приложение для изучения Pyt
 - систему прогресса и повторений;
 - анализ вакансий и skill gaps;
 - проектную практику;
-- Telegram-интеграцию.
+- уведомления в email и Telegram (адаптеры и очередь готовы; включаются провайдером,
+  см. `docs/decisions.md`).
 
 Проект построен как production-oriented система с отдельными backend/frontend слоями, PostgreSQL, миграциями, фоновой обработкой задач, CI и изолированной архитектурой исполнения пользовательского Python-кода.
 
@@ -159,7 +160,8 @@ def solve(payload):
 - notification dispatcher;
 - execution dispatcher;
 - Python Runner;
-- внешние email / Telegram / billing adapters.
+- обработчики email / Telegram / billing (провайдер подключается переменными окружения;
+  без провайдера письма не уходят, кнопка оплаты скрыта, Telegram не привязан).
 
 ---
 
