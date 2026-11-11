@@ -30,6 +30,7 @@ type BindToken = {
   token: string;
   expires_at: string;
   bot_username: string | null;
+  deep_link: string | null;
 };
 
 function formatDate(value: string) {
@@ -524,8 +525,16 @@ export default function AccountPage() {
                           :
                         </p>
                         <code>/start {bind.token}</code>
+                        {bind.deep_link ? (
+                          <p>
+                            Или откройте бота сразу:{" "}
+                            <a href={bind.deep_link} rel="noreferrer noopener" target="_blank">
+                              @{bind.bot_username}
+                            </a>
+                          </p>
+                        ) : null}
                         <p className="product-field-hint">
-                          Код действует до {formatDate(bind.expires_at)}.
+                          Код действует до {formatDate(bind.expires_at)} и срабатывает один раз.
                         </p>
                         <button
                           className="button button-secondary"
