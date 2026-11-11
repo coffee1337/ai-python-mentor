@@ -1,28 +1,16 @@
 #!/usr/bin/env bash
-# Install Playwright browsers with a bounded retry.
+# Install Playwright browsers without depending on the apt mirrors.
 #
 # The hosted runner image is built on a moving Ubuntu release and its apt mirrors
 # intermittently fail to resolve (security.ubuntu.com, azure.archive.ubuntu.com).
-# A transient DNS failure must not turn the browser suites red, so the install is
-# retried and, if only the system packages are unreachable, the browsers are still
-# installed and probed before the job gives up.
+# `--with-deps` pulls font packages we do not need, so the default path installs
+# the browser alone, proves it starts, and only falls back to system packages if
+# the launch actually fails. Every step is wrapped in `timeout` so a hung mirror
+# cannot eat the job's budget.
 set -uo pipefail
 
-attempts="${PLAYWRIGHT_INSTALL_ATTEMPTS:-3}"
-for attempt in $(seq 1 "$attempts"); do
-  echo "playwright install with deps, attempt $attempt/$attempts"
-  if npx playwright install --with-deps chromium; then
-    exit 0
-  fi
-  sudo apt-get -o Acquire::Retries=5 update >/dev/null 2>&1 || true
-  sleep $((attempt * 15))
-done
-
-echo "system dependencies are unreachable; installing browsers only" >&2
-npx playwright install chromium || exit 1
-
-# Prove the browser actually starts: a missing shared library fails here, not in a test.
-node - <<'NODE'
+probe() {
+  node - <<'NODE'
 const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.launch();
@@ -33,3 +21,22 @@ const { chromium } = require('playwright');
   process.exit(1);
 });
 NODE
+}
+
+echo "installing chromium without system packages"
+timeout 600 npx playwright install chromium || echo "browser download failed" >&2
+if probe; then
+  exit 0
+fi
+
+echo "chromium needs system libraries; installing them with retries" >&2
+for attempt in 1 2 3; do
+  if timeout 600 npx playwright install --with-deps chromium; then
+    probe && exit 0
+  fi
+  sudo apt-get -o Acquire::Retries=5 update >/dev/null 2>&1 || true
+  sleep $((attempt * 10))
+done
+
+echo "chromium could not be started on this runner" >&2
+exit 1
