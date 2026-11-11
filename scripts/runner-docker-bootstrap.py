@@ -48,7 +48,11 @@ def load_apparmor() -> bool:
         return False
     if apparmor_ready():
         return True
-    result = run(["apparmor_parser", "-r", "-W", str(APPARMOR_PROFILE)], check=False)
+    command = ["apparmor_parser", "-r", "-W", str(APPARMOR_PROFILE)]
+    # Loading a profile needs root; a host without it keeps the other layers.
+    if os.geteuid() != 0 and shutil.which("sudo") is not None:
+        command = ["sudo", *command]
+    result = run(command, check=False)
     if result.returncode != 0:
         print(f"apparmor profile not loaded: {result.stderr.strip()[:200]}", file=sys.stderr)
         return False
@@ -56,8 +60,12 @@ def load_apparmor() -> bool:
 
 
 def export_catalog(destination: Path) -> None:
-    run([sys.executable, str(CATALOG_EXPORTER), str(destination)],
-        capture=True)
+    # The exporter imports the authored content, which lives under apps/api.
+    environment = dict(os.environ, PYTHONPATH=str(ROOT / "apps" / "api"))
+    result = subprocess.run([sys.executable, str(CATALOG_EXPORTER), str(destination)],
+                            capture_output=True, text=True, check=False, env=environment)
+    if result.returncode != 0:
+        raise SystemExit(f"catalog export failed: {(result.stderr or result.stdout).strip()[-400:]}")
 
 
 def main() -> int:
