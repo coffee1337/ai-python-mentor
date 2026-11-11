@@ -176,3 +176,38 @@ status=429`, сообщение остаётся в outbox и повторяет
 
 Без токена канал выключен: `/telegram/status` отдаёт `configured=false`, вебхук — 503, кнопка
 привязки в кабинете не выдаёт код. Остальное приложение работает.
+
+## Деплой compose-стеком и smoke-проверка (W7)
+
+```bash
+# 0. Предпосылки: Docker с cgroups v2, openssl, свободные 80/443, домен указывает на хост.
+# 1. PKI раннера, каталог заданий и policy-дайджест (каталог монтируется в api и runner).
+PYTHONPATH=apps/api python scripts/runner-dev-bootstrap.py ops/runner-config
+sudo chown -R root:root ops/runner-config && sudo chmod -R go-rwx ops/runner-config
+
+# 2. Секреты. POSTGRES_PASSWORD и RUNNER_AUTH_TOKEN — из bundle, не «changeme».
+cp .env.prod.example .env.prod && chmod 600 .env.prod
+cp .env.runner.example .env.runner && chmod 600 .env.runner
+
+# 3. Подъём: миграции и seed-check выполняются как one-shot до старта api.
+docker compose -f compose.prod.yml --env-file .env.prod up -d --build
+docker compose -f compose.prod.yml --env-file .env.prod ps --all
+
+# 4. Проверка, что снаружи виден только прокси и что внутренние пути закрыты.
+curl -sI https://"$DOMAIN"/ | head -5          # HSTS, nosniff, DENY, без Server
+curl -s -o /dev/null -w '%{http_code}\n' https://"$DOMAIN"/metrics      # 404
+curl -s -o /dev/null -w '%{http_code}\n' https://"$DOMAIN"/internal/v1/runner/executions  # 404
+```
+
+Что доказано прогоном в CI (job «Production compose comes up and serves the journey»):
+healthchecks всех сервисов, нулевые коды выхода `migrate` и `seed-check`, отсутствие
+`/metrics` и `/internal/*` снаружи, security-заголовки, закрытые порты БД, регистрация →
+онбординг → урок, публикация портфолио и его публичная страница, задание через runner,
+отказ вебхука Telegram без секрета, выживание сессии после рестарта API.
+
+Отличие CI от прода ровно одно: `compose.ci.yml` включает Caddy с `tls internal` и портом
+8443, потому что публичного домена в CI нет. Всё остальное — те же образы, миграции и сеть.
+
+Диагностика, если задание уходит в `unavailable`: `docker compose logs runner-reaper runner`
+— допуск раннера требует свежего `reaper-heartbeat` (моложе 3 с) и отсутствия файла
+`quarantined` в state-каталоге.
