@@ -1,4 +1,5 @@
 """Fixed runtime policy. Every prerequisite is required before admission."""
+import contextlib
 import hashlib
 import json
 import os
@@ -164,7 +165,7 @@ class Policy:
             raise NotReady("host_quarantined")
         try:
             if self.attestation_file.stat().st_size > 4096:
-                raise ValueError()
+                raise ValueError("attestation_too_large")
             attestation = json.loads(self.attestation_file.read_text(encoding="utf-8"))
             profile_digest = hashlib.sha256(Path(self.seccomp_file).read_bytes()).hexdigest()
             catalog_digest = hashlib.sha256(self.catalog_file.read_bytes()).hexdigest()
@@ -172,20 +173,23 @@ class Policy:
                     and attestation.get("image") == self.image and attestation.get("seccomp_sha256") == profile_digest
                     and attestation.get("catalog_sha256") == catalog_digest
                     and attestation.get("expires_at", 0) > time.time()):
-                raise ValueError()
+                raise ValueError("attestation_mismatch")
             if require_reaper and time.time() - float(self.state.joinpath("reaper-heartbeat").read_text()) > 3:
-                raise ValueError()
+                raise ValueError("reaper_stale")
             info = json.loads(command(["docker", "info", "--format", "{{json .}}"] ))
             layers = host_layers(info, self.runtime)
             if not all(layers[key] for key in ("linux", "cgroup2", "limits", "seccomp")):
-                raise ValueError()
+                raise ValueError(f"missing_layers:{json.dumps(layers, sort_keys=True)}")
             # Either the guest runs on a user-space kernel (gVisor) or the host
             # remaps container users; a plain root runtime with neither is refused.
             if not (layers["gvisor"] or layers["userns"]):
-                raise ValueError()
+                raise ValueError("no_kernel_isolation")
             self.state.joinpath("host-layers.json").write_text(json.dumps(layers, sort_keys=True))
             command(["docker", "image", "inspect", self.image])  # Never pull while admitting.
-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
+            # The reason is kept on the host for operators; it never reaches clients.
+            with contextlib.suppress(OSError):
+                self.state.joinpath("verify-error.txt").write_text(f"{type(error).__name__}: {error}"[:400])
             raise NotReady("host_not_verified") from None
 
     def argv(self, name, job_digest, deadline, guest_program):

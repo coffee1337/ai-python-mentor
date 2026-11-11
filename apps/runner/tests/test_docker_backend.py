@@ -60,9 +60,10 @@ class DockerSandboxTests(unittest.TestCase):
         request = {"source": "def solve(p):\n" + body}
         return evaluate(self.policy, f"probe-{uuid.uuid4().hex}", request, entry)
 
-    def assertRefused(self, result, allowed=("error",)):
-        self.assertIn(result["status"], allowed, result)
-        self.assertEqual(result["tests_passed"], 0)
+    def assertBlocked(self, result):
+        """The guest was denied and observed the refusal: it returns True."""
+        self.assertEqual(result["status"], "finished", result)
+        self.assertEqual(result["tests_passed"], 1, result)
 
     def test_reference_execution_round_trip(self):
         row = {
@@ -86,7 +87,7 @@ class DockerSandboxTests(unittest.TestCase):
             "            pass\n"
             "    return data == []\n"
         )
-        self.assertRefused(result)
+        self.assertBlocked(result)
 
     def test_writing_outside_tmp_is_denied(self):
         result = self.run_source(
@@ -98,7 +99,7 @@ class DockerSandboxTests(unittest.TestCase):
             "            pass\n"
             "    return True\n"
         )
-        self.assertRefused(result)
+        self.assertBlocked(result)
 
     def test_network_access_is_denied(self):
         result = self.run_source(
@@ -109,7 +110,7 @@ class DockerSandboxTests(unittest.TestCase):
             "    except OSError:\n"
             "        return True\n"
         )
-        self.assertRefused(result)
+        self.assertBlocked(result)
 
     def test_no_environment_secrets_are_visible(self):
         result = self.run_source(
@@ -117,19 +118,22 @@ class DockerSandboxTests(unittest.TestCase):
             "    leaked=[k for k in os.environ if any(word in k.upper() for word in ('KEY','TOKEN','SECRET','PASSWORD','DATABASE'))]\n"
             "    return leaked == []\n"
         )
-        self.assertRefused(result)
+        self.assertBlocked(result)
 
     def test_infinite_loop_is_stopped_by_the_deadline(self):
         result = self.run_source("    while True:\n        pass\n")
-        self.assertRefused(result, allowed=("timeout",))
+        self.assertEqual(result["status"], "timeout", result)
+        self.assertEqual(result["tests_passed"], 0, result)
 
     def test_memory_bomb_is_a_resource_violation(self):
         result = self.run_source("    blocks=[]\n    while True:\n        blocks.append(bytearray(32*1024*1024))\n")
-        self.assertRefused(result, allowed=("error", "resource_violation"))
+        self.assertIn(result["status"], ("error", "resource_violation"), result)
+        self.assertEqual(result["tests_passed"], 0, result)
 
     def test_output_flood_is_capped(self):
         result = self.run_source("    import sys\n    while True:\n        sys.stderr.write('x'*4096)\n")
-        self.assertRefused(result, allowed=("resource_violation", "timeout"))
+        self.assertIn(result["status"], ("resource_violation", "timeout"), result)
+        self.assertEqual(result["tests_passed"], 0, result)
 
     def test_fork_bomb_hits_the_pid_limit(self):
         result = self.run_source(
@@ -176,6 +180,8 @@ class DockerSandboxTests(unittest.TestCase):
         self.assertEqual(len(entries), 90)
         failures = []
         for entry in sample:
+            # A real host runs the reaper service; here the test keeps its heartbeat fresh.
+            heartbeat()
             row = RUNNER_EXERCISES[entry["exercise_id"]]
             result = evaluate(self.policy, f"catalog-{entry['exercise_id']}", {"source": row["solution"]}, entry)
             if result["status"] != "finished" or result["tests_passed"] != result["tests_total"]:
@@ -192,6 +198,7 @@ class DockerSandboxTests(unittest.TestCase):
         kernel_policy = Policy("", "", STATE, CATALOG, ATTESTATION, backend="landlock")
         mismatches = []
         for entry in json.loads(CATALOG.read_text(encoding="utf-8"))[:12]:
+            heartbeat()
             row = RUNNER_EXERCISES[entry["exercise_id"]]
             key = f"parity-{entry['exercise_id']}"
             container = evaluate(self.policy, key, {"source": row["solution"]}, entry)
