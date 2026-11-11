@@ -33,6 +33,7 @@ from app.practice import router as practice_router
 from app.projects import router as projects_router
 from app.reflections_api import router as reflections_router
 from app.reviews_api import router as reviews_router
+from app.security_headers import SecurityHeaders
 from app.skill_graph_api import router as skill_graph_router
 from app.study_drafts import router as study_drafts_router
 from app.study_progress import router as study_progress_router
@@ -52,6 +53,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="AI-наставник API", version="0.1.0", lifespan=lifespan)
+app.add_middleware(SecurityHeaders)
 app.add_middleware(RequestSizeLimit)
 app.add_middleware(
     CORSMiddleware,
