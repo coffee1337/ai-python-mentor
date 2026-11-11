@@ -1,0 +1,18 @@
+# CI-only overrides for the production stack.
+#
+# The only real difference from production is TLS: CI has no public domain, so
+# Caddy issues an internal certificate and the proxy listens on 8443. Everything
+# else — images, migrations, healthchecks, network isolation — stays production.
+services:
+  caddy:
+    ports:
+      - "8443:443"
+    volumes:
+      - ./ops/Caddyfile.internal:/etc/caddy/Caddyfile:ro
+
+  runner:
+    # The kernel sandbox needs the Landlock syscalls; the container's own seccomp
+    # profile is relaxed for the worker process only in this smoke stack. The guest
+    # still runs confined by Landlock + its own seccomp filter.
+    security_opt:
+      - seccomp=unconfined

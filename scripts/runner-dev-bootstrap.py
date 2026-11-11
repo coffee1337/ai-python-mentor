@@ -46,7 +46,13 @@ def main() -> None:
             "-subj", "/CN=ai-tutor-local-client-ca",
             "-addext", "basicConstraints=critical,CA:TRUE",
             "-addext", "keyUsage=critical,keyCertSign,cRLSign")
-    for name, san in (("server", "URI:spiffe://ai-tutor/runner,DNS:localhost,IP:127.0.0.1"),
+    # `runner` is the compose service name the API dials; the extras cover a
+    # host-specific name without regenerating the whole bundle.
+    extra = os.getenv("RUNNER_EXTRA_DNS_SANS", "").strip()
+    server_san = "URI:spiffe://ai-tutor/runner,DNS:localhost,DNS:runner,IP:127.0.0.1"
+    if extra:
+        server_san += "," + ",".join(f"DNS:{name}" for name in extra.split(",") if name.strip())
+    for name, san in (("server", server_san),
                       ("client", "URI:spiffe://ai-tutor/api")):
         openssl("req", "-newkey", "rsa:2048", "-nodes",
                 "-keyout", str(target / f"{name}.key"), "-out", str(target / f"{name}.csr"),

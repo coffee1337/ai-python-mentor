@@ -64,6 +64,10 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       APP_ENV: production
       COOKIE_SECURE: "true"
+    volumes:
+      # mTLS client material and the reviewed policy digest, prepared on the host
+      # by scripts/runner-docker-bootstrap.py (see docs/RUNBOOK.md).
+      - ./ops/runner-config:/etc/ai-tutor/api:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -108,7 +112,7 @@ services:
       RUNNER_BIND: 0.0.0.0
     volumes:
       - runner_state:/var/lib/ai-tutor-runner
-      - runner_config:/etc/ai-tutor-runner:ro
+      - ./ops/runner-config:/etc/ai-tutor-runner:ro
     read_only: true
     tmpfs: ["/tmp:size=32m,nosuid,nodev,noexec,mode=1777"]
     security_opt: ["no-new-privileges:true"]
@@ -131,7 +135,7 @@ services:
     command: ["python", "-m", "runner_worker.reaper"]
     volumes:
       - runner_state:/var/lib/ai-tutor-runner
-      - runner_config:/etc/ai-tutor-runner:ro
+      - ./ops/runner-config:/etc/ai-tutor-runner:ro
     read_only: true
     tmpfs: ["/tmp:size=8m,nosuid,nodev,noexec,mode=1777"]
     security_opt: ["no-new-privileges:true"]
@@ -214,7 +218,6 @@ services:
 volumes:
   postgres_data:
   runner_state:
-  runner_config:
   caddy_data:
   caddy_config:
   prometheus_data:

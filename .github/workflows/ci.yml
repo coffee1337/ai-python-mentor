@@ -278,6 +278,92 @@ jobs:
           docker images
           free -m
           df -h
+  compose-smoke:
+    name: Production compose comes up and serves the journey
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/requirements.lock
+      - run: pip install -r apps/api/requirements.lock
+      - name: Prepare runner PKI, catalog and the environment files
+        run: |
+          PYTHONPATH=apps/api python scripts/runner-dev-bootstrap.py ops/runner-config
+          # Throwaway bundle: the containers run as unprivileged users and must read it.
+          chmod -R a+rX ops/runner-config
+          set -a; . ops/runner-config/env.sh; set +a
+          cat > .env.runner <<EOF
+          RUNNER_STATE_DIR=/var/lib/ai-tutor-runner
+          RUNNER_CATALOG_FILE=/etc/ai-tutor-runner/catalog.json
+          RUNNER_HOST_ATTESTATION_FILE=/etc/ai-tutor-runner/host-attestation.json
+          RUNNER_SANDBOX_BACKEND=landlock
+          RUNNER_BIND=0.0.0.0
+          RUNNER_PORT=8443
+          RUNNER_ALLOWED_API_IDENTITIES=spiffe://ai-tutor/api
+          RUNNER_AUTH_TOKEN=$RUNNER_AUTH_TOKEN
+          RUNNER_CLIENT_CA_FILE=/etc/ai-tutor-runner/ca.pem
+          RUNNER_SERVER_CERT_FILE=/etc/ai-tutor-runner/server.pem
+          RUNNER_SERVER_KEY_FILE=/etc/ai-tutor-runner/server.key
+          EOF
+          PG_PASSWORD=$(openssl rand -hex 24)
+          cat > .env.prod <<EOF
+          DOMAIN=localhost
+          ACME_EMAIL=
+          POSTGRES_DB=mentor
+          POSTGRES_USER=mentor
+          POSTGRES_PASSWORD=$PG_PASSWORD
+          APP_ENV=production
+          COOKIE_SECURE=true
+          WEB_ORIGINS=https://localhost:8443
+          API_WORKERS=2
+          LOG_LEVEL=INFO
+          AI_GATEWAY_URL=https://ru.cheapvibecode.ru/v1/chat/completions
+          AI_GATEWAY_API_KEY=
+          AI_MODEL_ROUTING_FILE=/app/config/model-routing.json
+          AI_SPEND_DAILY_LIMIT_USD=5
+          AI_WARMUP_ENABLED=0
+          EMAIL_FROM=
+          SMTP_HOST=
+          SMTP_PORT=587
+          TELEGRAM_BOT_TOKEN=
+          TELEGRAM_WEBHOOK_SECRET=
+          BILLING_PROVIDER=
+          RUNNER_URL=https://runner:8443/internal/v1/runner/executions
+          RUNNER_AUTH_TOKEN=$RUNNER_AUTH_TOKEN
+          RUNNER_CA_FILE=/etc/ai-tutor/api/ca.pem
+          RUNNER_CLIENT_CERT_FILE=/etc/ai-tutor/api/client.pem
+          RUNNER_CLIENT_KEY_FILE=/etc/ai-tutor/api/client.key
+          RUNNER_VERIFIED_POLICY_FILE=/etc/ai-tutor/api/policy.json
+          RUNNER_REQUEST_TIMEOUT_SECONDS=20
+          EXECUTION_JOBS_ENABLED=true
+          SENTRY_DSN=
+          GRAFANA_ADMIN_PASSWORD=$(openssl rand -hex 16)
+          EOF
+          chmod 600 .env.prod .env.runner
+      - name: Build and start the stack
+        run: docker compose -f compose.prod.yml -f compose.ci.yml --env-file .env.prod up -d --build
+      - name: Smoke the critical paths
+        run: bash scripts/ci/compose-smoke.sh
+      - name: Stack state and logs
+        if: always()
+        run: |
+          mkdir -p compose-artifacts
+          docker compose -f compose.prod.yml -f compose.ci.yml --env-file .env.prod ps --all > compose-artifacts/ps.txt 2>&1 || true
+          docker compose -f compose.prod.yml -f compose.ci.yml --env-file .env.prod logs --no-color > compose-artifacts/logs.txt 2>&1 || true
+          ss -ltn > compose-artifacts/listen.txt 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compose-smoke-artifacts
+          path: compose-artifacts
+          if-no-files-found: ignore
+      - name: Tear down
+        if: always()
+        run: docker compose -f compose.prod.yml -f compose.ci.yml --env-file .env.prod down -v --remove-orphans
   windows-encoding:
     name: Windows UTF-8 assets and migrations
     runs-on: windows-latest
