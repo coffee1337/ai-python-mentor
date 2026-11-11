@@ -85,7 +85,7 @@ jobs:
       # Playwright stays in a separate, pinned test-only package.
       - run: npm ci
         working-directory: scripts/ui-smoke
-      - run: bash scripts/ci/playwright-install.sh
+      - run: bash "${{ github.workspace }}/scripts/ci/playwright-install.sh"
         working-directory: scripts/ui-smoke
       - run: npm test
         working-directory: scripts/ui-smoke
@@ -155,7 +155,7 @@ jobs:
           if ! grep -q "Traceback" /tmp/runner.log 2>/dev/null; then echo "runner started"; else cat /tmp/runner.log; exit 1; fi
       - run: npm ci
         working-directory: scripts/ui-smoke
-      - run: bash scripts/ci/playwright-install.sh
+      - run: bash "${{ github.workspace }}/scripts/ci/playwright-install.sh"
         working-directory: scripts/ui-smoke
       - name: Browser execution scenario
         working-directory: scripts/ui-smoke
