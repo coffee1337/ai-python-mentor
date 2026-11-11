@@ -115,7 +115,7 @@ def request_password_reset(payload: PasswordResetRequest, request: Request, db: 
     throttle(db, scope="reset_account", subject=payload.email, limit=5, window_seconds=3600)
     user = db.scalar(select(User).where(User.email == payload.email, User.is_active.is_(True)).with_for_update())
     raw = None
-    if user is not None and (notifications.email_configuration() is not None or notifications.development_mail_enabled()):
+    if user is not None and (notifications.email_available() or notifications.development_mail_enabled()):
         raw, expiry = issue_token(db, user.id, "password_reset", 30)
         notifications.enqueue_account_mail(db, user.id, "password_reset", raw, expiry)
         db.commit()

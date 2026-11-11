@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import passwords
+from app import notifications, passwords
 from app.account_services import throttle
 from app.db.models import AuthSession, Goal, Profile, User
 from app.db.session import get_db
@@ -171,6 +171,10 @@ def login(payload: LoginRequest, response: Response, request: Request, db: Sessi
     _rate_limit(request, db, payload.email)
     user = db.scalar(select(User).where(User.email == payload.email))
     if user is None or not verify_password(payload.password, user.password_hash) or not user.is_active:
+        # The response stays identical for unknown accounts; a known account is
+        # additionally told about the attempts, at most once per hour.
+        if user is not None and user.is_active and notifications.enqueue_failed_login_notice(db, user):
+            db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
     existing_token = request.cookies.get(SESSION_COOKIE)
     if existing_token:

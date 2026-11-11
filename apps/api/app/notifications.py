@@ -20,6 +20,7 @@ from fastapi import HTTPException
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.orm import Session
 
+from app import mailer
 from app.account_services import aware, consume_token, utcnow
 from app.db.account_models import NotificationOutbox, NotificationPreference, TelegramBinding
 from app.db.models import User, UserSkill
@@ -50,6 +51,15 @@ def email_configuration() -> tuple[str, str] | None:
     return (url, key) if valid and key else None
 
 
+def smtp_configuration() -> mailer.Settings | None:
+    """SMTP is the primary transport; the HTTP adapter stays for relay providers."""
+    return mailer.Settings.from_environment()
+
+
+def email_available() -> bool:
+    return smtp_configuration() is not None or email_configuration() is not None
+
+
 def telegram_configuration() -> str | None:
     key = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     return key if 16 <= len(key) <= 200 and all(char.isalnum() or char in "_:-" for char in key) else None
@@ -62,7 +72,7 @@ def preferences_response(db: Session, user_id: UUID) -> dict:
         "telegram_enabled": row.telegram_enabled if row else False,
         "review_reminders": row.review_reminders if row else True,
         "telegram_bound": db.get(TelegramBinding, user_id) is not None,
-        "email_delivery_available": email_configuration() is not None,
+        "email_delivery_available": email_available(),
         "telegram_delivery_available": telegram_configuration() is not None,
     }
 
@@ -91,7 +101,7 @@ def enqueue(db: Session, *, user_id: UUID, channel: str, template: str, payload:
 
 
 def enqueue_account_mail(db: Session, user_id: UUID, purpose: str, raw_token: str, expiry: datetime) -> None:
-    if email_configuration() is None and not development_mail_enabled():
+    if not email_available() and not development_mail_enabled():
         raise HTTPException(503, "Account email delivery is not configured")
     enqueue(
         db,
@@ -100,6 +110,25 @@ def enqueue_account_mail(db: Session, user_id: UUID, purpose: str, raw_token: st
         template=purpose,
         payload={"token": raw_token, "expires_at": expiry.isoformat()},
         idempotency_key=f"account-{purpose}-{token_digest(raw_token)}",
+    )
+
+
+def enqueue_failed_login_notice(db: Session, user: User) -> bool:
+    """Warn the account holder about failed sign-ins, at most once per hour.
+
+    ASVS 2.2.3 asks the user to be told; an unconfigured channel must not turn a
+    failed login into a 500, so the enqueue is best-effort and never raises.
+    """
+    if not email_available() or not user.email_verified:
+        return False
+    hour = utcnow().strftime("%Y%m%dT%H")
+    return enqueue(
+        db,
+        user_id=user.id,
+        channel="email",
+        template="failed_login",
+        payload={"attempts": int(os.getenv("AUTH_FAILED_LOGIN_NOTICE_ATTEMPTS", "3"))},
+        idempotency_key=f"failed-login-{user.id}-{hour}",
     )
 
 
@@ -159,6 +188,14 @@ def _deliver(db: Session, row: NotificationOutbox) -> None:
     if user is None or not user.is_active:
         raise HTTPException(409, "Recipient is unavailable")
     if row.channel == "email":
+        smtp = smtp_configuration()
+        if smtp is not None:
+            db.commit()
+            try:
+                mailer.send(smtp, user.email, row.template, dict(row.payload or {}))
+            except mailer.MailError:
+                raise HTTPException(502, "Notification delivery is temporarily unavailable") from None
+            return
         config = email_configuration()
         if config is None:
             raise HTTPException(503, "Email delivery is not configured")
