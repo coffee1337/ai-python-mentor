@@ -156,6 +156,21 @@ status=0
 main || status=1
 if [ "$status" -ne 0 ] || [ "$FAILURES" -ne 0 ]; then
   log "diagnostics"
+  echo "--- api -> runner TLS probe"
+  $COMPOSE exec -T api python - <<'PROBE' 2>&1 | tail -5
+import os
+import ssl
+
+import httpx
+
+ctx = ssl.create_default_context(cafile=os.environ["RUNNER_CA_FILE"])
+ctx.load_cert_chain(os.environ["RUNNER_CLIENT_CERT_FILE"], os.environ["RUNNER_CLIENT_KEY_FILE"])
+try:
+    with httpx.Client(verify=ctx, timeout=5) as client:
+        print("tls_probe_status", client.get(os.environ["RUNNER_URL"]).status_code)
+except Exception as error:  # noqa: BLE001 - the class is the diagnostic
+    print("tls_probe_failed", type(error).__name__, str(error)[:120])
+PROBE
   for service in runner-reaper runner api execution-worker; do
     echo "--- $service"
     $COMPOSE logs --no-color --tail 60 "$service" 2>&1 | tail -60

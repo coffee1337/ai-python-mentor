@@ -7,6 +7,7 @@ cannot provide a trustworthy response.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import ssl
 from contextlib import contextmanager
@@ -315,6 +316,9 @@ class Runner:
         except RunnerUnavailable:
             raise
         except (RunnerError, httpx.HTTPError, OSError, ValueError, UnicodeError) as exc:
+            # The class is enough to tell a TLS, DNS or protocol failure apart;
+            # the message may carry a host or a URL and stays out of the log.
+            logging.getLogger("runner.client").warning("runner_call_failed reason=%s", type(exc).__name__)
             raise RunnerUnavailable("Runner is temporarily unavailable") from exc
 
         status = wire.status
