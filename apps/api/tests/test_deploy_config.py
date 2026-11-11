@@ -87,3 +87,21 @@ def test_grafana_dashboard_covers_latency_errors_queue_spend_quotas_database():
                      "apm_execution_queue_depth", "apm_ai_spend_micro_usd_total",
                      "apm_quota_rejections_total", "apm_db_up"):
         assert expected in expressions, expected
+
+
+def test_runner_image_services_override_the_entrypoint_not_the_command():
+    """The runner image defines ENTRYPOINT, so `command` would be appended.
+
+    A service that tried to start a second process with `command` would silently
+    run the HTTP server again — that is how the watchdog once became a second
+    server and admission kept expiring.
+    """
+    compose = yaml.safe_load((ROOT / "compose.prod.yml").read_text(encoding="utf-8"))
+    runner_build = compose["services"]["runner"].get("build", {}).get("context")
+    offenders = []
+    for name, service in compose["services"].items():
+        if service.get("build", {}).get("context") != runner_build:
+            continue
+        if "command" in service and "entrypoint" not in service:
+            offenders.append(name)
+    assert offenders == [], f"runner-image services must set entrypoint: {offenders}"

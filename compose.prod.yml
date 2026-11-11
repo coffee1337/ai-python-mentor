@@ -137,7 +137,9 @@ services:
     env_file: .env.runner
     environment:
       RUNNER_STATE_DIR: /var/lib/ai-tutor-runner
-    command: ["python", "-m", "runner_worker.reaper"]
+    # The image defines ENTRYPOINT, so `command` would be appended as arguments and
+    # the container would run the HTTP server instead of the watchdog.
+    entrypoint: ["python", "-m", "runner_worker.reaper"]
     volumes:
       - runner_state:/var/lib/ai-tutor-runner
       - ./ops/runner-config:/etc/ai-tutor-runner:ro
