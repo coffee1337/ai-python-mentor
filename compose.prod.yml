@@ -123,6 +123,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    depends_on:
+      # The worker refuses to serve until the independent reaper proves it is alive;
+      # starting it first removes the crash-loop on a cold start.
+      runner-reaper:
+        condition: service_started
     networks: [internal]
 
   runner-reaper:
@@ -140,9 +145,6 @@ services:
     tmpfs: ["/tmp:size=8m,nosuid,nodev,noexec,mode=1777"]
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
-    depends_on:
-      runner:
-        condition: service_started
     networks: [internal]
 
   web:

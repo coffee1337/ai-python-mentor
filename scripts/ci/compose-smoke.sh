@@ -89,7 +89,27 @@ main() {
   expect "onboarding" 200 "$(curl_ -b "$jar" -c "$jar" -X POST "$API/onboarding" -H 'Content-Type: application/json' \
     -H "X-CSRF-Token: $csrf" -d '{"experience_level":"beginner","target_role":"Python backend","weekly_minutes":180}')"
   expect "next lesson" 200 "$(curl_ -b "$jar" "$API/learning/next")"
-  expect "portfolio page" 200 "$(curl_ -b "$jar" "$BASE/portfolio")"
+
+  log "public portfolio"
+  local project public_token
+  project=$(curl -s --cacert "$CA" -b "$jar" -X POST "$API/projects" -H 'Content-Type: application/json' \
+    -H "X-CSRF-Token: $csrf" -d '{"template_id":"expense-cli-v1"}')
+  local project_id
+  project_id=$(printf '%s' "$project" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("id",""))' 2>/dev/null)
+  if [ -z "$project_id" ]; then
+    fail "project was not created: $project"
+  else
+    public_token=$(curl -s --cacert "$CA" -b "$jar" -X PATCH "$API/projects/$project_id/portfolio" \
+      -H 'Content-Type: application/json' -H "X-CSRF-Token: $csrf" \
+      -d '{"published":true,"title":"Учебный проект","summary":"Смоук-публикация портфолио в compose-стеке.","repository_url":null}' \
+      | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("public_path") or "").rsplit("/",1)[-1])' 2>/dev/null)
+    if [ -z "$public_token" ]; then
+      fail "portfolio was not published"
+    else
+      expect "public portfolio page" 200 "$(curl_ "$BASE/portfolio/$public_token")"
+      expect "portfolio api is public" 200 "$(curl_ "$API/portfolio/$public_token")"
+    fi
+  fi
 
   log "code execution through the runner"
   local payload='{"language":"python","mode":"function","source_code":"def solve(payload):\n    return payload[\"start\"] + payload[\"increment\"]\n"}'
@@ -111,7 +131,8 @@ main() {
   fi
 
   log "telegram webhook refuses unsigned traffic"
-  expect "webhook without secret" 503 "$(curl_ -X POST "$BASE/telegram/webhook/deadbeef" -H 'Content-Type: application/json' -d '{}')"
+  expect "webhook without secret" 503 "$(curl_ -X POST "$API/telegram/webhook/deadbeef" -H 'Content-Type: application/json' -d '{}')"
+
 
   log "restart safety"
   $COMPOSE restart api >/dev/null 2>&1
