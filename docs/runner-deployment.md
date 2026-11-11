@@ -16,3 +16,41 @@ Fixed guest command принимает только source и один набо�
 Ресурсы: 1 CPU, 512 MiB RAM+swap cap, 32 PID, 64 FD, readonly/nonroot/no caps/network none, ограниченные tmpfs и inodes, 15 секунд на всё задание плюс cleanup. Неудача cleanup quarantines host; при истёкшем attestation/reaper heartbeat новые задания отклоняются.
 
 Ротация: выдайте новые short-lived workload certs до expiry, обновите readonly secret mounts, перезапустите API dispatcher/worker. Проверьте, что старые revoked/expired certs и неизвестные SAN URI отклоняются. Выделенная CA позволяет менять bearer token без ослабления identity. Не включайте выполнение на host без проверки revoke/rotation.
+
+## Контейнерный бэкенд: подготовка хоста и доказательство (W2)
+
+Продовый путь исполнения — контейнер под gVisor. Пока хост не подготовлен, runner отказывает
+(fail-closed), а не деградирует до «попробуем без изоляции».
+
+```bash
+# 1. runsc должен быть зарегистрирован как runtime Docker.
+sudo apt-get install -y runsc && sudo runsc install && sudo systemctl restart docker
+
+# 2. Собрать образ, зафиксировать digest, экспортировать каталог и аттестацию.
+sudo mkdir -p /var/lib/ai-tutor-runner && sudo chown "$USER" /var/lib/ai-tutor-runner
+python scripts/runner-docker-bootstrap.py --state-dir /var/lib/ai-tutor-runner --require-gvisor
+
+# 3. Той же командой в CI проверяются побеги, каталог и паритет с Landlock.
+RUNNER_DOCKER_FULL=1 python -m unittest apps.runner.tests.test_docker_backend -v
+```
+
+`--require-gvisor` падает, если `runsc` не зарегистрирован: без user-space ядра контейнер идёт на
+ядре хоста, и допуск возможен только при включённом userns-remap. Признаки слоёв читаются из
+`docker info` и пишутся в `host-layers.json`; причина отказа допуска — в `verify-error.txt` (на хосте,
+не в ответе клиенту).
+
+Замер CI (job «Learner code in containers (gVisor and kernel parity)», run 43043023435):
+
+```
+host layers: {"apparmor": true, "cgroup2": true, "gvisor": true, "limits": true,
+              "linux": true, "seccomp": true, "userns": false, "runtime": "runc"}
+Ran 31 tests in 150.996s — OK
+```
+
+Каталог: 90 заданий / 288 кейсов, эталонные решения — 100 % под gVisor. Паритет: Landlock и
+контейнер дают одинаковый вердикт на одних и тех же кейсах.
+
+AppArmor: профиль `apps/runner/deploy/apparmor-ai-tutor-runner` грузится bootstrap-скриптом, если
+ядро разрешает (`apparmor_parser` под root). На hosted-раннере профиль не грузится (нет прав на
+`/var/cache/apparmor`), поэтому job идёт на слоях gVisor + seccomp + cgroups v2 + read-only + no-network;
+`Policy.apparmor` выставляется по факту наличия профиля, а не по предположению.

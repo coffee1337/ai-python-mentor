@@ -1,53 +1,58 @@
-# Статус проекта — 2026-11-11
+# Статус проекта — 2026-11-11 (второй заход)
 
-Одна страница: где проект сейчас, что зелёное, что нет, что дальше.
+Одна страница: 12 критериев готовности, что зелёное, что нет, что дальше.
+Каждая строка подтверждена командой или CI-job'ом; чисел «на глаз» здесь нет.
+
+## 12 критериев (мандат №2, раздел 1)
+
+| # | Критерий | Статус | Доказательство |
+|---|---|---|---|
+| 1 | Трассируемость | частично | `docs/SPEC-MATRIX.md`: 250 строк — done 67, partial 127, missing 35, out-of-scope 21 |
+| 2 | Исполнение кода | **зелёный** | CI job «Learner code in containers (gVisor and kernel parity)»: 31 тест, 150.996 s, зелёный; каталог 90 заданий / 288 кейсов на gVisor — эталоны 100 %; побеги в контейнере отклонены; паритет вердиктов с Landlock |
+| 3 | AI-контур | зелёный | `scripts/ai-smoke.py`: живые вызовы RU+EN, токены и стоимость в логах; `tests/test_model_routing.py` 12 passed |
+| 4 | Аккаунты и безопасность | частично | `tests/test_security_headers.py` 4 passed, `test_asvs_controls.py` 3 passed; открыт ASVS 2.2.3 (письма о неудачных входах) — нужен SMTP |
+| 5 | Email / Telegram / платежи | нет | адаптеры и outbox есть, провайдеров нет: ADR в `docs/decisions.md`, checkout скрыт в UI |
+| 6 | Тесты | зелёный | API 363 passed / 10 skipped, PG 7 passed, runner 35 passed + 13 контейнерных, E2E 8 + исполнение 2, k6 p95 76 ms |
+| 7 | Наблюдаемость | частично | `/metrics`, Prometheus-правила и Grafana-дашборд валидированы `promtool` и `caddy validate`; агрегации логов (Loki) нет |
+| 8 | Данные | зелёный | `alembic upgrade/downgrade/upgrade` на копии PG с контрольными данными; `alembic check` чистый; restore drill 63 таблицы |
+| 9 | Деплой | нет | `compose.prod.yml` готов, не поднимался ни разу — нужен прогон в CI (W7) |
+| 10 | Красота | зелёный | `visual.spec.mjs`: 8 экранов × 360/768/1440, 6 passed; `tests/test_content_quality.py` 9 passed |
+| 11 | Чистота | зелёный | `ruff check apps scripts` — All checks passed; TODO/FIXME — 0; тесты не отключены |
+| 12 | Релиз | нет | тег только v0.1.0, release notes не написаны (W9) |
 
 ## Зелёное (проверено командами)
 
 | Область | Проверка | Результат |
 |---|---|---|
-| API, SQLite-набор | `cd apps/api && python -m pytest -q` | 350 passed, 10 skipped |
-| API, PostgreSQL 16.15 | `RUN_POSTGRES_TESTS=1 pytest tests/test_postgres_specific.py` | 7 passed |
-| Миграции | `alembic upgrade head` / `downgrade 0037` / `upgrade head` на копии PG | обратимы, данные сохраняются |
-| Схема vs модели | `alembic check` | `No new upgrade operations detected.` |
-| Бэкап | `bash scripts/backup.sh` | 0.7 s, манифест + sha256 |
-| Restore drill | `bash scripts/restore-drill.sh --bundle …` | passed, 63 таблицы, digests совпали, 3.2 s |
-| Web | `npm run lint && npm run build` | зелёные, First Load JS 103 kB |
-| Runner | `python -m unittest discover -s apps/runner/tests` | 32 passed |
-| Исполнение кода | `test_exercise_catalog` | 90 заданий, 288 кейсов, эталоны 100 % |
-| Изоляция | `test_landlock_sandbox` | 15 тестов: `.env`, запись вне job, сеть, fork, exec, сигнал, CPU/RAM/вывод — отклонены |
-| mTLS-сервис | `test_server_mtls` | 8 тестов: допуск, идемпотентность, чужой токен, клиент без сертификата |
-| AI-контур | `scripts/ai-smoke.py` | 4 живых вызова RU+EN, 3–8 c, токены и стоимость в логах |
-| AI-роутинг и лимиты | `tests/test_model_routing.py` | 12 passed |
-| Метрики и Sentry (backend) | `tests/test_metrics.py` | 6 passed |
-| Sentry (frontend) | `npm run build`, `instrumentation*.ts` | включается только при `NEXT_PUBLIC_SENTRY_DSN`, ingest-хост добавляется в CSP |
-| Деплой-конфигурация | `tests/test_deploy_config.py` | 8 passed (сервисы, healthcheck, порты, секреты) |
-| E2E браузер | `npx playwright test` (desktop+mobile) | 8 passed |
-| E2E исполнения кода | `EXECUTION_E2E=1 npx playwright test execution.spec.mjs` | 2 passed (браузер → runner → 3/3) |
-| CI целиком | GitHub Actions, 8 jobs | зелёные, включая job исполнения кода |
-| Нагрузка | `k6 run scripts/load/learning.js` | p95 = 76 ms, 0 % ошибок (порог 800 ms) |
-| Чистота | `grep -rn "TODO\|FIXME" apps` | 0 |
-| Линтеры | `ruff check apps scripts` | All checks passed |
-| Заголовки безопасности | `tests/test_security_headers.py` | 4 passed (CSP, nosniff, HSTS только по TLS, лимит тела) |
-| ASVS-контролы | `tests/test_asvs_controls.py` | 3 passed (пароль 12, throttling логина) |
+| API, SQLite-набор | `cd apps/api && python -m pytest -q` | 363 passed, 10 skipped |
+| API, PostgreSQL | `RUN_POSTGRES_TESTS=1 pytest tests/test_postgres_specific.py` | 7 passed |
+| Runner, unit | `python -m unittest discover -s apps/runner/tests` | 35 passed, 13 skipped (контейнерные — отдельным job'ом) |
+| Runner, контейнер | CI job «Learner code in containers» | 31 passed, каталог 90 заданий на gVisor |
+| Изоляция ядра | `test_landlock_sandbox` | 15 тестов: `.env`, запись вне job, сеть, fork, exec, сигнал, CPU/RAM/вывод |
+| Изоляция контейнера | `test_docker_backend` | 13 тестов: те же побеги + fork-бомба против pids-limit, sentinel окружения |
+| mTLS-сервис | `test_server_mtls` | 8 тестов |
+| Миграции | `alembic upgrade head` / `downgrade` / `upgrade` | обратимы, данные сохраняются |
+| Бэкап и restore | `scripts/backup.sh`, `scripts/restore-drill.sh` | 0.7 s / passed, digests совпали |
+| Web | `npm run lint && npm run build` | зелёные |
+| E2E | `npx playwright test` | 8 passed; исполнение кода — 2 passed |
+| Нагрузка | `k6 run scripts/load/learning.js` | p95 = 76 ms, 0 % ошибок |
+| Ops-конфиги | `scripts/validate-ops.py` | promtool config + 8 правил, `caddy validate` — PASS |
 
 ## Не зелёное
 
-| Пункт DoD | Состояние | Что нужно |
+| Пункт | Состояние | Что нужно |
 |---|---|---|
-| `docker compose up` на чистом хосте | конфигурация готова, прогон невозможен | верстак без Docker и root → нужен целевой хост |
-
-| Контейнерный бэкенд runner (runsc + cgroups v2) | код есть, проверен unit-тестами | хост с Docker и runsc |
-| Email / Telegram / платежи | адаптеры готовы, ADR описывает поведение без провайдеров: checkout скрыт, письма не уходят, Telegram не привязан | SMTP, отдельный бот, платёжный аккаунт — от владельца (ADR в docs/decisions.md) |
-
-| OWASP ASVS-2 чеклист | пройден по применимым пунктам | открыт только 2.2.3 (письма о неудачных входах) — нужен SMTP |
-| `ruff` | зелёный, в CI | — |
-| 35 missing из SPEC-MATRIX | не реализованы (в основном P2: OAuth, PWA, streak, referral, admin UI) | по приоритету |
+| `compose.prod.yml` | конфигурация готова, прогон не выполнялся | CI-job compose smoke (W7) |
+| Email | адаптер + outbox, доставки нет | MailHog/GreenMail в CI (W3), прод — SMTP от владельца |
+| Telegram | вебхук-адаптер, бота нет | отдельный токен от владельца (W4), mock-сервер в CI |
+| Платежи | `checkout_available=false` | sandbox-аккаунт или ADR «вне v1.0» (W6) |
+| ASVS 2.2.3 | письма о неудачных входах не уходят | закрывается вместе с W3 |
+| SPEC-MATRIX | 127 partial, 35 missing | W1: решение по каждой строке |
+| Логи | структурированный JSON есть, агрегации нет | Loki или эквивалент (W7/W9) |
 
 ## Ближайшие шаги
 
-1. `ruff` конфиг + чистка (гейт «Линтеры чистые»).
-2. E2E-сценарий исполнения кода с живым runner-ом.
-3. OWASP ASVS-2: чеклист с доказательствами по auth/сессиям/загрузкам/промпт-инъекциям.
-4. Email/Telegram/billing: sandbox-провайдер или ADR «вырезано» + чистка UI.
-5. Прод-прогон `compose.prod.yml` на хосте владельца, затем тег v1.0.0.
+1. W3 — SMTP-контур в CI (MailHog), закрытие ASVS 2.2.3.
+2. W7 — `compose.prod.yml` поднимается в CI, smoke-набор, RUNBOOK по факту.
+3. W4 — Telegram-бот продукта: привязка, `/today`, `/quiz`, отвязка, недельный отчёт.
+4. W1 — матрица: partial → done или out-of-scope с ADR.

@@ -39,7 +39,7 @@ python -m unittest discover -s apps/runner/tests
 
 | Что | Результат | Команда |
 |---|---|---|
-| API-тесты (SQLite) | **247 passed, 6 skipped**, 88 warnings, 797.99 s | `python -m pytest -q` |
+| API-тесты (SQLite) | **363 passed, 10 skipped**, 351 s | `python -m pytest -q` |
 | PostgreSQL-only тесты | **6 passed**, 3.85 s | `RUN_POSTGRES_TESTS=1 pytest tests/test_postgres_specific.py` |
 | Миграции: 0037 → 0036 → 0037 | проходит, контрольные данные на месте | `alembic downgrade 0036_content_completion && alembic upgrade head` |
 | Миграции: base → head | проходит, сид 90 навыков восстанавливается | `alembic downgrade base && alembic upgrade head` |
@@ -51,7 +51,7 @@ python -m unittest discover -s apps/runner/tests
 | TODO/FIXME в коде | 0 | `grep -rn "TODO\|FIXME" apps` |
 
 Расхождение с постановкой: в мандате указано «~317 тестов». Фактически на `main` собирается
-**253 теста** (247 passed + 6 skipped). Число 317 не подтверждается — в отчётах использую фактические.
+**373 теста** (363 passed + 10 skipped). Число 317 не подтверждается — в отчётах использую фактические.
 
 ## 3. Дефекты
 
@@ -255,3 +255,38 @@ seccomp-фильтре — 1–4 случая на 25 запусков. Обыч
 Защита, которая осталась в коде независимо от причины: `_kill_group` не сигналит процесс,
 который уже собран (`poll() is not None`), иначе SIGKILL мог попасть в переиспользованный pid
 следующего задания.
+
+## 7. P0-2. Контейнерный бэкенд был мёртвым кодом — `fixed` (W2)
+
+До исправления `Policy.argv()` передавал `--security-opt apparmor=ai-tutor-runner`, а профиля с таким
+именем в репозитории не было: `docker create` падал бы на любом хосте, поэтому контейнерный путь не
+запускался ни разу. Ни один тест его не вызывал, а `Policy.sandbox()` для `backend="docker"` возвращал
+`None`, то есть допуск и исполнение в контейнере не были покрыты вообще.
+
+Что сделано и чем доказано:
+
+| Проверка | Команда | Результат |
+|---|---|---|
+| Слои изоляции хоста | `python scripts/runner-docker-bootstrap.py --require-gvisor` | `{"apparmor": true, "cgroup2": true, "gvisor": true, "limits": true, "linux": true, "seccomp": true, "userns": false, "runtime": "runc"}` |
+| Побеги и каталог в контейнере | CI job «Learner code in containers (gVisor and kernel parity)» | 31 тест, 150.996 s, зелёный |
+| Каталог 90 заданий на gVisor | тот же job, `RUNNER_DOCKER_FULL=1` | 90 заданий / 288 кейсов, эталоны 100 % |
+| Паритет бэкендов | `test_backends_agree_on_the_same_cases` | вердикты Landlock и контейнера совпали на 12 заданиях |
+
+Побеги, которые теперь проверяются поведением, а не конфигом: чтение `/home/agent/.env`, `/etc/shadow`
+и каталога, запись в `/app` и `/etc/cron.d`, сеть к `1.1.1.1:80`, утечка переменных окружения через
+sentinel `APM_SECRET_SENTINEL`, бесконечный цикл, бомба памяти, флуд stderr, fork-бомба против
+`--pids-limit 32`, запуск `/bin/sh`. Последний пункт потребовал правки образа: в `python:3.12-slim`
+есть shell, поэтому из образа удалены `/bin/sh`, `/bin/dash`, `/bin/bash`, apt и dpkg.
+
+Что осталось честной границей: AppArmor-профиль в CI не загружается (`Failed setting up policy cache:
+Permission denied` — у hosted-раннера нет прав на `/var/cache/apparmor`), поэтому job идёт на слоях
+`gVisor + seccomp + cgroups v2 + read-only + no-network`. Профиль лежит в
+`apps/runner/deploy/apparmor-ai-tutor-runner` и грузится bootstrap-скриптом там, где ядро это позволяет.
+Признак `apparmor` в `host-layers.json` берётся из `docker info`, а не из предположения.
+
+## 8. Устаревшие числа в этом документе
+
+Раздел 2 писался на первом прогоне и содержал `247 passed, 6 skipped`. Фактические числа на
+`main` после закрытия P0-1 и P0-2: API — 363 passed, 10 skipped; PostgreSQL-only — 7 passed;
+runner — 35 passed в unit-job'е и 13 контейнерных тестов в отдельном job'е. Числа обновлены здесь,
+чтобы AUDIT, STATUS и SPEC-MATRIX не расходились.
