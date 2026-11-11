@@ -112,6 +112,14 @@ main() {
   fi
 
   log "code execution through the runner"
+  local capabilities
+  capabilities=$(curl -s --cacert "$CA" -b "$jar" "$API/learning/execution-capabilities")
+  if printf '%s' "$capabilities" | grep -q '"configured":true'; then
+    ok "runner is configured for the API"
+  else
+    fail "runner is not configured: $capabilities"
+    $COMPOSE exec -T api sh -c 'ls -la /etc/ai-tutor/api; python -c "import os;print({k: bool(os.getenv(k)) for k in (\"RUNNER_URL\",\"RUNNER_AUTH_TOKEN\",\"RUNNER_CA_FILE\",\"RUNNER_CLIENT_CERT_FILE\",\"RUNNER_CLIENT_KEY_FILE\",\"RUNNER_VERIFIED_POLICY_FILE\",\"EXECUTION_JOBS_ENABLED\")})"' || true
+  fi
   local payload='{"language":"python","mode":"function","source_code":"def solve(payload):\n    return payload[\"start\"] + payload[\"increment\"]\n"}'
   local job
   job=$(curl -s --cacert "$CA" -b "$jar" -X POST "$API/learning/exercises/variables-v1-code/jobs" \
