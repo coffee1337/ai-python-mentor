@@ -1,6 +1,8 @@
-from content_helpers import public_question_identity
-from content_helpers import authored_answer, authored_wrong_answer
+import itertools
+
+from content_helpers import authored_answer, authored_wrong_answer, public_question_identity
 from sqlalchemy import select
+from test_auth import client, csrf
 
 from app.assessment_content import MAX_QUESTIONS
 from app.db.models import ExerciseHint, ExerciseVersion, User, UserSkill
@@ -10,8 +12,6 @@ from app.learning_content import EXERCISE_HINT_LADDERS, LESSONS
 from app.main import app
 from app.runner import runner
 from app.skill_graph import SKILLS
-from test_auth import client, csrf
-
 
 WAVE_B = (
     ("functions-v1", "python.functions", "python.loops"),
@@ -110,7 +110,7 @@ def test_wave_b_lessons_follow_exact_graph_prerequisite_chain(client):
 
     expected_chain = list(BASE_PREREQUISITES) + list(WAVE_B_SKILLS)
     assert all(skill_id in skill_ids for skill_id in expected_chain)
-    assert set(zip(expected_chain, expected_chain[1:])).issubset(prerequisite_edges)
+    assert set(itertools.pairwise(expected_chain)).issubset(prerequisite_edges)
     for lesson_id, skill_id, prerequisite in WAVE_B:
         lesson = lessons[lesson_id]
         assert lesson["skill_id"] == skill_id

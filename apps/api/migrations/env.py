@@ -5,7 +5,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.db.base import Base
-from app.db import models  # noqa: F401 — import model modules before autogenerate
+from app.db import models
 
 config = context.config
 if config.config_file_name is not None:

@@ -1,13 +1,13 @@
-from content_helpers import authored_answer, authored_wrong_answer
+from content_helpers import authored_answer, authored_wrong_answer, enable_choice_feedback
 from sqlalchemy import select
+from test_auth import client, csrf
+
+from app.assessment_content import MAX_QUESTIONS, QUESTIONS
 from app.db.models import AssessmentResponse, AssessmentRun, ExerciseVersion, HintReveal, SkillEvidence
 from app.db.session import get_db
-from app.main import app
-from app.assessment_content import QUESTIONS
-from app.assessment_content import MAX_QUESTIONS
 from app.learning_content import EXERCISE_HINT_LADDERS
-from test_auth import client, csrf
-from content_helpers import enable_choice_feedback
+from app.main import app
+
 
 def setup_user(c, email="assessment@example.com", level="beginner"):
     from app.auth import _attempts

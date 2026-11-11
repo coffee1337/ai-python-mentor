@@ -1,8 +1,8 @@
 """Database-backed, short-transaction admission before any external AI I/O."""
-from datetime import datetime, timedelta, timezone
 import json
 import logging
 import os
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy import func, select
@@ -26,7 +26,7 @@ def _setting(name: str, default: int, *, maximum: int = 2_000_000_000) -> int:
 
 
 def _utc(value: datetime) -> datetime:
-    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 _spend_alerts: set[str] = set()
@@ -41,7 +41,7 @@ def _usd_limit_micro(name: str, default_usd: float) -> int:
         raise GatewayError(503, "AI spend limit is invalid") from None
     if not 0 <= value <= 100_000:
         raise GatewayError(503, "AI spend limit is invalid")
-    return int(round(value * 1_000_000))
+    return round(value * 1_000_000)
 
 
 def _quota(reason: str) -> None:
@@ -71,7 +71,7 @@ def reserve_ai_call(
     not reset a budget. An expired lease allows recovery but its old worker
     cannot publish a result after a new token has been issued.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if not operation or len(operation) > 40 or not request_key or len(request_key) > 160 or input_chars < 0:
         raise ValueError("Invalid AI reservation")
     db.execute(select(User.id).where(User.id == user_id).with_for_update()).scalar_one()
@@ -106,7 +106,7 @@ def reserve_ai_call(
     if budget and not reservation_cost:
         db.rollback()
         raise GatewayError(503, "AI cost reservation must be configured when a budget is enabled")
-    if daily_count >= daily_limit or budget and daily_cost + reservation_cost > budget:
+    if daily_count >= daily_limit or (budget and daily_cost + reservation_cost > budget):
         db.rollback()
         _quota("daily_budget")
         raise GatewayError(429, "Daily AI budget exceeded; retry tomorrow")
@@ -148,7 +148,7 @@ def finish_ai_call(db: Session, reservation: AICallReservation, *, status: str, 
         raise GatewayError(409, "AI request lease expired; retry later")
     lease.status = "completed" if status in {"ready", "completed"} else "failed"
     reservation.status = status
-    reservation.completed_at = datetime.now(timezone.utc)
+    reservation.completed_at = datetime.now(UTC)
     # Exact money amounts require deployment-owned prices and exact usage.
     # Missing provider telemetry stays explicitly estimated, including errors.
     input_tokens = usage.get("prompt_tokens") if isinstance(usage, dict) else None

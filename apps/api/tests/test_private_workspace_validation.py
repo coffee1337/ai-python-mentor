@@ -37,6 +37,7 @@ def test_private_timer_validation_redacts_extra_input(client):
 
 def test_guarded_existing_submission_rejects_changed_account(client):
     from sqlalchemy import func, select
+
     from app.db.reflection_models import LessonReflection
     from app.db.session import get_db
     from app.main import app

@@ -1,9 +1,11 @@
 """Admission behavior survives request/session boundaries and failed calls."""
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import func, select
+from test_auth import client
+from test_learning import onboard, register
 
 from app.ai_admission import finish_ai_call, reserve_ai_call
 from app.ai_gateway import GatewayError
@@ -11,8 +13,6 @@ from app.db.domain_models import AICallReservation, AIRequestLease
 from app.db.models import User
 from app.db.session import get_db
 from app.main import app
-from test_auth import client
-from test_learning import register, onboard
 
 
 def session():
@@ -55,7 +55,7 @@ def test_pending_lease_blocks_duplicate_and_expired_worker_cannot_publish(client
             reserve(db, user_id, "same-input")
         assert exc.value.status == 409
         lease = db.get(AIRequestLease, (user_id, "curriculum_generation", "same-input"))
-        lease.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        lease.expires_at = datetime.now(UTC) - timedelta(seconds=1)
         db.commit()
     with session() as db:
         replacement = reserve(db, user_id, "same-input")

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from hashlib import sha256
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import csrf_protected, current_auth
+from app.choice_order import ordered_choices
 from app.curriculum import build_curriculum
 from app.db.models import (
     AuthSession,
@@ -38,8 +39,6 @@ from app.schemas import (
 )
 from app.security import new_token, token_digest
 from app.skill_evidence import InvalidEvidence
-from app.choice_order import ordered_choices
-
 
 router = APIRouter(prefix="/learning/reviews", tags=["reviews"])
 
@@ -117,13 +116,13 @@ class AnswerReviewResponse(BaseModel):
 
 
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _as_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def _lesson_for_skill(skill_id: str) -> dict | None:
@@ -253,7 +252,7 @@ def _get_or_create_session(
             query = query.where(ReviewSession.completed_at.is_(None))
         existing = db.scalar(query)
         if existing is None:
-            raise HTTPException(status.HTTP_409_CONFLICT, "Review session could not be created")
+            raise HTTPException(status.HTTP_409_CONFLICT, "Review session could not be created") from None
         if existing.completed_at is not None:
             existing.completed_at = None
         raw_token = new_token()

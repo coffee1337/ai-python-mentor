@@ -5,16 +5,16 @@ from uuid import uuid4
 import httpx
 import pytest
 from sqlalchemy import select, text
+from test_auth import client, csrf
+from test_learning import onboard, register
 
 from app import ai_embeddings, ai_gateway, knowledge_base
 from app.ai_embeddings import EmbeddingConfig
-from app.db.models import ExerciseVersion, KnowledgeChunk, AIUsageLedger, User
+from app.db.models import AIUsageLedger, ExerciseVersion, KnowledgeChunk, User
 from app.db.session import get_db
 from app.exercise_hints import _seed_exercise
 from app.main import app
 from app.mentor import _retrieval_context
-from test_auth import client, csrf
-from test_learning import onboard, register
 
 PATH = "/learning/lessons/variables-v1/chat"
 DIM = 4
@@ -99,7 +99,7 @@ def send(client, message="Почему это значение строка?"):
 # --- indexing and retrieval -------------------------------------------------
 
 def test_indexing_is_scoped_to_skill_and_version(client, gateway):
-    version_id, version_number = seeded_version(client)
+    version_id, _version_number = seeded_version(client)
     with next(app.dependency_overrides[get_db]()) as db:
         version = db.get(ExerciseVersion, version_id)
         count, embedded = knowledge_base.index_version(db, version)

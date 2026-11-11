@@ -1,5 +1,5 @@
-from content_helpers import public_question_identity
-from content_helpers import authored_answer, authored_wrong_answer
+from content_helpers import authored_answer, authored_wrong_answer, public_question_identity
+
 """Behaviour tests for the authored `python.backend` phase 1 track.
 
 These tests assert what a learner can observe: which lessons exist, which
@@ -7,22 +7,21 @@ skill each covers, when a lesson unlocks, and how phase progress is reported.
 They deliberately avoid asserting on the text of lesson prose.
 """
 
-from collections import defaultdict
 import subprocess
 import sys
+from collections import defaultdict
 
 from sqlalchemy import select
+from test_auth import client, csrf
 
 from app.assessment_content import MAX_QUESTIONS
-from app.backend_content import BACKEND_PHASES, BACKEND_PHASE_ONE_LESSONS
+from app.backend_content import BACKEND_PHASE_ONE_LESSONS, BACKEND_PHASES
 from app.db.models import ExerciseHint, ExerciseVersion, User, UserSkill
 from app.db.session import get_db
 from app.knowledge_check_content import CHECKS
 from app.learning_content import EXERCISE_HINT_LADDERS, LESSONS
 from app.main import app
 from app.skill_graph import SKILLS
-from test_auth import client, csrf
-
 
 PHASE_ONE_SKILLS = (
     "backend.http_basics",

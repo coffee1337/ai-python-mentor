@@ -4,7 +4,6 @@ Starts the real reaper and worker with a freshly generated PKI, then speaks the
 private wire protocol exactly as the API does. Admission, grading, idempotency
 and caller authentication are all exercised against live processes.
 """
-import json
 import os
 import socket
 import ssl
@@ -18,10 +17,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import httpx  # noqa: E402
+import httpx
 
-from runner_worker.policy import select_backend  # noqa: E402
-from runner_worker.sandbox_kernel import landlock_abi  # noqa: E402
+from runner_worker.policy import select_backend
 
 BUNDLE_SCRIPT = ROOT / "scripts" / "runner-dev-bootstrap.py"
 

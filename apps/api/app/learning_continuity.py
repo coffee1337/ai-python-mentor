@@ -1,5 +1,6 @@
 """Resume an owned pending historical publication without rewriting it."""
 from sqlalchemy import select
+
 from app.content_publication import PUBLICATION_REPLACEMENTS
 from app.db.models import KnowledgeCheckSession, LessonCompletion, LessonSession
 

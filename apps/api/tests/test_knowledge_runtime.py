@@ -1,13 +1,13 @@
 from sqlalchemy import select
+from test_auth import client
+from test_learning import onboard, register
+from test_mentor import provider, send
 
 from app import ai_gateway, knowledge_base
 from app.ai_embeddings import LOCAL_EMBEDDING_MODEL
 from app.db.models import KnowledgeChunk
 from app.db.session import get_db
 from app.main import app
-from test_auth import client
-from test_learning import register, onboard
-from test_mentor import provider, send
 
 
 def test_first_chat_builds_local_index_and_releases_transaction_before_gateway(client, provider, monkeypatch):

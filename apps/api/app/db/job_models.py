@@ -1,9 +1,12 @@
 """Durable coding admission; the dispatcher never executes learner code."""
 from datetime import datetime
 from uuid import UUID, uuid4
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Uuid, UniqueConstraint, func
+
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, UniqueConstraint, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.db.base import Base
+
 
 class ExecutionJob(Base):
     __tablename__ = "execution_jobs"

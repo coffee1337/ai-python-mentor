@@ -1,12 +1,22 @@
 """Deterministic personalized plan built only from authored course content."""
-import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
-from app.db.models import AssessmentResponse, AssessmentRun, KnowledgeCheckAttempt, LearningPlan, LearningPlanItem, LessonCompletion, User, UserSkill
-from app.learning_content import LESSONS
+
 from app.content_publication import PUBLICATION_REPLACEMENTS
+from app.db.models import (
+    AssessmentResponse,
+    AssessmentRun,
+    KnowledgeCheckAttempt,
+    LearningPlan,
+    LearningPlanItem,
+    LessonCompletion,
+    User,
+    UserSkill,
+)
+from app.learning_content import LESSONS
 from app.learning_continuity import resumable_publication
 from app.prerequisites import PrerequisiteState, prerequisite_state
 from app.skill_graph import SKILLS
@@ -139,7 +149,7 @@ def _due_review_items(
     prevents a future due date on an unstarted skill from becoming a second
     acquisition item and keeps prerequisite-ready learning ahead of retention.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     lesson_by_skill = {lesson["skill_id"]: lesson for lesson in LESSONS}
     rows = db.scalars(
         select(UserSkill)
@@ -157,10 +167,7 @@ def _due_review_items(
         ):
             continue
         due_at = row.next_review_at
-        if due_at.tzinfo is None:
-            due_at = due_at.replace(tzinfo=timezone.utc)
-        else:
-            due_at = due_at.astimezone(timezone.utc)
+        due_at = due_at.replace(tzinfo=UTC) if due_at.tzinfo is None else due_at.astimezone(UTC)
         if due_at > now:
             continue
         overdue_days = max(0, (now.date() - due_at.date()).days)

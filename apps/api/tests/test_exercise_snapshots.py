@@ -1,12 +1,12 @@
 from copy import deepcopy
 
 from sqlalchemy import select
+from test_auth import client
 
 from app.db.models import ExerciseVersion
 from app.db.session import get_db
 from app.exercise_hints import _seed_exercise
 from app.main import app
-from test_auth import client
 
 
 def test_new_lesson_checks_and_hints_publish_as_immutable_schema_two_snapshot(

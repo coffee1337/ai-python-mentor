@@ -15,7 +15,7 @@ from uuid import UUID
 import httpx
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.account_services import aware, utcnow
@@ -132,8 +132,8 @@ def create_checkout(user_id: UUID, plan_id: str) -> dict:
         raise HTTPException(503, "Billing checkout is not configured")
     url, key = config
     try:
-        with httpx.Client(timeout=10, follow_redirects=False, trust_env=False) as client:
-            with client.stream("POST", url, headers={"Authorization": f"Bearer {key}",
+        with httpx.Client(timeout=10, follow_redirects=False, trust_env=False) as client, \
+                client.stream("POST", url, headers={"Authorization": f"Bearer {key}",
                 "Idempotency-Key": f"checkout-{user_id}-{plan_id}-{utcnow().strftime('%Y%m%d%H')}"},
                 json={"user_id": str(user_id), "plan_id": plan_id}) as response:
                 response.raise_for_status()

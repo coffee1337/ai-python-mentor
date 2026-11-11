@@ -1,16 +1,18 @@
 import json
+import subprocess
 import sys
 import tempfile
 import time
-import subprocess
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from runner_worker.policy import Policy, NotReady
-from runner_worker.journal import Journal, Conflict
-from runner_worker.server import validate_request
 from runner_worker.execution import evaluate
+from runner_worker.journal import Conflict, Journal
+from runner_worker.policy import NotReady, Policy
+from runner_worker.server import validate_request
+
 
 class WorkerTests(unittest.TestCase):
     def test_resource_policy_and_no_host_mount_or_environment(self):

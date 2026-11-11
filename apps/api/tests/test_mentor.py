@@ -4,13 +4,13 @@ from uuid import uuid4
 import httpx
 import pytest
 from sqlalchemy import select
+from test_auth import client, csrf
+from test_learning import complete, onboard, register
 
 from app import ai_gateway
 from app.db.models import AIUsageLedger, LessonCompletion
 from app.db.session import get_db
 from app.main import app
-from test_auth import client, csrf
-from test_learning import register, onboard, complete
 
 PATH = "/learning/lessons/variables-v1/chat"
 

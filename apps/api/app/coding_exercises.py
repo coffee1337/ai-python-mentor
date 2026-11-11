@@ -1,10 +1,12 @@
 """Publish and authorize trusted authored coding contracts separately from quizzes."""
+import json
 from copy import deepcopy
 from hashlib import sha256
-import json
+
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+
 from app.db.models import ExerciseVersion
 from app.learning import accessible_lesson
 

@@ -111,7 +111,7 @@ def parse(document: dict) -> Catalog:
     tasks = document["tasks"]
     if not isinstance(tasks, dict) or set(tasks) != set(TASKS):
         raise RoutingError("routing must define exactly the known tasks")
-    for task, tier in tasks.items():
+    for tier in tasks.values():
         if tier not in tiers:
             raise RoutingError("task references an unknown tier")
     default_task = document["default_task"]

@@ -2,16 +2,18 @@
 from datetime import datetime
 from hashlib import sha256
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
 from app.auth import csrf_protected, current_auth
 from app.db.models import AuthSession, ExerciseVersion, User
 from app.db.reflection_models import LessonReflection
 from app.db.session import get_db
-from app.learning import accessible_lesson, _get_or_create_lesson_session
+from app.learning import _get_or_create_lesson_session, accessible_lesson
 
 router = APIRouter(prefix="/learning/lessons", tags=["written-practice"])
 

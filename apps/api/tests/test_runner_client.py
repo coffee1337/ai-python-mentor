@@ -2,11 +2,10 @@ import json
 
 import httpx
 import pytest
+from test_auth import client, csrf
 
 from app.practice import runner as api_runner
 from app.runner import Runner, RunnerError, RunnerUnavailable
-from test_auth import client, csrf
-
 
 KEY = "2bf5e3d2-13e2-4a1d-8c32-4ed646e2c0f9"
 TOKEN = "runner-test-secret"

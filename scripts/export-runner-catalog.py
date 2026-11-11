@@ -7,6 +7,7 @@ hidden expected values and must never be served from web/static/public storage.
 import json
 import sys
 from pathlib import Path
+
 from app.runner_exercise_content import RUNNER_EXERCISES
 
 rows = [{"exercise_id": row["exercise_id"], "version": row["version"],

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,17 +8,27 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import csrf_protected, current_auth
-from app.db.models import AuthSession, ExerciseVersion, LearningPlan, LearningPlanItem, LessonCompletion, LessonSession, KnowledgeCheckSession, MentorConversation, MentorMessage, User, UserSkill, KnowledgeCheckAttempt, KnowledgeCheckResponse
-from app.db.session import get_db
-from app.learning_content import LESSONS, LESSONS_BY_ID
-from app.backend_content import BACKEND_PHASES, BACKEND_PHASE_ONE_LESSONS
-from app.skill_graph import seed_skill_graph
-from app.curriculum import build_curriculum
-from app.prerequisites import MASTERY_READINESS_THRESHOLD, prerequisite_state
-from app.db.models import LearningPlan, LearningPlanItem
+from app.backend_content import BACKEND_PHASES
 from app.choice_order import ordered_choices
 from app.content_publication import PUBLICATION_REPLACEMENTS
+from app.curriculum import build_curriculum
+from app.db.models import (
+    AuthSession,
+    ExerciseVersion,
+    KnowledgeCheckSession,
+    LearningPlan,
+    LearningPlanItem,
+    LessonCompletion,
+    LessonSession,
+    MentorConversation,
+    MentorMessage,
+    User,
+)
+from app.db.session import get_db
+from app.learning_content import LESSONS, LESSONS_BY_ID
 from app.learning_continuity import resumable_publication
+from app.prerequisites import MASTERY_READINESS_THRESHOLD, prerequisite_state
+from app.skill_graph import seed_skill_graph
 
 router = APIRouter(prefix="/learning", tags=["learning"])
 
@@ -281,7 +291,7 @@ def _get_or_create_lesson_session(
         user_id=user.id,
         lesson_id=lesson_id,
         exercise_version_id=version.id,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db.add(session)
     try:
@@ -290,7 +300,7 @@ def _get_or_create_lesson_session(
         db.rollback()
         session = _pending_lesson_session(db, user.id, lesson_id)
         if session is None:
-            raise HTTPException(409, "Lesson session could not be created")
+            raise HTTPException(409, "Lesson session could not be created") from None
         version = _lesson_session_version(db, session, lesson_id)
     return session, version
 
@@ -566,7 +576,7 @@ def complete_lesson(lesson_id: str, payload: AnswerRequest,
                                exercise_version_id=version.id,
                                evidence_type="authored_quiz_assisted" if assisted else "authored_quiz_correct"))
         if session is not None:
-            session.consumed_at = datetime.now(timezone.utc)
+            session.consumed_at = datetime.now(UTC)
         try:
             build_curriculum(db, user, reason="lesson_completed")
             db.commit()
@@ -576,7 +586,7 @@ def complete_lesson(lesson_id: str, payload: AnswerRequest,
             if db.get(LessonCompletion, (user.id, lesson_id)) is None:
                 raise
     elif correct and session is not None:
-        session.consumed_at = datetime.now(timezone.utc)
+        session.consumed_at = datetime.now(UTC)
         db.commit()
     elif not correct and session is not None:
         db.commit()

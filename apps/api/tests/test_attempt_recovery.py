@@ -1,18 +1,17 @@
 """Saved source recovery is owner-only, version-aware, and read-only."""
-from datetime import datetime, timezone
 import json
+from datetime import UTC, datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from test_auth import client, csrf
 
 from app.db.base import Base
 from app.db.models import CodingAttempt, ExerciseVersion, Skill, SkillEvidence, UserSkill
 from app.db.session import get_db
 from app.main import app
-from test_auth import client, csrf
-
 
 PUBLIC_SOURCE_FIELDS = {
     "attempt_id", "exercise_id", "exercise_version", "source_code",
@@ -162,7 +161,7 @@ def test_source_reads_original_version_without_exposing_secrets_or_changing_lear
         db.flush()
         db.add(SkillEvidence(
             user_id=attempt.user_id, skill_id=skill_id, source_type="coding_attempt",
-            source_id=str(attempt.id), result_score=0.5, occurred_at=datetime.now(timezone.utc),
+            source_id=str(attempt.id), result_score=0.5, occurred_at=datetime.now(UTC),
             idempotency_key="existing-evidence-secret", evidence_metadata={"sentinel": True},
         ))
         db.add(UserSkill(

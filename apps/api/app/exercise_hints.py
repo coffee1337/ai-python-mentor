@@ -1,7 +1,7 @@
 """Versioned authored hint ladders for the MVP lesson exercises."""
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
@@ -11,7 +11,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import csrf_protected, current_auth
-from app.db.models import AuthSession, ExerciseHint, ExerciseVersion, HintReveal, KnowledgeCheckSession, LessonSession, User
+from app.db.models import (
+    AuthSession,
+    ExerciseHint,
+    ExerciseVersion,
+    HintReveal,
+    KnowledgeCheckSession,
+    LessonSession,
+    User,
+)
 from app.db.session import get_db
 from app.exercise_snapshots import authored_snapshot, snapshot_hints
 from app.learning import accessible_lesson
@@ -52,7 +60,7 @@ class HintResponse(BaseModel):
 
 def _persisted_idempotency_key(exercise_version_id, raw_key: str) -> str:
     """Namespace a client key while retaining the 0015 global DB unique."""
-    return f"v16:{hashlib.sha256(f'{exercise_version_id}:{raw_key}'.encode('utf-8')).hexdigest()}"
+    return f"v16:{hashlib.sha256(f'{exercise_version_id}:{raw_key}'.encode()).hexdigest()}"
 
 
 def _legacy_replay(
@@ -377,7 +385,7 @@ def reveal_hint(
             hint_id=hint.id,
             level=hint.level,
             idempotency_key=persisted_idempotency_key,
-            revealed_at=datetime.now(timezone.utc),
+            revealed_at=datetime.now(UTC),
         )
     )
     try:

@@ -299,20 +299,19 @@ class Runner:
                 trust_env=False,
                 transport=self._transport,
                 verify=config.tls_context or True,
-            ) as client:
-                with client.stream("POST", config.url, headers=headers, json=request.model_dump()) as response:
-                    raw = _bounded_body(response)
-                    if response.status_code in (200, 202):
-                        wire = _parse_response(raw, expected_key=idempotency_key, http_status=response.status_code)
-                    elif response.status_code == 503:
-                        wire = _parse_response(raw, expected_key=idempotency_key, http_status=response.status_code)
-                        if wire.status != "unavailable":
-                            raise RunnerError("Runner returned an invalid 503 response")
-                    elif response.status_code in (400, 401, 403, 409, 422, 429, 500):
-                        _parse_error_response(raw)
-                        raise RunnerUnavailable("Runner did not accept the execution")
-                    else:
-                        raise RunnerError("Runner returned an unsupported HTTP status")
+            ) as client, client.stream("POST", config.url, headers=headers, json=request.model_dump()) as response:
+                raw = _bounded_body(response)
+                if response.status_code in (200, 202):
+                    wire = _parse_response(raw, expected_key=idempotency_key, http_status=response.status_code)
+                elif response.status_code == 503:
+                    wire = _parse_response(raw, expected_key=idempotency_key, http_status=response.status_code)
+                    if wire.status != "unavailable":
+                        raise RunnerError("Runner returned an invalid 503 response")
+                elif response.status_code in (400, 401, 403, 409, 422, 429, 500):
+                    _parse_error_response(raw)
+                    raise RunnerUnavailable("Runner did not accept the execution")
+                else:
+                    raise RunnerError("Runner returned an unsupported HTTP status")
         except RunnerUnavailable:
             raise
         except (RunnerError, httpx.HTTPError, OSError, ValueError, UnicodeError) as exc:

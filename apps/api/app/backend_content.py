@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from typing import Final
 
-
 BACKEND_PHASES: Final[tuple[dict, ...]] = (
     {
         "id": 1,

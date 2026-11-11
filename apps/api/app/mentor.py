@@ -1,13 +1,15 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app import ai_gateway
+from app.ai_admission import finish_ai_call, reserve_ai_call
+from app.ai_embeddings import LOCAL_EMBEDDING_MODEL, embedding_configuration, local_embedding
 from app.auth import csrf_protected, current_auth
 from app.db.models import AIUsageLedger, AuthSession, MentorConversation, MentorMessage, User
 from app.db.session import get_db
@@ -20,8 +22,6 @@ from app.knowledge_base import (
     retrieve,
 )
 from app.learning import accessible_lesson
-from app.ai_admission import reserve_ai_call, finish_ai_call
-from app.ai_embeddings import local_embedding, LOCAL_EMBEDDING_MODEL, embedding_configuration
 from app.mentor_prompts import context_messages
 
 router = APIRouter(prefix="/learning", tags=["mentor"])
@@ -117,9 +117,9 @@ def _retrieval_context(db: Session, lesson_id: str, message: str, *, user: User 
     retrieved text is ever treated as an instruction.
     """
     try:
-        from app.learning import _persisted_lesson_version, _pending_lesson_session, _pending_knowledge_check_session
         from app.db.models import ExerciseVersion, KnowledgeChunk
         from app.knowledge_base import index_version
+        from app.learning import _pending_knowledge_check_session, _pending_lesson_session, _persisted_lesson_version
 
         version = None
         if user is not None:
@@ -209,7 +209,7 @@ def chat(lesson_id: str, payload: ChatRequest,
                           output=assistant.content, usage=None, cache_hit=True, status="cache_hit")
             db.commit()
             return assistant
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if conversation is None:
         conversation = MentorConversation(user_id=user.id, lesson_id=lesson_id)
         db.add(conversation)
@@ -232,7 +232,7 @@ def chat(lesson_id: str, payload: ChatRequest,
     messages.append({"role": "user", "content": payload.message})
     conversation_id = conversation.id
     # Authored mistake memory is a possible signal, not a diagnosis or grade.
-    from app.db.models import UserMistake, MisconceptionVersion
+    from app.db.models import MisconceptionVersion, UserMistake
     mistake_rows = db.execute(select(UserMistake, MisconceptionVersion).join(
         MisconceptionVersion, UserMistake.misconception_code == MisconceptionVersion.misconception_code,
     ).where(UserMistake.user_id == user_id, UserMistake.skill_id == lesson["skill_id"],
@@ -286,7 +286,7 @@ def chat(lesson_id: str, payload: ChatRequest,
     existing.status = "completed"
     assistant = MentorMessage(conversation_id=conversation_id, role="assistant", content=answer,
                               status="completed", reply_to_id=existing.id,
-                              created_at=datetime.now(timezone.utc))
+                              created_at=datetime.now(UTC))
     db.add(assistant)
     db.commit()
     db.refresh(assistant)

@@ -1,11 +1,11 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from sqlalchemy import select
+from test_auth import client, csrf
 
 from app.db.models import ReviewAttempt, SkillEvidence, User, UserSkill
 from app.db.session import get_db
 from app.main import app
-from test_auth import client, csrf
 
 
 def setup_user(c, email: str) -> None:
@@ -35,7 +35,7 @@ def add_due_skill() -> None:
                 practice_score=0.5,
                 independent_score=0.5,
                 evidence_count=1,
-                next_review_at=datetime.now(timezone.utc) - timedelta(days=1),
+                next_review_at=datetime.now(UTC) - timedelta(days=1),
             )
         )
         db.commit()

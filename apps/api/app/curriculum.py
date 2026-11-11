@@ -1,16 +1,24 @@
 """Deterministic, explainable curriculum planning over authored content."""
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
-    CurriculumActivity, CurriculumPlanRevision, CurriculumSession, Goal,
-    LearningPlan, LearningPlanItem, LessonCompletion, Skill,
-    User, UserSkill, UserMistake,
+    CurriculumActivity,
+    CurriculumPlanRevision,
+    CurriculumSession,
+    Goal,
+    LearningPlan,
+    LearningPlanItem,
+    Skill,
+    User,
+    UserMistake,
+    UserSkill,
 )
 from app.learning_content import LESSONS
-from app.skill_graph import seed_skill_graph
 from app.prerequisites import PrerequisiteState, mastery_value, prerequisite_state
+from app.skill_graph import seed_skill_graph
 
 POLICY_VERSION = "curriculum-v2"
 MIN_SESSION = 20
@@ -51,7 +59,7 @@ def _review_candidates(
     lesson candidates, so overdue retention work cannot displace a prerequisite
     or a higher-priority acquisition item.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     lesson_by_skill = {lesson["skill_id"]: lesson for lesson in LESSONS}
     candidates: list[tuple[float, int, dict, list[str]]] = []
     for row in db.scalars(
@@ -64,10 +72,7 @@ def _review_candidates(
         if lesson is None or lesson["id"] not in completed or row.next_review_at is None:
             continue
         due_at = row.next_review_at
-        if due_at.tzinfo is None:
-            due_at = due_at.replace(tzinfo=timezone.utc)
-        else:
-            due_at = due_at.astimezone(timezone.utc)
+        due_at = due_at.replace(tzinfo=UTC) if due_at.tzinfo is None else due_at.astimezone(UTC)
         if due_at > now:
             continue
         if not readiness.is_skill_ready(row.skill_id):
@@ -120,13 +125,13 @@ def build_curriculum(db: Session, user: User, *, reason: str = "evidence") -> Cu
             continue
         row = mastery.get(skill_id)
         gap = 1.0 - _mastery(row)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         next_review = row.next_review_at if row else None
         last_practiced = row.last_practiced_at if row else None
         if next_review is not None and next_review.tzinfo is None:
-            next_review = next_review.replace(tzinfo=timezone.utc)
+            next_review = next_review.replace(tzinfo=UTC)
         if last_practiced is not None and last_practiced.tzinfo is None:
-            last_practiced = last_practiced.replace(tzinfo=timezone.utc)
+            last_practiced = last_practiced.replace(tzinfo=UTC)
         review_due = bool(next_review and next_review <= now)
         stale = bool(last_practiced and (now - last_practiced).days >= 30)
         due = review_due or stale
@@ -217,7 +222,7 @@ def build_curriculum(db: Session, user: User, *, reason: str = "evidence") -> Cu
         version += 1
     revision = CurriculumPlanRevision(
         plan_id=plan.id, version=version, policy_version=POLICY_VERSION,
-        as_of=datetime.now(timezone.utc),
+        as_of=datetime.now(UTC),
         goal_snapshot={"target_role": goal.target_role if goal else None, "weekly_minutes": weekly},
         coverage={
             "vacancy_fit": "unavailable", "practice": "unavailable",

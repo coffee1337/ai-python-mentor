@@ -1,15 +1,15 @@
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from uuid import uuid4
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from test_auth import client, csrf
 
 from app.db.models import LessonCompletion, LessonSkill, Skill, SkillEdge, SkillEvidence, User, UserSkill
 from app.db.session import get_db
 from app.main import app
 from app.skill_graph import EDGES, LESSON_SKILLS, SKILLS, seed_skill_graph, validate_graph
-from test_auth import client, csrf
 
 
 def test_authored_graph_has_valid_references_and_acyclic_prerequisites():
@@ -120,9 +120,9 @@ def test_mastery_fallback_is_consistent_across_path_plan_and_curriculum(client):
     assert path.json()["next_lesson_id"] == "data-types-v2"
     assert client.get("/learning/lessons/data-types-v1").status_code == 200
 
-    from app.learning_plan import generate_plan
     from app.curriculum import build_curriculum
     from app.db.models import AssessmentRun
+    from app.learning_plan import generate_plan
 
     with next(app.dependency_overrides[get_db]()) as db:
         user = db.scalar(select(User))
@@ -189,7 +189,7 @@ def test_skill_evidence_assistance_constraints_reject_invalid_pairs(client):
                     result_score=1.0,
                     assisted=assisted,
                     hint_count=hint_count,
-                    occurred_at=datetime.now(timezone.utc),
+                    occurred_at=datetime.now(UTC),
                     idempotency_key=str(uuid4()),
                 )
             )

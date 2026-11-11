@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -23,7 +23,7 @@ def test_review_schema_roundtrip_preserves_review_rows_and_existing_user(tmp_pat
     session_id = uuid4().hex
     attempt_id = uuid4().hex
     version_id = uuid4().hex
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     review_day = now.date().isoformat()
 
     try:

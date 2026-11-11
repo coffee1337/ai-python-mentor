@@ -1,8 +1,8 @@
 """Real Alembic entry point must preserve percent signs in DATABASE_URL."""
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 
 def test_alembic_preserves_literal_percent_in_database_path(tmp_path):

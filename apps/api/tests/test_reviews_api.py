@@ -1,6 +1,7 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from sqlalchemy import select
+from test_auth import client, csrf
 
 from app.curriculum import build_curriculum
 from app.db.models import (
@@ -17,9 +18,8 @@ from app.db.models import (
     UserSkill,
 )
 from app.db.session import get_db
-from app.main import app
 from app.learning_content import LESSONS
-from test_auth import client, csrf
+from app.main import app
 
 
 def setup_user(c, email="reviews@example.com", weekly_minutes=180):
@@ -49,7 +49,7 @@ def add_due_skill(c, skill_id="python.variables", days=-2):
                 practice_score=0.5,
                 independent_score=0.5,
                 evidence_count=1,
-                next_review_at=datetime.now(timezone.utc) + timedelta(days=days),
+                next_review_at=datetime.now(UTC) + timedelta(days=days),
             )
         )
         db.commit()
@@ -232,7 +232,7 @@ def test_today_completion_uses_server_hint_attribution_and_same_day_is_observati
                 hint_id=hint.id,
                 level=hint.level,
                 idempotency_key="review-today-hint-1",
-                revealed_at=datetime.now(timezone.utc),
+                revealed_at=datetime.now(UTC),
             )
         )
         db.commit()
@@ -252,7 +252,7 @@ def test_today_completion_uses_server_hint_attribution_and_same_day_is_observati
 
     with next(app.dependency_overrides[get_db]()) as db:
         mastery = db.scalar(select(UserSkill))
-        mastery.next_review_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        mastery.next_review_at = datetime.now(UTC) - timedelta(minutes=1)
         db.commit()
 
     second = client.get("/learning/reviews/today")
@@ -304,7 +304,7 @@ def test_review_binds_snapshot_and_derives_hint_assistance_on_server(client):
                 hint_id=hint.id,
                 level=hint.level,
                 idempotency_key="review-api-test-hint",
-                revealed_at=datetime.now(timezone.utc),
+                revealed_at=datetime.now(UTC),
             )
         )
         db.commit()
@@ -357,7 +357,7 @@ def test_same_utc_day_retains_later_observation_without_second_shift(client):
 
     with next(app.dependency_overrides[get_db]()) as db:
         mastery = db.scalar(select(UserSkill))
-        mastery.next_review_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+        mastery.next_review_at = datetime.now(UTC) - timedelta(minutes=1)
         due_before_second = mastery.next_review_at
         unchanged_projection = (
             mastery.knowledge_score,
@@ -413,7 +413,7 @@ def test_overdue_review_is_bounded_and_appended_after_learning_candidates(client
     setup_user(client, "review-plan@example.com", weekly_minutes=30)
     with next(app.dependency_overrides[get_db]()) as db:
         user = db.scalar(select(User))
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         plan = LearningPlan(
             user_id=user.id,
             recommendation_text="test",

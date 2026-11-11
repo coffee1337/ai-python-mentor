@@ -1,8 +1,9 @@
 """Metrics endpoint and error-reporting scrubbing."""
 import os
 
-from app import metrics, observability
 from test_auth import client
+
+from app import metrics, observability
 
 
 def test_metrics_endpoint_exposes_bounded_series(client):

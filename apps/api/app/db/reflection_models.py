@@ -1,8 +1,10 @@
 """Written practice is a saved reflection, never an automatic mastery grade."""
 from datetime import datetime
 from uuid import UUID, uuid4
+
 from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.db.base import Base
 
 

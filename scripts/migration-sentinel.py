@@ -3,10 +3,12 @@ import os
 import sys
 from pathlib import Path
 from uuid import UUID
+
 sys.path.insert(0,str(Path(__file__).parents[1]/"apps"/"api"))
-from sqlalchemy import create_engine, select, delete, text
+from sqlalchemy import create_engine, delete, text
 from sqlalchemy.orm import Session
-from app.db.models import User, LessonCompletion, ExerciseVersion
+
+from app.db.models import ExerciseVersion, LessonCompletion, User
 from app.exercise_hints import _seed_exercise
 
 SENTINEL=UUID("c742873ea1e14952a848f8440ac52141")

@@ -1,9 +1,9 @@
-from content_helpers import public_question_identity
-from content_helpers import authored_answer, authored_wrong_answer
 from collections import defaultdict
 from copy import deepcopy
 
+from content_helpers import authored_answer, authored_wrong_answer, public_question_identity
 from sqlalchemy import select
+from test_auth import client, csrf
 
 from app.assessment_content import MAX_QUESTIONS
 from app.db.models import ExerciseHint, ExerciseVersion, User, UserSkill
@@ -13,8 +13,6 @@ from app.knowledge_check_content import CHECKS
 from app.learning_content import EXERCISE_HINT_LADDERS, LESSONS
 from app.main import app
 from app.skill_graph import SKILLS
-from test_auth import client, csrf
-
 
 WAVE_C = (
     ("mutability-v1", "python.mutability", "python.scope"),

@@ -7,6 +7,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
+
 from app.exercise_hints import _persisted_idempotency_key
 
 
@@ -207,18 +208,17 @@ def test_skill_evidence_constraints_roundtrip_0019_0020(tmp_path, monkeypatch):
         )
 
     command.upgrade(config, "head")
-    with pytest.raises(IntegrityError):
-        with engine.begin() as connection:
-            connection.execute(
-                text(
-                    "INSERT INTO skill_evidence "
-                    "(id, user_id, skill_id, source_type, source_id, result_score, assisted, "
-                    "hint_count, occurred_at, idempotency_key) "
-                    "VALUES (:id, :user_id, 'python.variables', 'assessment_response', "
-                    "'invalid-source', 1.0, 0, 1, CURRENT_TIMESTAMP, 'invalid-key')"
-                ),
-                {"id": uuid4().hex, "user_id": user_id},
-            )
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO skill_evidence "
+                "(id, user_id, skill_id, source_type, source_id, result_score, assisted, "
+                "hint_count, occurred_at, idempotency_key) "
+                "VALUES (:id, :user_id, 'python.variables', 'assessment_response', "
+                "'invalid-source', 1.0, 0, 1, CURRENT_TIMESTAMP, 'invalid-key')"
+            ),
+            {"id": uuid4().hex, "user_id": user_id},
+        )
 
     command.downgrade(config, "0019_restrict_exercise_version_deletion")
     command.upgrade(config, "head")
@@ -723,7 +723,7 @@ def test_exercise_snapshot_migration_roundtrip_keeps_global_hint_key_unique(tmp_
             text("INSERT INTO users (id, email, password_hash) VALUES (:id, :email, :password)"),
             {"id": user_id, "email": "idempotency@example.com", "password": "sentinel"},
         )
-        for version_id, hint_id in zip(version_ids, hint_ids):
+        for version_id, hint_id in zip(version_ids, hint_ids, strict=True):
             connection.execute(
                 text(
                     "INSERT INTO exercise_versions (id, exercise_id, version, lesson_id) "
@@ -836,13 +836,12 @@ def test_published_exercise_version_delete_is_restricted_and_preserves_reveal(tm
             },
         )
 
-    with pytest.raises(IntegrityError):
-        with engine.begin() as connection:
-            connection.execute(text("PRAGMA foreign_keys = ON"))
-            connection.execute(
-                text("DELETE FROM exercise_versions WHERE id = :id"),
-                {"id": version_id},
-            )
+    with pytest.raises(IntegrityError), engine.begin() as connection:
+        connection.execute(text("PRAGMA foreign_keys = ON"))
+        connection.execute(
+            text("DELETE FROM exercise_versions WHERE id = :id"),
+            {"id": version_id},
+        )
 
     with engine.connect() as connection:
         assert connection.scalar(

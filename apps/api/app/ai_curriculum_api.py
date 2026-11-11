@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.auth import csrf_protected, current_auth
 from app.ai_curriculum import generate_personalized_plan, personalized_response
+from app.auth import csrf_protected, current_auth
 from app.db.models import AuthSession, User
 from app.db.session import get_db
 from app.learning import require_onboarding

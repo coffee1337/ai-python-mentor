@@ -1,10 +1,11 @@
 """Private drafts preserve concurrent work without creating learning results."""
-from datetime import datetime, timezone
 from copy import deepcopy
+from datetime import UTC, datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import func, select
+from test_auth import client, csrf
 
 from app import study_drafts
 from app.db.base import Base
@@ -14,7 +15,6 @@ from app.db.study_draft_models import StudyDraft
 from app.exercise_hints import _seed_exercise
 from app.main import app
 from app.skill_graph import SKILLS
-from test_auth import client, csrf
 
 
 def database():
@@ -215,7 +215,7 @@ def test_flow_restores_only_ungraded_choices_of_exact_pending_snapshot(client):
     assert business_state() == before
     with database() as db:
         pending = db.scalar(select(KnowledgeCheckSession).where(KnowledgeCheckSession.lesson_id == identity["resource_id"]))
-        pending.consumed_at = datetime.now(timezone.utc)
+        pending.consumed_at = datetime.now(UTC)
         db.commit()
     assert save(client, identity, content, revision=1).status_code == 409
     assert save(client, identity, {"step": 3, "answers": {}}, revision=1).status_code == 200

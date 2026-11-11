@@ -13,9 +13,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from runner_worker.policy import NotReady, Policy  # noqa: E402
-from runner_worker.sandbox_kernel import landlock_abi  # noqa: E402
-from runner_worker.sandbox_landlock import LandlockSandbox, stray_processes  # noqa: E402
+from runner_worker.policy import NotReady, Policy
+from runner_worker.sandbox_kernel import landlock_abi
+from runner_worker.sandbox_landlock import LandlockSandbox, stray_processes
 
 ABI = landlock_abi()
 

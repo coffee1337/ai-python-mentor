@@ -1,5 +1,5 @@
 """The timer migration is additive and its rollback preserves older data."""
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -19,7 +19,7 @@ def test_timer_schema_roundtrip_keeps_user_and_older_feature_sentinel(tmp_path, 
     command.upgrade(config, "0038_study_drafts")
     engine = create_engine(url)
     owner = uuid4().hex
-    stamp = datetime(2026, 10, 7, 9, tzinfo=timezone.utc)
+    stamp = datetime(2026, 10, 7, 9, tzinfo=UTC)
     try:
         with engine.begin() as connection:
             connection.execute(text("INSERT INTO users(id,email,password_hash) VALUES(:id,'timer-migration@example.com','sentinel')"), {"id": owner})
@@ -35,14 +35,12 @@ def test_timer_schema_roundtrip_keeps_user_and_older_feature_sentinel(tmp_path, 
                                        "ended": None, "last": None, "duration": 12000})
             connection.execute(query, {"id": uuid4().hex, "owner": owner, "status": "completed", "stamp": stamp,
                                        "ended": stamp, "last": None, "duration": 24000})
-        with pytest.raises(IntegrityError):
-            with engine.begin() as connection:
-                connection.execute(query, {"id": uuid4().hex, "owner": owner, "status": "active", "stamp": stamp,
-                                           "ended": None, "last": stamp, "duration": 0})
-        with pytest.raises(IntegrityError):
-            with engine.begin() as connection:
-                connection.execute(query, {"id": uuid4().hex, "owner": owner, "status": "completed", "stamp": stamp,
-                                           "ended": stamp, "last": None, "duration": 28800001})
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.execute(query, {"id": uuid4().hex, "owner": owner, "status": "active", "stamp": stamp,
+                                       "ended": None, "last": stamp, "duration": 0})
+        with pytest.raises(IntegrityError), engine.begin() as connection:
+            connection.execute(query, {"id": uuid4().hex, "owner": owner, "status": "completed", "stamp": stamp,
+                                       "ended": stamp, "last": None, "duration": 28800001})
         with engine.connect() as connection:
             assert connection.scalar(text("SELECT accumulated_milliseconds FROM study_sessions WHERE id=:id"), {"id": paused_id}) == 12000
         command.downgrade(config, "0038_study_drafts")

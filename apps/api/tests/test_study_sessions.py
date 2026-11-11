@@ -1,10 +1,11 @@
 """Presence timers persist independently from learning and recommendations."""
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
+from test_auth import client, csrf
 
 from app import study_sessions
 from app.account_services import throttle_key, utcnow
@@ -14,9 +15,8 @@ from app.db.models import CurriculumSession, SkillEvidence, User
 from app.db.session import get_db
 from app.db.study_session_models import StudySession
 from app.main import app
-from test_auth import client, csrf
 
-NOW = datetime(2026, 10, 7, 9, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 7, 9, tzinfo=UTC)
 
 
 @pytest.fixture

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import case, select, update
@@ -24,7 +24,6 @@ from app.db.models import (
     UserMistake,
 )
 from app.exercise_snapshots import snapshot_assessment, snapshot_checks
-
 
 _SOURCE_TYPES = {
     "knowledge_check_response",
@@ -95,7 +94,7 @@ def _owned_response(db: Session, user_id: UUID, source_type: str, source_id: UUI
         ).first()
         if row is None:
             return None
-        response, run = row
+        response, _run = row
         if response.is_correct or response.exercise_version_id is None:
             return None
         version = db.get(ExerciseVersion, response.exercise_version_id)
@@ -272,7 +271,7 @@ def record_response_mistake(
                     (is_latest, str(parsed_source_id)),
                     else_=UserMistake.last_source_id,
                 ),
-                updated_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(UTC),
             )
         )
     return db.get(MistakeOccurrence, occurrence_id)

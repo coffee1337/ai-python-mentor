@@ -1,10 +1,12 @@
 """Readiness reports infrastructure availability without exposing secrets."""
+from functools import lru_cache
+from pathlib import Path
+
+from alembic.script import ScriptDirectory
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from pathlib import Path
-from functools import lru_cache
-from alembic.script import ScriptDirectory
+
 from app.db.session import get_db
 
 router = APIRouter(tags=["health"])

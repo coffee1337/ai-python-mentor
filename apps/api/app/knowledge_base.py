@@ -24,10 +24,17 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ai_gateway import GatewayError
-from app.ai_embeddings import EmbeddingConfig, EmbeddingError
+from app.ai_embeddings import (
+    LOCAL_EMBEDDING_MODEL,
+    EmbeddingConfig,
+    EmbeddingError,
+    embedding_configuration,
+    local_embedding,
+    pack,
+    unpack,
+)
 from app.ai_embeddings import embed as embed_inputs
-from app.ai_embeddings import embedding_configuration, pack, unpack, local_embedding, LOCAL_EMBEDDING_MODEL
+from app.ai_gateway import GatewayError
 from app.db.models import ExerciseVersion, KnowledgeChunk
 from app.exercise_snapshots import snapshot_skill_id
 
@@ -168,7 +175,7 @@ def index_version(
         index for index, (section, ordinal, piece) in enumerate(planned)
         if (section, ordinal) not in existing
         or existing[(section, ordinal)].content_digest != _digest(piece)
-        or rebuild_embeddings and existing[(section, ordinal)].embedding_model != target_model
+        or (rebuild_embeddings and existing[(section, ordinal)].embedding_model != target_model)
     ]
     for index in dirty:
         chunk = existing.get((planned[index][0], planned[index][1]))
@@ -187,7 +194,7 @@ def index_version(
                     collected = []
                     break
             if len(collected) == len(inputs):
-                vectors = dict(zip(dirty, collected))
+                vectors = dict(zip(dirty, collected, strict=False))
 
     remote_embedded = bool(vectors)
     if not vectors:
@@ -221,7 +228,7 @@ def index_version(
 def _cosine(left: list[float], right: list[float]) -> float:
     if len(left) != len(right):
         return 0.0
-    dot = sum(a * b for a, b in zip(left, right))
+    dot = sum(a * b for a, b in zip(left, right, strict=False))
     norm_left = math.sqrt(sum(a * a for a in left))
     norm_right = math.sqrt(sum(b * b for b in right))
     if not norm_left or not norm_right:
@@ -342,6 +349,7 @@ def retrieval_messages(
 def main() -> None:
     """Explicit index maintenance; local by default, paid embeddings opt-in."""
     import argparse
+
     from app.db.session import SessionLocal
     parser = argparse.ArgumentParser(description="Index immutable lesson versions")
     parser.add_argument("--remote", action="store_true", help="Use configured paid embeddings")

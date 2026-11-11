@@ -53,6 +53,7 @@ def authored_exercise(lesson_id: str, skill_id: str, prompt: str, solution: str,
 
 from app.completion_content import TOPICS
 from app.core_practice_content import CORE_PRACTICE
+
 for _row in TOPICS:
     _item = authored_exercise(_row['lesson_id'], _row['skill'], _row['practice'], _row['solution'], _row['public'], _row['hidden'])
     RUNNER_EXERCISES[_item['exercise_id']] = _item

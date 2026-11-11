@@ -1,12 +1,12 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from sqlalchemy import select
+from test_auth import client, csrf
 
 from app.db.models import ReviewAttempt, SkillEvidence, SkillMasteryAudit, User, UserSkill
 from app.db.session import get_db
 from app.main import app
 from app.reviews import ReviewHistoryItem, review_interval_days
-from test_auth import client, csrf
 
 
 def setup_review_user(c):
@@ -39,7 +39,7 @@ def add_due_skill(c):
                 confidence=0.8,
                 mastery_weight=2.0,
                 evidence_count=4,
-                next_review_at=datetime.now(timezone.utc) - timedelta(days=1),
+                next_review_at=datetime.now(UTC) - timedelta(days=1),
             )
         )
         db.commit()
@@ -182,9 +182,9 @@ def test_review_is_retention_only_and_does_not_change_knowledge_projection(clien
         attempt_time = attempt.occurred_at
         next_review_at = after.next_review_at
         if attempt_time.tzinfo is None:
-            attempt_time = attempt_time.replace(tzinfo=timezone.utc)
+            attempt_time = attempt_time.replace(tzinfo=UTC)
         if next_review_at.tzinfo is None:
-            next_review_at = next_review_at.replace(tzinfo=timezone.utc)
+            next_review_at = next_review_at.replace(tzinfo=UTC)
         assert next_review_at - attempt_time == timedelta(days=7)
 
 

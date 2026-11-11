@@ -1,8 +1,10 @@
 from sqlalchemy import func, select
+from test_auth import client, csrf
+
 from app.db.models import CodingAttempt, ExerciseVersion, SubmissionResult
 from app.db.session import get_db
 from app.main import app
-from test_auth import client, csrf
+
 
 def setup_user(c, email="practice@example.com"):
     from app.auth import _attempts
@@ -65,7 +67,7 @@ def test_runner_pass_and_wrong_answer_results_are_persisted(client, monkeypatch)
         attempts = db.scalars(select(CodingAttempt).order_by(CodingAttempt.created_at)).all()
         results = db.scalars(select(SubmissionResult).order_by(SubmissionResult.created_at)).all()
         assert len(attempts) == len(results) == 2
-        for attempt, result in zip(attempts, results):
+        for attempt, result in zip(attempts, results, strict=True):
             assert attempt.exercise_version_id is not None
             version = db.get(ExerciseVersion, attempt.exercise_version_id)
             assert version is not None

@@ -8,6 +8,8 @@ from uuid import uuid4
 import httpx
 import pytest
 from sqlalchemy import select
+from test_auth import client
+from test_learning import onboard, register
 
 from app import ai_admission, ai_gateway, model_catalog
 from app.ai_admission import reserve_ai_call
@@ -16,8 +18,6 @@ from app.db.domain_models import AICallReservation
 from app.db.models import User
 from app.db.session import get_db
 from app.main import app
-from test_auth import client
-from test_learning import onboard, register
 
 CATALOG = {
     "version": 1,
@@ -227,9 +227,8 @@ def test_global_daily_limit_blocks_the_next_reservation(client, monkeypatch):
     monkeypatch.setenv("AI_MAX_CALL_COST_MICROUSD", "50")
     with session() as db:
         reserve_ai_call(db, user_id, "mentor_chat", str(uuid4()), limit=10, window_seconds=3600, input_chars=10)
-    with session() as db:
-        with pytest.raises(GatewayError) as exc:
-            reserve_ai_call(db, user_id, "mentor_chat", str(uuid4()), limit=10, window_seconds=3600, input_chars=10)
+    with session() as db, pytest.raises(GatewayError) as exc:
+        reserve_ai_call(db, user_id, "mentor_chat", str(uuid4()), limit=10, window_seconds=3600, input_chars=10)
     assert exc.value.status == 429
     with session() as db:
         assert db.query(AICallReservation).count() == 1

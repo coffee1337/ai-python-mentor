@@ -2,16 +2,22 @@ import json
 from uuid import uuid4
 
 from sqlalchemy import func, select
+from test_auth import client, csrf
 
 from app import ai_gateway
 from app.db.models import AIPlanGeneration, AIPlanStep, AIUsageLedger, CodingAttempt, SkillEvidence, User
-from app.db.product_models import GeneratedExerciseAttempt, LearnerProject, PortfolioEntry, ProjectSubmission, VacancyAnalysis
+from app.db.product_models import (
+    GeneratedExerciseAttempt,
+    LearnerProject,
+    PortfolioEntry,
+    ProjectSubmission,
+    VacancyAnalysis,
+)
 from app.db.session import get_db
 from app.main import app
 from app.projects import PROJECT_TEMPLATES
 from app.skill_graph import seed_skill_graph
 from app.vacancies import extract_requirements
-from test_auth import client, csrf
 
 
 def _setup(client, email="products@example.com"):

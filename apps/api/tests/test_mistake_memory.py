@@ -3,6 +3,7 @@ from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import func, select
+from test_auth import client, csrf
 
 from app.db.models import (
     AssessmentResponse,
@@ -17,7 +18,6 @@ from app.db.models import (
 from app.db.session import get_db
 from app.main import app
 from app.mistake_memory import record_response_mistake
-from test_auth import client, csrf
 
 
 def _setup_user(test_client, email):

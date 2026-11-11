@@ -1,14 +1,14 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import select
+from test_auth import client
+from test_learning import onboard, register
 
 from app.ai_curriculum import _snapshot
 from app.curriculum import build_curriculum
 from app.db.models import CurriculumActivity, CurriculumSession, Goal, LearningPlan, User, UserSkill
 from app.db.session import get_db
 from app.main import app
-from test_auth import client
-from test_learning import register, onboard
 
 
 def test_ai_allowlist_requires_transitive_prerequisites(client):

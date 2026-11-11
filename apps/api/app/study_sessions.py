@@ -3,7 +3,7 @@
 These records describe an explicitly started timer, never course mastery or
 completion. A GET can project an expired timer as paused but cannot renew it.
 """
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -61,11 +61,11 @@ class CurrentStudySession(StrictModel):
 
 
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _utc(value: datetime) -> datetime:
-    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 def _elapsed_milliseconds(row: StudySession, now: datetime) -> int:

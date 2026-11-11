@@ -4,10 +4,10 @@ The domain never learns a vendor name: it asks for a vector list and validates
 the envelope, exactly as it does for Chat Completions. Requests are batched so
 one learner turn costs one call, never one call per chunk.
 """
-import json
-import os
 import hashlib
+import json
 import math
+import os
 import re
 import struct
 from dataclasses import dataclass

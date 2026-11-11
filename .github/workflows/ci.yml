@@ -17,6 +17,9 @@ jobs:
           cache: pip
           cache-dependency-path: apps/api/requirements.lock
       - run: pip install -r apps/api/requirements.lock
+      - run: pip install "ruff==0.17.4"
+      # Lint runs on the whole Python surface: API, runner and helper scripts.
+      - run: ruff check apps scripts
       # Most tests override get_db with SQLite; PostgreSQL locking is checked below.
       - run: python -m pytest -q -p no:cacheprovider
         working-directory: apps/api
@@ -145,13 +148,18 @@ jobs:
           RUN_POSTGRES_TESTS: "1"
         run: python -m pytest -q -s tests/test_postgres_specific.py
   runner:
-    name: Runner policy and journal
+    name: Runner isolation, policy and journal
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/requirements.lock
+      # The catalog test imports the authored content, and the mTLS test speaks
+      # the wire protocol with httpx, so the API deps are required here too.
+      - run: pip install -r apps/api/requirements.lock
       - run: python -m unittest discover -s apps/runner/tests -v
   windows-encoding:
     name: Windows UTF-8 assets and migrations

@@ -1,10 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
 
 from app.auth import csrf_protected, current_auth
+from app.curriculum import build_curriculum, curriculum_response
 from app.db.models import AuthSession, User
 from app.db.session import get_db
-from app.curriculum import build_curriculum, curriculum_response
 from app.learning import require_onboarding
 
 router = APIRouter(prefix="/learning", tags=["curriculum"])

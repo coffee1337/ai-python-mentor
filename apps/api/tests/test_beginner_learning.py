@@ -1,23 +1,32 @@
 """A novice can learn before being asked to demonstrate prior knowledge."""
 import contextlib
 import io
-import pytest
 
+import pytest
 from sqlalchemy import select
+from test_auth import client, csrf
+from test_learning_plan import setup_user
 
 from app.assessment_content import MAX_QUESTIONS
 from app.beginner_content import BEGINNER_LESSONS
-from app.db.models import (AssessmentResponse, AssessmentRun, ExerciseVersion,
-                           KnowledgeCheckSession, LessonCompletion, LessonSession,
-                           SkillEvidence, User, UserSkill, UserMistake)
+from app.db.models import (
+    AssessmentResponse,
+    AssessmentRun,
+    ExerciseVersion,
+    KnowledgeCheckSession,
+    LessonCompletion,
+    LessonSession,
+    SkillEvidence,
+    User,
+    UserMistake,
+    UserSkill,
+)
 from app.db.session import get_db
 from app.exercise_hints import _seed_exercise
 from app.exercise_snapshots import snapshot_checks
-from app.learning_content import LESSONS_BY_ID
 from app.learning import CODING_INTERFACE_SKILLS
+from app.learning_content import LESSONS_BY_ID
 from app.main import app
-from test_auth import client, csrf
-from test_learning_plan import setup_user
 
 
 def _db():

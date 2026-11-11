@@ -1,9 +1,10 @@
 """Owned coding-attempt API. Runner is fail-closed and never executes locally."""
-from datetime import datetime, timezone
+
+import json
+from datetime import UTC, datetime
 from threading import Lock
 from time import monotonic
 from uuid import UUID
-import json
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -30,11 +31,13 @@ LIMIT = 5
 WINDOW = 60.0
 MAX_CODE = 20000
 
+
 class AttemptRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     language: str = Field(min_length=1, max_length=20)
     mode: str = Field(min_length=1, max_length=20)
     source_code: str = Field(min_length=1, max_length=MAX_CODE)
+
 
 class AttemptResponse(BaseModel):
     id: UUID
@@ -44,6 +47,7 @@ class AttemptResponse(BaseModel):
     status: str
     result: dict
     created_at: datetime
+
 
 class AttemptSourceResponse(BaseModel):
     """Only the owner's saved text and its verified public version number."""
@@ -58,21 +62,30 @@ class AttemptSourceResponse(BaseModel):
     created_at: datetime
     version_verified: bool
 
+
 def _rate_limit(user_id: UUID) -> None:
-    now = monotonic(); key = str(user_id)
+    now = monotonic()
+    key = str(user_id)
     with _LOCK:
         recent = [stamp for stamp in _RATE.get(key, []) if now - stamp < WINDOW]
         if len(recent) >= LIMIT:
             raise HTTPException(429, "Too many submissions; try again later")
-        _RATE[key] = recent + [now]
+        _RATE[key] = [*recent, now]
+
 
 def _response(row: CodingAttempt) -> AttemptResponse:
-    return AttemptResponse(id=row.id, exercise_id=row.exercise_id, language=row.language, mode=row.mode, status=row.status, result=json.loads(row.result or "{}"), created_at=row.created_at)
+    return AttemptResponse(
+        id=row.id,
+        exercise_id=row.exercise_id,
+        language=row.language,
+        mode=row.mode,
+        status=row.status,
+        result=json.loads(row.result or "{}"),
+        created_at=row.created_at,
+    )
 
 
-def _persist_submission_result(
-    db: Session, attempt: CodingAttempt, result: RunnerResult
-) -> SubmissionResult:
+def _persist_submission_result(db: Session, attempt: CodingAttempt, result: RunnerResult) -> SubmissionResult:
     """Persist the bounded normalized result for this exact attempt/version."""
     if attempt.exercise_version_id is None:
         raise RunnerError("Submission result requires a pinned exercise version")
@@ -86,7 +99,8 @@ def _persist_submission_result(
         or result.tests_passed > result.tests_total
         or type(result.timeout) is not bool
         or type(result.resource_violation) is not bool
-        or result.status not in {
+        or result.status
+        not in {
             "passed",
             "failed",
             "timeout",
@@ -104,17 +118,11 @@ def _persist_submission_result(
         or (result.status == "passed") != (result.tests_passed == result.tests_total)
     ):
         raise RunnerError("Runner terminal result is inconsistent")
-    if result.status == "timeout" and (
-        not result.timeout or result.resource_violation
-    ):
+    if result.status == "timeout" and (not result.timeout or result.resource_violation):
         raise RunnerError("Runner timeout result is inconsistent")
-    if result.status == "resource_violation" and (
-        not result.resource_violation or result.timeout
-    ):
+    if result.status == "resource_violation" and (not result.resource_violation or result.timeout):
         raise RunnerError("Runner resource result is inconsistent")
-    if result.status in {"error", "runner_error", "unavailable"} and (
-        result.timeout or result.resource_violation
-    ):
+    if result.status in {"error", "runner_error", "unavailable"} and (result.timeout or result.resource_violation):
         raise RunnerError("Runner failure result is inconsistent")
     existing = db.scalar(
         select(SubmissionResult).where(
@@ -144,16 +152,14 @@ def _persist_submission_result(
         timeout=result.timeout,
         resource_violation=result.resource_violation,
         exit_code=result.exit_code,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db.add(row)
     db.flush()
     return row
 
 
-def _persist_result_and_evidence(
-    db: Session, attempt: CodingAttempt, result: RunnerResult
-) -> None:
+def _persist_result_and_evidence(db: Session, attempt: CodingAttempt, result: RunnerResult) -> None:
     """Commit a result and its evidence atomically when the evidence is valid.
 
     A malformed snapshot or other proven-invalid evidence condition never
@@ -226,11 +232,7 @@ def attempt_source(
     )
     if attempt is None:
         raise HTTPException(404, "Attempt not found")
-    version = (
-        db.get(ExerciseVersion, attempt.exercise_version_id)
-        if attempt.exercise_version_id is not None
-        else None
-    )
+    version = db.get(ExerciseVersion, attempt.exercise_version_id) if attempt.exercise_version_id is not None else None
     verified = version is not None and version.exercise_id == attempt.exercise_id
     response.headers["Cache-Control"] = "no-store"
     return AttemptSourceResponse(
@@ -250,25 +252,40 @@ def history(exercise_id: str, auth: tuple[User, AuthSession] = Depends(current_a
     require_onboarding(auth[0])
     if exercise_id.endswith("-code"):
         from app.coding_exercises import resolve_coding_exercise
+
         resolve_coding_exercise(db, auth[0], exercise_id)
         db.commit()
     else:
         accessible_lesson(exercise_id, db, auth[0])
-    rows = db.scalars(select(CodingAttempt).where(CodingAttempt.user_id == auth[0].id, CodingAttempt.exercise_id == exercise_id).order_by(CodingAttempt.created_at.desc()).limit(20)).all()
+    rows = db.scalars(
+        select(CodingAttempt)
+        .where(CodingAttempt.user_id == auth[0].id, CodingAttempt.exercise_id == exercise_id)
+        .order_by(CodingAttempt.created_at.desc())
+        .limit(20)
+    ).all()
     return [_response(row) for row in rows]
 
+
 @router.post("/exercises/{exercise_id}/attempts", response_model=AttemptResponse, status_code=201)
-def submit(exercise_id: str, payload: AttemptRequest, auth: tuple[User, AuthSession] = Depends(csrf_protected), db: Session = Depends(get_db)):
-    user, _ = auth; require_onboarding(user)
+def submit(
+    exercise_id: str,
+    payload: AttemptRequest,
+    auth: tuple[User, AuthSession] = Depends(csrf_protected),
+    db: Session = Depends(get_db),
+):
+    user, _ = auth
+    require_onboarding(user)
     if not exercise_id.endswith("-code"):
         accessible_lesson(exercise_id, db, user)
     if payload.language != "python" or payload.mode != "function":
         raise HTTPException(422, "Only Python function exercises are supported")
     from app.account_services import throttle
+
     throttle(db, scope="coding_submission", subject=str(user.id), limit=LIMIT, window_seconds=int(WINDOW))
     pending_session = _pending_lesson_session(db, user.id, exercise_id)
     if exercise_id.endswith("-code"):
         from app.coding_exercises import resolve_coding_exercise
+
         _, exercise_version = resolve_coding_exercise(db, user, exercise_id)
     else:
         exercise_version = (
@@ -295,7 +312,9 @@ def submit(exercise_id: str, payload: AttemptRequest, auth: tuple[User, AuthSess
             }
         ),
     )
-    db.add(row); db.commit(); db.refresh(row)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
     version_number, attempt_key = exercise_version.version, str(row.id)
     db.commit()  # Release the connection before the private HTTP call.
     # No API-process execution. If a safe adapter is installed in the future, it must be isolated.
@@ -318,9 +337,7 @@ def submit(exercise_id: str, payload: AttemptRequest, auth: tuple[User, AuthSess
         _persist_result_and_evidence(db, row, normalized)
         db.refresh(row)
     except (RunnerUnavailable, RunnerError):
-        normalized = _unavailable_result(
-            "Изолированный runner недоступен. Код сохранён, но не выполнялся."
-        )
+        normalized = _unavailable_result("Изолированный runner недоступен. Код сохранён, но не выполнялся.")
         _persist_result_and_evidence(db, row, normalized)
         db.refresh(row)
     except Exception:

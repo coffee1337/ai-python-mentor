@@ -6,7 +6,6 @@ Run against the real provider; nothing here is mocked.
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 from pathlib import Path
@@ -14,9 +13,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "apps" / "api"))
 
-import httpx  # noqa: E402
+import httpx
 
-from app import ai_gateway, model_catalog  # noqa: E402
+from app import ai_gateway, model_catalog
 
 
 def load_env() -> None:

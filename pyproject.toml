@@ -1,0 +1,36 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = [
+    "apps/api/migrations/versions",
+    "apps/web/node_modules",
+    "apps/web/.next",
+    "scripts/ui-smoke/node_modules",
+    ".runner-dev",
+]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+# Long lines are handled by the formatter; ambiguous-unicode rules would fight
+# the Russian documentation strings that are part of the product. FastAPI
+# dependency injection is expressed as a call in the default argument by design.
+ignore = ["E501", "RUF001", "RUF002", "RUF003", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# Migrations are historical artefacts: rewriting them would change applied SQL.
+"apps/api/migrations/*" = ["E", "F", "W", "I", "UP", "B"]
+# Tests import fixtures by name (pytest resolves them from the module namespace,
+# while the test parameter shadows the import), shadow them deliberately and use
+# the compact arrange/act style.
+"apps/api/tests/*" = ["F811", "F401", "E402", "E701", "E702", "B011"]
+"apps/runner/tests/*" = ["E402", "E701", "E702"]
+# Scripts add the application directory to sys.path before importing it.
+"scripts/*" = ["E402"]
+# Content modules keep data first and pull in derived tables at the end so the
+# authored course stays readable top-down.
+"apps/api/app/learning_content.py" = ["E402"]
+"apps/api/app/knowledge_check_content.py" = ["E402"]
+"apps/api/app/runner_exercise_content.py" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "runner_worker"]

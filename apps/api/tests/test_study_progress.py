@@ -1,18 +1,30 @@
 """Owned read projections report facts without awarding credit."""
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import event, func, select
+from test_auth import client, csrf
 
 from app import study_progress
 from app.db.base import Base
 from app.db.models import (
-    AssessmentResponse, AssessmentRun, CodingAttempt, CurriculumActivity,
-    CurriculumPlanRevision, CurriculumSession, KnowledgeCheckAttempt,
-    LearningPlan, LessonCompletion, LessonSession, ReviewAttempt,
-    ReviewSession, SkillEvidence, User, UserSkill,
+    AssessmentResponse,
+    AssessmentRun,
+    CodingAttempt,
+    CurriculumActivity,
+    CurriculumPlanRevision,
+    CurriculumSession,
+    KnowledgeCheckAttempt,
+    LearningPlan,
+    LessonCompletion,
+    LessonSession,
+    ReviewAttempt,
+    ReviewSession,
+    SkillEvidence,
+    User,
+    UserSkill,
 )
 from app.db.session import get_db
 from app.exercise_hints import _seed_exercise
@@ -21,9 +33,8 @@ from app.learning_content import LESSONS, LESSONS_BY_ID
 from app.main import app
 from app.prerequisites import prerequisite_state
 from app.skill_graph import SKILLS, seed_skill_graph
-from test_auth import client, csrf
 
-NOW = datetime(2026, 10, 6, 12, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 6, 12, tzinfo=UTC)
 
 
 @pytest.fixture(autouse=True)
@@ -156,8 +167,8 @@ def test_real_sources_and_evidence_have_separate_counts_and_no_private_data(clie
 
 
 @pytest.mark.parametrize("offset,previous,current", [
-    (120, datetime(2026, 10, 5, 21, 59, tzinfo=timezone.utc), datetime(2026, 10, 5, 22, tzinfo=timezone.utc)),
-    (-300, datetime(2026, 10, 6, 4, 59, tzinfo=timezone.utc), datetime(2026, 10, 6, 5, tzinfo=timezone.utc)),
+    (120, datetime(2026, 10, 5, 21, 59, tzinfo=UTC), datetime(2026, 10, 5, 22, tzinfo=UTC)),
+    (-300, datetime(2026, 10, 6, 4, 59, tzinfo=UTC), datetime(2026, 10, 6, 5, tzinfo=UTC)),
 ])
 def test_fixed_offset_midnight_and_future_exclusion(client, offset, previous, current):
     setup_user(client)
@@ -177,11 +188,11 @@ def test_fixed_offset_midnight_and_future_exclusion(client, offset, previous, cu
 
 def test_offset_changes_window_end_date_and_lower_bound(client, monkeypatch):
     setup_user(client)
-    monkeypatch.setattr(study_progress, "_utc_now", lambda: datetime(2026, 10, 6, 0, 30, tzinfo=timezone.utc))
+    monkeypatch.setattr(study_progress, "_utc_now", lambda: datetime(2026, 10, 6, 0, 30, tzinfo=UTC))
     with database() as db:
         owner, version = seeded(db)
-        add_check(db, owner, version, datetime(2026, 9, 29, 5, tzinfo=timezone.utc))
-        add_check(db, owner, version, datetime(2026, 9, 29, 4, 59, tzinfo=timezone.utc))
+        add_check(db, owner, version, datetime(2026, 9, 29, 5, tzinfo=UTC))
+        add_check(db, owner, version, datetime(2026, 9, 29, 4, 59, tzinfo=UTC))
         db.commit()
     body = client.get("/learning/progress?utc_offset_minutes=-300").json()
     assert body["window"]["start_date"] == "2026-09-29" and body["window"]["end_date"] == "2026-10-05"

@@ -1,5 +1,4 @@
 """Generated plans may select an authored coding task, never invent its grader."""
-from sqlalchemy import select
 
 from app.db.models import AIPlanGeneration, User
 from app.db.product_models import GeneratedPracticeBinding

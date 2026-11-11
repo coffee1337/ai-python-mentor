@@ -3,22 +3,32 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import timedelta
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-from sqlalchemy import select, or_
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app import ai_gateway
+from app.ai_admission import finish_ai_call, reserve_ai_call
+from app.db.domain_models import AIGenerationInput
 from app.db.models import (
-    AIPlanCurrent, AIPlanGeneration, AIPlanStep, AIUsageLedger, CurriculumPlanRevision,
-    AssessmentResponse, AssessmentRun, Goal, LearningPlan, LessonCompletion,
-    Skill, SkillEdge, User, UserSkill,
+    AIPlanCurrent,
+    AIPlanGeneration,
+    AIPlanStep,
+    AIUsageLedger,
+    AssessmentResponse,
+    AssessmentRun,
+    CurriculumPlanRevision,
+    Goal,
+    LearningPlan,
+    Skill,
+    SkillEdge,
+    User,
+    UserSkill,
 )
 from app.learning_content import LESSONS
 from app.prerequisites import prerequisite_state
-from app.ai_admission import reserve_ai_call, finish_ai_call
-from app.db.domain_models import AIGenerationInput
 
 MODEL_ID = "gpt-6-luna"
 PROMPT_VERSION = "ai-curriculum-v1"
@@ -165,7 +175,7 @@ def _snapshot(db: Session, user: User) -> tuple[dict, str, CurriculumPlanRevisio
     allowed = allowed[:40]
     weekly = max(0, goal.weekly_minutes if goal else 0)
     max_total = min(60, weekly)
-    from app.db.models import UserMistake, MisconceptionVersion
+    from app.db.models import MisconceptionVersion, UserMistake
     mistakes = db.execute(select(UserMistake, MisconceptionVersion).join(
         MisconceptionVersion, UserMistake.misconception_code == MisconceptionVersion.misconception_code,
     ).where(UserMistake.user_id == user.id, MisconceptionVersion.version == 1)
@@ -317,7 +327,7 @@ def generate_personalized_plan(db: Session, user: User, *, trigger: str = "manua
         user_id=user_id, source_revision_id=source_revision_id,
         model_id=MODEL_ID, prompt_version=PROMPT_VERSION, input_hash=stored_hash,
         trigger=trigger, total_minutes=sum(step.duration_minutes for step in output.steps),
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
     )
     db.add(generation)
     db.flush()
@@ -373,7 +383,7 @@ def personalized_response(db: Session, user: User) -> dict:
     ).order_by(AIUsageLedger.created_at.desc()).limit(1))
     warning = None
     def utc(value):
-        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value
     revision = db.scalar(select(CurriculumPlanRevision).join(LearningPlan, CurriculumPlanRevision.plan_id == LearningPlan.id).where(
         LearningPlan.user_id == user.id).order_by(CurriculumPlanRevision.version.desc()).limit(1))
     is_stale = revision is not None and generation.source_revision_id != revision.id

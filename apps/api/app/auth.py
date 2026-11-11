@@ -1,20 +1,28 @@
 from __future__ import annotations
 
-import os
 import hashlib
 import hmac
-from datetime import datetime, timedelta, timezone
+import os
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.account_services import throttle
 from app.db.models import AuthSession, Goal, Profile, User
 from app.db.session import get_db
-from app.schemas import AuthResponse, LoginRequest, OnboardingRequest, OnboardingResponse, ProfilePatch, RegisterRequest, UserResponse
+from app.schemas import (
+    AuthResponse,
+    LoginRequest,
+    OnboardingRequest,
+    OnboardingResponse,
+    ProfilePatch,
+    RegisterRequest,
+    UserResponse,
+)
 from app.security import hash_password, new_token, token_digest, verify_password
-from app.account_services import throttle
 
 SESSION_COOKIE = "mentor_session"
 CSRF_COOKIE = "mentor_csrf"
@@ -32,7 +40,7 @@ def _cookie_secure() -> bool:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _rate_limit(request: Request, db: Session, email: str) -> None:
@@ -83,7 +91,7 @@ def _find_session(request: Request, db: Session) -> tuple[User, AuthSession]:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
     session = db.scalar(select(AuthSession).where(AuthSession.token_hash == token_digest(raw_token)))
     now = _now()
-    expires_at = session.expires_at.replace(tzinfo=timezone.utc) if session is not None and session.expires_at.tzinfo is None else (session.expires_at if session is not None else None)
+    expires_at = session.expires_at.replace(tzinfo=UTC) if session is not None and session.expires_at.tzinfo is None else (session.expires_at if session is not None else None)
     if session is None or session.revoked_at is not None or expires_at <= now or session.user is None or not session.user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
     session.last_seen_at = now

@@ -1,8 +1,8 @@
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from app.main import app
 import app.main as main
+from app.main import app
 
 
 def test_health_returns_api_and_database_status(monkeypatch):

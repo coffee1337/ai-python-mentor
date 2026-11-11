@@ -1,12 +1,14 @@
 from content_helpers import authored_answer, authored_wrong_answer
+
 """Behaviour tests for the extended diagnostic bank and adaptive branch.
 
 These assert what the learner can observe, not how the selector is written.
 """
 import pytest
 from sqlalchemy import select
+from test_auth import client, csrf
 
-from app.assessment import _next_target, _pick_question, _nearest_slot
+from app.assessment import _nearest_slot, _next_target, _pick_question
 from app.assessment_content import (
     DIFFICULTY_PRIOR,
     MAX_QUESTIONS,
@@ -16,11 +18,10 @@ from app.assessment_content import (
 )
 from app.db.models import AssessmentResponse, AssessmentRun, UserSkill
 from app.db.session import get_db
-from app.learning_content import EXERCISE_HINT_LADDERS, LESSONS
 from app.knowledge_check_content import CHECKS
+from app.learning_content import EXERCISE_HINT_LADDERS, LESSONS
 from app.main import app
 from app.skill_graph import SKILLS
-from test_auth import client, csrf
 
 CORE_SKILL_IDS = tuple(
     skill["id"] for skill in SKILLS if skill["category"] == "python.core"

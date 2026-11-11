@@ -1,5 +1,5 @@
 """Transactional, append-only skill evidence and UserSkill projection."""
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from math import isfinite
 from uuid import UUID
 
@@ -13,10 +13,15 @@ from app.db.models import (
     ExerciseVersion,
     HintReveal,
     KnowledgeCheckAttempt,
+    ReviewAttempt,
+    ReviewSession,
+    Skill,
+    SkillEvidence,
+    SkillMasteryAudit,
     SubmissionResult,
     User,
+    UserSkill,
 )
-from app.db.models import ReviewAttempt, ReviewSession, Skill, SkillEvidence, SkillMasteryAudit, UserSkill
 from app.exercise_snapshots import snapshot_assessment, snapshot_checks, snapshot_skill_id
 from app.runner import MAX_TESTS, PROTOCOL_VERSION
 from app.skill_graph import seed_skill_graph
@@ -42,15 +47,16 @@ def _mastery(skill: UserSkill) -> float:
 def _as_utc(value: datetime) -> datetime:
     """Normalize database timestamps (including SQLite's naive values) to UTC."""
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def review_interval_days(
     *, result_score: float, assisted: bool, independent_streak: int
 ) -> int:
     """Backward-compatible adapter for callers using the old pure policy API."""
-    from app.reviews import ReviewHistoryItem, review_interval_days as _review_interval_days
+    from app.reviews import ReviewHistoryItem
+    from app.reviews import review_interval_days as _review_interval_days
 
     if (
         not isinstance(independent_streak, int)
@@ -272,7 +278,7 @@ def _record_evidence(
         result_score = snapshot_score
         event_at = _as_utc(coding_result.created_at)
     else:
-        event_at = _as_utc(occurred_at or datetime.now(timezone.utc))
+        event_at = _as_utc(occurred_at or datetime.now(UTC))
     if skill_id is None or result_score is None:
         raise InvalidEvidence("Evidence skill and score are required")
     # Serialize evidence projection updates per owner on databases supporting row locks.
@@ -608,7 +614,7 @@ def record_evidence(
         metadata=metadata,
     )
     if source_type == "coding_attempt":
-        attempt, result, _, _ = _coding_evidence_context(
+        _attempt, result, _, _ = _coding_evidence_context(
             db,
             user_id=user_id,
             source_id=source_id,

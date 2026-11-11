@@ -12,7 +12,6 @@ import ctypes
 import errno
 import os
 import struct
-import sys
 
 _libc = ctypes.CDLL("libc.so.6", use_errno=True)
 

@@ -1,28 +1,43 @@
 """Server-graded, owned end-of-lesson knowledge checks."""
-from datetime import datetime, timedelta, timezone
+
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
+from app.ai_curriculum import generate_personalized_plan
 from app.auth import csrf_protected, current_auth
-from app.db.models import AuthSession, ExerciseVersion, KnowledgeCheckAttempt, KnowledgeCheckResponse, KnowledgeCheckSession, User, UserSkill
+from app.choice_order import ordered_choices
+from app.curriculum import build_curriculum
+from app.db.models import (
+    AssessmentRun,
+    AuthSession,
+    ExerciseVersion,
+    KnowledgeCheckAttempt,
+    KnowledgeCheckResponse,
+    KnowledgeCheckSession,
+    User,
+    UserSkill,
+)
 from app.db.session import get_db
 from app.exercise_hints import _seed_exercise
 from app.exercise_snapshots import authored_snapshot, validate_check_snapshot
 from app.learning import accessible_lesson, require_onboarding
 from app.learning_plan import current_plan, generate_plan, plan_response
-from app.db.models import AssessmentRun
-from app.skill_evidence import derive_assistance, record_evidence
 from app.mistake_memory import record_response_mistake
-from app.curriculum import build_curriculum
-from app.ai_curriculum import generate_personalized_plan
-from app.choice_order import ordered_choices
+from app.skill_evidence import derive_assistance, record_evidence
 
-router=APIRouter(prefix="/learning", tags=["knowledge-check"])
-PASS_SCORE=0.75
+router = APIRouter(prefix="/learning", tags=["knowledge-check"])
+PASS_SCORE = 0.75
+
+
 class CheckQuestion(BaseModel):
-    id:str; prompt:str; choices:list[str]
+    id: str
+    prompt: str
+    choices: list[str]
 
 
 class CheckExplanation(BaseModel):
@@ -41,12 +56,22 @@ class CheckResponse(BaseModel):
     explanations: list[CheckExplanation]
     recommendation: str
     recommended_lesson_id: str | None = None
+
+
 class AnswersRequest(BaseModel):
-    model_config=ConfigDict(extra="forbid")
-    answers:dict[str, str] = Field(max_length=20)
+    model_config = ConfigDict(extra="forbid")
+    answers: dict[str, str] = Field(max_length=20)
+
 
 def _questions(questions, session_id):
-    return [CheckQuestion(id=q["id"],prompt=q["prompt"],choices=ordered_choices(q["choices"],session_id=session_id,question_id=q["id"])) for q in questions]
+    return [
+        CheckQuestion(
+            id=q["id"],
+            prompt=q["prompt"],
+            choices=ordered_choices(q["choices"], session_id=session_id, question_id=q["id"]),
+        )
+        for q in questions
+    ]
 
 
 def _snapshot_content(version, lesson_id: str):
@@ -119,15 +144,16 @@ def _new_session(
         user_id=user_id,
         lesson_id=lesson_id,
         exercise_version_id=version.id,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db.add(session)
     db.flush()
     return session, version
 
-@router.get("/lessons/{lesson_id}/knowledge-check",response_model=list[CheckQuestion])
-def get_check(lesson_id:str,auth:tuple[User,AuthSession]=Depends(current_auth),db:Session=Depends(get_db)):
-    user,_=auth
+
+@router.get("/lessons/{lesson_id}/knowledge-check", response_model=list[CheckQuestion])
+def get_check(lesson_id: str, auth: tuple[User, AuthSession] = Depends(current_auth), db: Session = Depends(get_db)):
+    user, _ = auth
     require_onboarding(user)
     session = _pending_session(db, user.id, lesson_id)
     if session is not None:
@@ -135,7 +161,7 @@ def get_check(lesson_id:str,auth:tuple[User,AuthSession]=Depends(current_auth),d
         accessible_lesson(lesson_id, db, user, bound_version=version)
         _, questions = _snapshot_content(version, lesson_id)
     else:
-        accessible_lesson(lesson_id,db,user)
+        accessible_lesson(lesson_id, db, user)
         session, version = _new_session(db, user.id, lesson_id)
         _, questions = _snapshot_content(version, lesson_id)
         try:
@@ -144,14 +170,20 @@ def get_check(lesson_id:str,auth:tuple[User,AuthSession]=Depends(current_auth),d
             db.rollback()
             session = _pending_session(db, user.id, lesson_id)
             if session is None:
-                raise HTTPException(409, "Knowledge-check session could not be created")
+                raise HTTPException(409, "Knowledge-check session could not be created") from None
             version = _session_version(db, session, lesson_id)
             _, questions = _snapshot_content(version, lesson_id)
     return _questions(questions, session.id)
 
-@router.post("/lessons/{lesson_id}/knowledge-check",response_model=CheckResponse,status_code=201)
-def submit_check(lesson_id:str,payload:AnswersRequest,auth:tuple[User,AuthSession]=Depends(csrf_protected),db:Session=Depends(get_db)):
-    user,_=auth
+
+@router.post("/lessons/{lesson_id}/knowledge-check", response_model=CheckResponse, status_code=201)
+def submit_check(
+    lesson_id: str,
+    payload: AnswersRequest,
+    auth: tuple[User, AuthSession] = Depends(csrf_protected),
+    db: Session = Depends(get_db),
+):
+    user, _ = auth
     require_onboarding(user)
     # Serialize consuming a pending session across API workers. This lock is
     # released before personalized-plan gateway calls below.
@@ -162,17 +194,30 @@ def submit_check(lesson_id:str,payload:AnswersRequest,auth:tuple[User,AuthSessio
     exercise_version = _session_version(db, session, lesson_id)
     accessible_lesson(lesson_id, db, user, bound_version=exercise_version)
     snapshot_lesson, questions = _snapshot_content(exercise_version, lesson_id)
-    if set(payload.answers) != {q["id"] for q in questions}: raise HTTPException(422,"Answer every knowledge-check question exactly once")
-    rows=[]
+    if set(payload.answers) != {q["id"] for q in questions}:
+        raise HTTPException(422, "Answer every knowledge-check question exactly once")
+    rows = []
     for q in questions:
-        answer=payload.answers[q["id"]]
-        if answer not in q["choices"]: raise HTTPException(422,"Choose one of the offered answers")
-        rows.append((q,answer,answer==q["answer"]))
-    correct=sum(item[2] for item in rows); score=correct/len(rows); passed=score>=PASS_SCORE
-    attempt=KnowledgeCheckAttempt(user_id=user.id,exercise_version_id=exercise_version.id,lesson_id=lesson_id,skill_id=snapshot_lesson["skill_id"],score=score,passed=passed,created_at=datetime.now(timezone.utc))
-    db.add(attempt); db.flush()
+        answer = payload.answers[q["id"]]
+        if answer not in q["choices"]:
+            raise HTTPException(422, "Choose one of the offered answers")
+        rows.append((q, answer, answer == q["answer"]))
+    correct = sum(item[2] for item in rows)
+    score = correct / len(rows)
+    passed = score >= PASS_SCORE
+    attempt = KnowledgeCheckAttempt(
+        user_id=user.id,
+        exercise_version_id=exercise_version.id,
+        lesson_id=lesson_id,
+        skill_id=snapshot_lesson["skill_id"],
+        score=score,
+        passed=passed,
+        created_at=datetime.now(UTC),
+    )
+    db.add(attempt)
+    db.flush()
     responses = []
-    for q,answer,is_correct in rows:
+    for q, answer, is_correct in rows:
         response = KnowledgeCheckResponse(
             attempt_id=attempt.id,
             question_id=q["id"],
@@ -195,39 +240,62 @@ def submit_check(lesson_id:str,payload:AnswersRequest,auth:tuple[User,AuthSessio
         db, user_id=user.id, source_type="knowledge_check_attempt", source_id=str(attempt.id)
     )
     record_evidence(
-        db, user_id=user.id, skill_id=snapshot_lesson["skill_id"],
-        source_type="knowledge_check_attempt", source_id=str(attempt.id),
-        result_score=score, assisted=assisted, hint_count=hint_count,
-        occurred_at=attempt.created_at, metadata={"lesson_id": lesson_id, "passed": passed},
+        db,
+        user_id=user.id,
+        skill_id=snapshot_lesson["skill_id"],
+        source_type="knowledge_check_attempt",
+        source_id=str(attempt.id),
+        result_score=score,
+        assisted=assisted,
+        hint_count=hint_count,
+        occurred_at=attempt.created_at,
+        metadata={"lesson_id": lesson_id, "passed": passed},
     )
-    mastery = db.scalar(select(UserSkill).where(UserSkill.user_id == user.id, UserSkill.skill_id == snapshot_lesson["skill_id"]))
+    mastery = db.scalar(
+        select(UserSkill).where(UserSkill.user_id == user.id, UserSkill.skill_id == snapshot_lesson["skill_id"])
+    )
     previous_count = mastery.evidence_count - 1
     interval_days = min(14, 1 << min(previous_count, 3)) if passed else 1
-    mastery.next_review_at = (attempt.created_at or datetime.now(timezone.utc)) + timedelta(days=interval_days)
+    mastery.next_review_at = (attempt.created_at or datetime.now(UTC)) + timedelta(days=interval_days)
     if passed:
         # Persist only the existing lesson-completion evidence; no handler recursion.
         from app.db.models import LessonCompletion
-        if db.get(LessonCompletion,(user.id,lesson_id)) is None:
-            db.add(LessonCompletion(
-                user_id=user.id,
-                lesson_id=lesson_id,
-                answer="knowledge_check",
-                exercise_version_id=exercise_version.id,
-                evidence_type="knowledge_check_passed",
-            ))
-    session.consumed_at = datetime.now(timezone.utc)
-    plan=current_plan(db,user); assessment_run=db.scalar(select(AssessmentRun).where(AssessmentRun.id==plan.assessment_run_id,AssessmentRun.user_id==user.id,AssessmentRun.status=="completed")) if plan else None
+
+        if db.get(LessonCompletion, (user.id, lesson_id)) is None:
+            db.add(
+                LessonCompletion(
+                    user_id=user.id,
+                    lesson_id=lesson_id,
+                    answer="knowledge_check",
+                    exercise_version_id=exercise_version.id,
+                    evidence_type="knowledge_check_passed",
+                )
+            )
+    session.consumed_at = datetime.now(UTC)
+    plan = current_plan(db, user)
+    assessment_run = (
+        db.scalar(
+            select(AssessmentRun).where(
+                AssessmentRun.id == plan.assessment_run_id,
+                AssessmentRun.user_id == user.id,
+                AssessmentRun.status == "completed",
+            )
+        )
+        if plan
+        else None
+    )
     if assessment_run is not None:
-        generate_plan(db,user,assessment_run)
+        generate_plan(db, user, assessment_run)
         build_curriculum(db, user, reason="evidence")
-    db.commit(); db.refresh(attempt)
+    db.commit()
+    db.refresh(attempt)
     try:
         generate_personalized_plan(db, user, trigger="evidence")
     except Exception:
         db.rollback()
     # A starter route is valid before the optional diagnostic, too.
-    refreshed=plan_response(db,user)
-    recommended=refreshed.recommended_lesson_id
+    refreshed = plan_response(db, user)
+    recommended = refreshed.recommended_lesson_id
     return CheckResponse(
         lesson_id=lesson_id,
         score=score,

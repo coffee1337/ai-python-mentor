@@ -1,16 +1,28 @@
-from content_helpers import authored_answer, authored_wrong_answer
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
+
 import pytest
+from content_helpers import authored_answer, authored_wrong_answer, enable_choice_feedback
 from sqlalchemy import select
-from app.assessment_content import MAX_QUESTIONS
-from app.db.models import ExerciseVersion, KnowledgeCheckAttempt, KnowledgeCheckResponse, KnowledgeCheckSession, LessonCompletion, SkillEvidence, SkillMasteryAudit, User, UserSkill
-from app.db.session import get_db
-from app.main import app
-from app.learning_content import EXERCISE_HINT_LADDERS
-from app.exercise_hints import _seed_exercise
-from app.skill_evidence import InvalidEvidence, derive_assistance
 from test_auth import client, csrf
-from content_helpers import enable_choice_feedback
+
+from app.assessment_content import MAX_QUESTIONS
+from app.db.models import (
+    ExerciseVersion,
+    KnowledgeCheckAttempt,
+    KnowledgeCheckResponse,
+    KnowledgeCheckSession,
+    LessonCompletion,
+    SkillEvidence,
+    SkillMasteryAudit,
+    User,
+    UserSkill,
+)
+from app.db.session import get_db
+from app.exercise_hints import _seed_exercise
+from app.learning_content import EXERCISE_HINT_LADDERS
+from app.main import app
+from app.skill_evidence import InvalidEvidence, derive_assistance
+
 
 def setup_user(c,email="check@example.com"):
     assert c.post("/auth/register",json={"email":email,"password":"safe-password"}).status_code==201
@@ -194,7 +206,7 @@ def test_null_snapshot_does_not_fallback_to_new_authored_version(client, monkeyp
             skill_id="python.variables",
             score=1.0,
             passed=True,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         db.add(attempt)
         db.flush()
@@ -210,9 +222,9 @@ def test_null_snapshot_does_not_fallback_to_new_authored_version(client, monkeyp
             headers={**h, "Idempotency-Key": "new-version-hint"},
             json={"level": 1},
         ).status_code == 200
-        with next(app.dependency_overrides[get_db]()) as db:
-            with pytest.raises(InvalidEvidence, match="no trusted exercise version"):
-                derive_assistance(
+        with next(app.dependency_overrides[get_db]()) as db, \
+                pytest.raises(InvalidEvidence, match="no trusted exercise version"):
+            derive_assistance(
                     db,
                     user_id=user_id,
                     source_type="knowledge_check_attempt",
@@ -431,7 +443,7 @@ def test_schema_two_returns_only_selected_feedback_from_bound_snapshot(client, m
     setup_user(client, "selected-feedback@example.com")
     from app import exercise_snapshots
 
-    original_ladder_version = EXERCISE_HINT_LADDERS["variables-v1"]["version"]
+    EXERCISE_HINT_LADDERS["variables-v1"]["version"]
     monkeypatch.setitem(EXERCISE_HINT_LADDERS["variables-v1"], "version", 2)
     original_checks = exercise_snapshots.CHECKS
 
@@ -525,7 +537,7 @@ def test_schema_two_snapshot_rejects_incomplete_or_invalid_choice_feedback(clien
     from app import exercise_snapshots
     from app.exercise_snapshots import validate_check_snapshot
 
-    original_version = EXERCISE_HINT_LADDERS["variables-v1"]["version"]
+    EXERCISE_HINT_LADDERS["variables-v1"]["version"]
     monkeypatch.setitem(EXERCISE_HINT_LADDERS["variables-v1"], "version", 2)
     original_checks = exercise_snapshots.CHECKS
     valid_checks = tuple(

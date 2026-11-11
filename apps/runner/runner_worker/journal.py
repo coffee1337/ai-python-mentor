@@ -6,6 +6,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+
 class Conflict(ValueError):
     pass
 
@@ -57,7 +58,7 @@ class Journal:
             db.execute("BEGIN IMMEDIATE")
             current = db.execute("SELECT response FROM jobs WHERE caller=? AND key=?", (caller, key)).fetchone()
             encoded = json.dumps(response, sort_keys=True)
-            if current is None or current[0] is not None and current[0] != encoded:
+            if current is None or (current[0] is not None and current[0] != encoded):
                 db.rollback()
                 raise Conflict("terminal_result_conflict")
             db.execute("UPDATE jobs SET state='finished',response=? WHERE caller=? AND key=?", (encoded, caller, key))

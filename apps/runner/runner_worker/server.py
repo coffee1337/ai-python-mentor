@@ -1,33 +1,48 @@
 """Private TLS1.3 service with client-CA and workload-name allowlist."""
-import hmac
+
 import fcntl
+import hmac
 import json
 import os
 import re
 import ssl
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
 from .execution import evaluate, response
 from .journal import Conflict, Journal
 from .policy import BODY_BYTES, SOURCE_BYTES, NotReady, Policy
 from .reaper import reap
 
+
 def validate_request(body, key, catalog):
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", key or ""):
         raise ValueError("invalid_key")
-    if not isinstance(body, dict) or set(body) != {"protocol_version", "exercise_id", "exercise_version", "language", "source", "mode"}:
+    if not isinstance(body, dict) or set(body) != {
+        "protocol_version",
+        "exercise_id",
+        "exercise_version",
+        "language",
+        "source",
+        "mode",
+    }:
         raise ValueError("invalid_fields")
     if type(body["protocol_version"]) is not int or body["protocol_version"] != 1:
         raise ValueError("unsupported_protocol")
     if body["language"] != "python" or body["mode"] != "function" or type(body["exercise_version"]) is not int:
         raise ValueError("unsupported_exercise")
-    if not isinstance(body["source"], str) or not 1 <= len(body["source"]) <= 20000 or len(body["source"].encode()) > SOURCE_BYTES:
+    if (
+        not isinstance(body["source"], str)
+        or not 1 <= len(body["source"]) <= 20000
+        or len(body["source"].encode()) > SOURCE_BYTES
+    ):
         raise ValueError("source_limit")
     identity = (body["exercise_id"], body["exercise_version"])
     entry = catalog.get(identity)
     if entry is None:
         raise ValueError("unknown_exercise_version")
     return entry
+
 
 def load_catalog(path):
     raw = path.read_bytes()
@@ -39,13 +54,22 @@ def load_catalog(path):
         key = (entry["exercise_id"], entry["version"])
         if key in catalog or not 1 <= len(entry["cases"]) <= 256:
             raise NotReady("catalog_invalid")
-        if not all(set(case) == {"args", "kwargs", "expected", "visibility"} and case["visibility"] in {"public", "hidden"}
-                   and isinstance(case["args"], list) and isinstance(case["kwargs"], dict) for case in entry["cases"]):
+        if not all(
+            set(case) == {"args", "kwargs", "expected", "visibility"}
+            and case["visibility"] in {"public", "hidden"}
+            and isinstance(case["args"], list)
+            and isinstance(case["kwargs"], dict)
+            for case in entry["cases"]
+        ):
             raise NotReady("catalog_invalid")
-        if any(len(json.dumps([case["args"], case["kwargs"]], ensure_ascii=False).encode()) > 16384 for case in entry["cases"]):
+        if any(
+            len(json.dumps([case["args"], case["kwargs"]], ensure_ascii=False).encode()) > 16384
+            for case in entry["cases"]
+        ):
             raise NotReady("catalog_input_limit")
         catalog[key] = entry
     return catalog
+
 
 class Server(ThreadingHTTPServer):
     daemon_threads = True
@@ -80,8 +104,10 @@ class Server(ThreadingHTTPServer):
         finally:
             self.request_slots.release()
 
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
+
     def log_message(self, *args):
         pass
 
@@ -101,29 +127,39 @@ class Handler(BaseHTTPRequestHandler):
         caller = next((name for name in names if name in self.server.allowed_identities), None)
         supplied = self.headers.get("Authorization", "")
         if caller is None or not hmac.compare_digest(supplied, "Bearer " + self.server.token):
-            self.answer(403, {"error_code": "caller_not_allowed", "message": "Caller not allowed"}); return
+            self.answer(403, {"error_code": "caller_not_allowed", "message": "Caller not allowed"})
+            return
         if self.path != "/internal/v1/runner/executions":
-            self.answer(404, {"error_code": "not_found", "message": "Not found"}); return
+            self.answer(404, {"error_code": "not_found", "message": "Not found"})
+            return
         try:
             length = int(self.headers.get("Content-Length", "0"))
-            if not 0 < length <= BODY_BYTES or self.headers.get("Content-Encoding") or self.headers.get("Transfer-Encoding"):
+            if (
+                not 0 < length <= BODY_BYTES
+                or self.headers.get("Content-Encoding")
+                or self.headers.get("Transfer-Encoding")
+            ):
                 raise ValueError()
             body = json.loads(self.rfile.read(length))
             key = self.headers.get("Idempotency-Key")
             entry = validate_request(body, key, self.server.catalog)
         except (ValueError, TypeError, KeyError):
-            self.answer(422, {"error_code": "invalid_request", "message": "Invalid request"}); return
+            self.answer(422, {"error_code": "invalid_request", "message": "Invalid request"})
+            return
         try:
             found, existing = self.server.journal.lookup(caller, key, body)
             if found:
-                self.answer(200 if existing else 202, existing or response(key, "in_progress")); return
+                self.answer(200 if existing else 202, existing or response(key, "in_progress"))
+                return
             self.server.policy.verify()
             if not self.server.capacity.acquire(blocking=False):
-                self.answer(429, {"error_code": "worker_capacity", "message": "Worker at capacity"}); return
+                self.answer(429, {"error_code": "worker_capacity", "message": "Worker at capacity"})
+                return
             try:
                 created, existing = self.server.journal.claim(caller, key, body)
                 if not created:
-                    self.answer(200 if existing else 202, existing or response(key, "in_progress")); return
+                    self.answer(200 if existing else 202, existing or response(key, "in_progress"))
+                    return
                 try:
                     result = evaluate(self.server.policy, key, body, entry)
                 except Exception:
@@ -136,6 +172,7 @@ class Handler(BaseHTTPRequestHandler):
             self.answer(409, {"error_code": "idempotency_conflict", "message": "Idempotency conflict"})
         except NotReady:
             self.answer(503, response(key, error="worker_not_ready"))
+
 
 def main():
     policy = Policy.from_environment()
@@ -159,6 +196,7 @@ def main():
     server.token = os.environ["RUNNER_AUTH_TOKEN"]
     server.capacity = threading.BoundedSemaphore(1)
     server.serve_forever()
+
 
 if __name__ == "__main__":
     main()

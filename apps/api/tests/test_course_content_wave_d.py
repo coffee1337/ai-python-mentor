@@ -1,8 +1,7 @@
-from content_helpers import public_question_identity
-from content_helpers import authored_answer, authored_wrong_answer
 from collections import defaultdict
 from copy import deepcopy
 
+from content_helpers import authored_answer, authored_wrong_answer, public_question_identity
 from sqlalchemy import select
 
 from app.assessment_content import MAX_QUESTIONS
@@ -11,10 +10,11 @@ from app.db.session import get_db
 from app.exercise_hints import _seed_exercise
 from app.knowledge_check_content import CHECKS
 from app.learning_content import EXERCISE_HINT_LADDERS, LESSONS_BY_ID
+
 LESSONS = tuple(LESSONS_BY_ID.values())
-from app.main import app
 from test_auth import client, csrf
 
+from app.main import app
 
 WAVE_D = (
     ("truthiness-v1", "python.truthiness", "python.booleans"),

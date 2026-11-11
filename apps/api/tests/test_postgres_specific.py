@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from threading import Barrier
 from uuid import UUID, uuid4
 
@@ -20,13 +20,13 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db.models import (
     ExerciseVersion,
+    KnowledgeCheckAttempt,
     Skill,
     SkillEvidence,
     SkillMasteryAudit,
     User,
     UserSkill,
 )
-from app.db.models import KnowledgeCheckAttempt
 from app.skill_evidence import record_evidence
 from app.skill_graph import seed_skill_graph
 
@@ -190,7 +190,7 @@ def _record_one_evidence(
                 result_score=1.0,
                 assisted=False,
                 hint_count=0,
-                occurred_at=datetime.now(timezone.utc),
+                occurred_at=datetime.now(UTC),
             )
             db.commit()
         except BaseException:
@@ -207,7 +207,7 @@ def test_parallel_skill_evidence_updates_are_serialized(
         expire_on_commit=False,
     )
     source_ids = (uuid4(), uuid4())
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with session_factory() as db:
         db.add_all(
             [
@@ -281,7 +281,7 @@ def test_skill_evidence_idempotency_unique_constraint_rejects_duplicate(
         "result_score": 1.0,
         "assisted": False,
         "hint_count": 0,
-        "occurred_at": datetime.now(timezone.utc),
+        "occurred_at": datetime.now(UTC),
         "idempotency_key": idempotency_key,
     }
 
@@ -315,7 +315,7 @@ def test_user_delete_cascades_learning_children(
             result_score=1.0,
             assisted=False,
             hint_count=0,
-            occurred_at=datetime.now(timezone.utc),
+            occurred_at=datetime.now(UTC),
             idempotency_key=f"postgres-specific:{uuid4().hex}",
         )
         db.add(evidence)
@@ -390,6 +390,7 @@ def test_parallel_ai_requests_claim_one_durable_lease(postgres_engine, sandbox):
 
 def test_parallel_auth_admission_does_not_reset_counter(postgres_engine, sandbox):
     from fastapi import HTTPException
+
     from app.account_services import throttle, throttle_key
     from app.db.account_models import AuthThrottle
     factory = sessionmaker(bind=postgres_engine, expire_on_commit=False)
@@ -418,6 +419,7 @@ def test_parallel_auth_admission_does_not_reset_counter(postgres_engine, sandbox
 
 def test_parallel_account_token_consumption_is_single_use(postgres_engine, sandbox):
     from fastapi import HTTPException
+
     from app.account_services import consume_token, issue_token
     factory = sessionmaker(bind=postgres_engine, expire_on_commit=False)
     with factory() as db:
@@ -443,24 +445,25 @@ def test_parallel_account_token_consumption_is_single_use(postgres_engine, sandb
 
 def test_progress_calendar_uses_device_offset_not_postgres_connection_timezone(postgres_engine, sandbox):
     """Exercise the actual timestamptz + interval day aggregation on PostgreSQL."""
-    from app.study_progress import CourseView, _period_counts
     from datetime import date
 
-    now = datetime(2026, 10, 6, 0, 30, tzinfo=timezone.utc)
-    start = datetime(2026, 10, 4, 21, 0, tzinfo=timezone.utc)
+    from app.study_progress import CourseView, _period_counts
+
+    now = datetime(2026, 10, 6, 0, 30, tzinfo=UTC)
+    start = datetime(2026, 10, 4, 21, 0, tzinfo=UTC)
     dates = [date(2026, 10, 5), date(2026, 10, 6)]
     with sessionmaker(bind=postgres_engine, autoflush=False)() as db:
         user = db.get(User, sandbox.user_id)
         db.add_all([
             KnowledgeCheckAttempt(user_id=user.id, exercise_version_id=sandbox.exercise_version_id,
                 lesson_id=sandbox.exercise_id, skill_id=sandbox.skill_id, score=0.0, passed=False,
-                created_at=datetime(2026, 10, 5, 20, 30, tzinfo=timezone.utc)),
+                created_at=datetime(2026, 10, 5, 20, 30, tzinfo=UTC)),
             KnowledgeCheckAttempt(user_id=user.id, exercise_version_id=sandbox.exercise_version_id,
                 lesson_id=sandbox.exercise_id, skill_id=sandbox.skill_id, score=1.0, passed=True,
-                created_at=datetime(2026, 10, 5, 21, 30, tzinfo=timezone.utc)),
+                created_at=datetime(2026, 10, 5, 21, 30, tzinfo=UTC)),
             KnowledgeCheckAttempt(user_id=user.id, exercise_version_id=sandbox.exercise_version_id,
                 lesson_id=sandbox.exercise_id, skill_id=sandbox.skill_id, score=1.0, passed=True,
-                created_at=datetime(2026, 10, 6, 1, 0, tzinfo=timezone.utc)),
+                created_at=datetime(2026, 10, 6, 1, 0, tzinfo=UTC)),
         ])
         db.flush()
         for connection_timezone in ("UTC", "Pacific/Honolulu"):
@@ -500,6 +503,7 @@ def _prepare_study_owner(engine, user_id):
 def test_postgres_draft_conflict_preserves_one_committed_variant(postgres_engine, sandbox):
     """Exercise the real route's owner lock, throttle and revision CAS together."""
     from fastapi import HTTPException, Response
+
     from app.db.study_draft_models import StudyDraft
     from app.study_drafts import DraftIdentity, SaveDraft, save_draft
 
@@ -552,6 +556,7 @@ def test_postgres_draft_conflict_preserves_one_committed_variant(postgres_engine
 
 def test_postgres_concurrent_starts_share_one_open_study_timer(postgres_engine, sandbox):
     from fastapi import Response
+
     from app.db.study_session_models import StudySession
     from app.study_sessions import StartRequest, start_session
 
@@ -576,10 +581,12 @@ def test_postgres_concurrent_starts_share_one_open_study_timer(postgres_engine, 
 
 
 def test_postgres_stale_timer_action_cannot_double_accrue(postgres_engine, sandbox):
+    from datetime import timedelta
+
     from fastapi import HTTPException, Response
+
     from app.db.study_session_models import StudySession
     from app.study_sessions import StartRequest, _transition, start_session
-    from datetime import timedelta
 
     _prepare_study_owner(postgres_engine, sandbox.user_id)
     factory = sessionmaker(bind=postgres_engine, autoflush=False, expire_on_commit=False)

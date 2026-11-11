@@ -1,5 +1,5 @@
 """Owner-only unsubmitted work. A draft never submits, grades or awards credit."""
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -13,8 +13,14 @@ from app.account_services import throttle
 from app.auth import account_scoped_auth, account_scoped_csrf
 from app.coding_exercises import validate_coding_snapshot
 from app.db.models import (
-    AuthSession, CodingAttempt, ExerciseVersion, KnowledgeCheckAttempt,
-    KnowledgeCheckSession, LessonCompletion, LessonSession, User,
+    AuthSession,
+    CodingAttempt,
+    ExerciseVersion,
+    KnowledgeCheckAttempt,
+    KnowledgeCheckSession,
+    LessonCompletion,
+    LessonSession,
+    User,
 )
 from app.db.product_models import LearnerProject
 from app.db.reflection_models import LessonReflection
@@ -171,7 +177,7 @@ def _context(db: Session, user: User, identity: DraftIdentity, existing: StudyDr
             lesson_id = contract["lesson_id"]
             if not coding_practice_ready(db, user):
                 raise _error(404, "draft_context_missing", "Complete the coding interface lessons first")
-            view = CourseView(db, user, datetime.now(timezone.utc))
+            view = CourseView(db, user, datetime.now(UTC))
             resuming = view.resume is not None and view.resume["id"] == lesson_id
             lesson = view.lessons.get(lesson_id) or (view.resume if resuming else None)
             if lesson is None or (not resuming and view.status(lesson) == "locked"):
@@ -262,7 +268,7 @@ def save_draft(
         raise _error(409, "draft_conflict", "This draft changed on another device", current_revision=current_revision)
     exercise_version, project_id = _context(db, user, identity, previous)
     content = _content(db, user, identity, exercise_version, payload.content)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if previous is None:
         count = db.scalar(select(func.count()).select_from(StudyDraft).where(StudyDraft.user_id == user.id))
         if count >= MAX_IDENTITIES:

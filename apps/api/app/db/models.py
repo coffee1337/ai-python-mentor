@@ -5,30 +5,38 @@ from typing import Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
-    Float,
     Index,
     Integer,
-    JSON,
     LargeBinary,
     String,
     Text,
-    Uuid,
     UniqueConstraint,
+    Uuid,
     func,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base
-
 # Register extension tables for create_all, Alembic and privacy traversal.
-from app.db import account_models, domain_models, job_models, product_models, reflection_models, study_draft_models, study_session_models  # noqa: F401
+# They are imported for their side effect on the metadata, not for names.
+from app.db import (  # noqa: F401
+    account_models,
+    domain_models,
+    job_models,
+    product_models,
+    reflection_models,
+    study_draft_models,
+    study_session_models,
+)
+from app.db.base import Base
 
 
 class User(Base):
@@ -52,8 +60,8 @@ class Profile(Base):
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
-    display_name: Mapped[Optional[str]] = mapped_column(String(100))
-    experience_level: Mapped[Optional[str]] = mapped_column(String(32))
+    display_name: Mapped[str | None] = mapped_column(String(100))
+    experience_level: Mapped[str | None] = mapped_column(String(32))
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
@@ -68,7 +76,7 @@ class Goal(Base):
     user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
     target_role: Mapped[str] = mapped_column(String(120), nullable=False)
     weekly_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=180, server_default="180")
-    motivation: Mapped[Optional[str]] = mapped_column(Text)
+    motivation: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
@@ -83,7 +91,7 @@ class AuthSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     csrf_token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
@@ -98,7 +106,7 @@ class LessonCompletion(Base):
     user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     lesson_id: Mapped[str] = mapped_column(String(80), primary_key=True)
     answer: Mapped[str] = mapped_column(String(200), nullable=False)
-    exercise_version_id: Mapped[Optional[UUID]] = mapped_column(
+    exercise_version_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("exercise_versions.id", ondelete="RESTRICT"), index=True
     )
     evidence_type: Mapped[str] = mapped_column(String(40), nullable=False, default="authored_quiz_correct")
@@ -117,7 +125,7 @@ class LessonSession(Base):
         Uuid(as_uuid=True), ForeignKey("exercise_versions.id", ondelete="RESTRICT"), index=True, nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    consumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         Index(
@@ -146,9 +154,9 @@ class MentorMessage(Base):
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="completed", server_default="completed")
-    reply_to_id: Mapped[Optional[UUID]] = mapped_column(Uuid(as_uuid=True), ForeignKey("mentor_messages.id", ondelete="CASCADE"), unique=True)
+    reply_to_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("mentor_messages.id", ondelete="CASCADE"), unique=True)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    last_attempt_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
@@ -160,7 +168,7 @@ class CodingAttempt(Base):
     exercise_id: Mapped[str] = mapped_column(String(80), index=True, nullable=False)
     # Legacy attempts may lack a trustworthy version; new attempts are bound
     # to the exact immutable ExerciseVersion used for dispatch.
-    exercise_version_id: Mapped[Optional[UUID]] = mapped_column(
+    exercise_version_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("exercise_versions.id", ondelete="RESTRICT"),
         index=True,
@@ -169,7 +177,7 @@ class CodingAttempt(Base):
     mode: Mapped[str] = mapped_column(String(20), nullable=False)
     source_code: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
-    result: Mapped[Optional[str]] = mapped_column(Text)
+    result: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     submission_result: Mapped[Optional["SubmissionResult"]] = relationship(
@@ -215,12 +223,12 @@ class SubmissionResult(Base):
     )
     # Legacy normalized results may lack a trustworthy version. New results
     # copy the exact version bound to their CodingAttempt.
-    exercise_version_id: Mapped[Optional[UUID]] = mapped_column(
+    exercise_version_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("exercise_versions.id", ondelete="RESTRICT"),
         index=True,
     )
-    skill_evidence_id: Mapped[Optional[UUID]] = mapped_column(
+    skill_evidence_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("skill_evidence.id", ondelete="SET NULL"),
         unique=True,
@@ -232,7 +240,7 @@ class SubmissionResult(Base):
     tests_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     timeout: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     resource_violation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
-    exit_code: Mapped[Optional[int]] = mapped_column(Integer)
+    exit_code: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     coding_attempt: Mapped[CodingAttempt] = relationship(back_populates="submission_result")
@@ -298,8 +306,8 @@ class ExerciseVersion(Base):
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     exercise_id: Mapped[str] = mapped_column(String(80), index=True, nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
-    lesson_id: Mapped[Optional[str]] = mapped_column(String(80), index=True)
-    content_snapshot: Mapped[Optional[dict]] = mapped_column(JSON)
+    lesson_id: Mapped[str | None] = mapped_column(String(80), index=True)
+    content_snapshot: Mapped[dict | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
@@ -411,7 +419,7 @@ class UserMistake(Base):
     user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     misconception_code: Mapped[str] = mapped_column(String(120), nullable=False)
     skill_id: Mapped[str] = mapped_column(String(120), nullable=False)
-    lesson_id: Mapped[Optional[str]] = mapped_column(String(80))
+    lesson_id: Mapped[str | None] = mapped_column(String(80))
     occurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -465,7 +473,7 @@ class MistakeOccurrence(Base):
     misconception_version_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     source_type: Mapped[str] = mapped_column(String(40), nullable=False)
     source_id: Mapped[str] = mapped_column(String(160), nullable=False)
-    lesson_id: Mapped[Optional[str]] = mapped_column(String(80))
+    lesson_id: Mapped[str | None] = mapped_column(String(80))
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
@@ -534,7 +542,7 @@ class LearningPlan(Base):
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
     assessment_run_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("assessment_runs.id", ondelete="SET NULL"), nullable=True)
-    focus_skill_id: Mapped[Optional[str]] = mapped_column(String(120))
+    focus_skill_id: Mapped[str | None] = mapped_column(String(120))
     recommendation_text: Mapped[str] = mapped_column(Text, nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -588,7 +596,7 @@ class CurriculumActivity(Base):
     session_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("curriculum_sessions.id", ondelete="CASCADE"), index=True, nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
-    lesson_id: Mapped[Optional[str]] = mapped_column(String(80))
+    lesson_id: Mapped[str | None] = mapped_column(String(80))
     skill_id: Mapped[str] = mapped_column(String(120), nullable=False)
     estimated_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     priority: Mapped[float] = mapped_column(Float, nullable=False)
@@ -602,14 +610,14 @@ class AIPlanGeneration(Base):
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
-    source_revision_id: Mapped[Optional[UUID]] = mapped_column(Uuid(as_uuid=True), ForeignKey("curriculum_plan_revisions.id", ondelete="SET NULL"))
+    source_revision_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("curriculum_plan_revisions.id", ondelete="SET NULL"))
     model_id: Mapped[str] = mapped_column(String(120), nullable=False)
     prompt_version: Mapped[str] = mapped_column(String(40), nullable=False)
     input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="ready", server_default="ready")
     trigger: Mapped[str] = mapped_column(String(40), nullable=False)
     total_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    failure_code: Mapped[Optional[str]] = mapped_column(String(64))
+    failure_code: Mapped[str | None] = mapped_column(String(64))
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
@@ -637,7 +645,7 @@ class AIPlanStep(Base):
     exercise_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     expected_result: Mapped[str] = mapped_column(Text, nullable=False)
     submission_type: Mapped[str] = mapped_column(String(20), nullable=False)
-    starter_code: Mapped[Optional[str]] = mapped_column(Text)
+    starter_code: Mapped[str | None] = mapped_column(Text)
     constraints: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
     success_criteria: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
     evaluation_criteria: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list, server_default="[]")
@@ -649,14 +657,14 @@ class AIUsageLedger(Base):
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
-    generation_id: Mapped[Optional[UUID]] = mapped_column(Uuid(as_uuid=True), ForeignKey("ai_plan_generations.id", ondelete="SET NULL"))
+    generation_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("ai_plan_generations.id", ondelete="SET NULL"))
     operation: Mapped[str] = mapped_column(String(40), nullable=False)
     model_id: Mapped[str] = mapped_column(String(120), nullable=False)
     cache_hit: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     input_chars: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     output_chars: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    input_tokens: Mapped[Optional[int]] = mapped_column(Integer)
-    output_tokens: Mapped[Optional[int]] = mapped_column(Integer)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
@@ -666,14 +674,14 @@ class AssessmentRun(Base):
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="in_progress", server_default="in_progress")
-    current_question_id: Mapped[Optional[str]] = mapped_column(String(80))
-    current_exercise_version_id: Mapped[Optional[UUID]] = mapped_column(
+    current_question_id: Mapped[str | None] = mapped_column(String(80))
+    current_exercise_version_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("exercise_versions.id", ondelete="RESTRICT"),
         index=True,
     )
     asked_question_ids: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 class AssessmentResponse(Base):
@@ -682,7 +690,7 @@ class AssessmentResponse(Base):
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     run_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("assessment_runs.id", ondelete="CASCADE"), index=True, nullable=False)
-    exercise_version_id: Mapped[Optional[UUID]] = mapped_column(
+    exercise_version_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("exercise_versions.id", ondelete="RESTRICT"),
         index=True,
@@ -700,7 +708,7 @@ class KnowledgeCheckAttempt(Base):
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
-    exercise_version_id: Mapped[Optional[UUID]] = mapped_column(
+    exercise_version_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("exercise_versions.id", ondelete="RESTRICT"),
         index=True,
@@ -727,7 +735,7 @@ class KnowledgeCheckSession(Base):
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    consumed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         Index(
@@ -767,8 +775,8 @@ class UserSkill(Base):
     confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0")
     mastery_weight: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0")
     evidence_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    last_practiced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    next_review_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_practiced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_review_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 
@@ -839,7 +847,7 @@ class ReviewSession(Base):
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
-    token_hash: Mapped[Optional[str]] = mapped_column(String(64), unique=True, index=True)
+    token_hash: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
     user_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
@@ -854,7 +862,7 @@ class ReviewSession(Base):
     )
     scheduled_for: Mapped[date] = mapped_column(Date, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ReviewAttempt(Base):
@@ -928,9 +936,9 @@ class ReviewAttempt(Base):
         String(32), nullable=False, default="review_attempt", server_default="review_attempt"
     )
     scheduled_for: Mapped[date] = mapped_column(Date, nullable=False)
-    applied_on: Mapped[Optional[date]] = mapped_column(Date)
+    applied_on: Mapped[date | None] = mapped_column(Date)
     idempotency_key: Mapped[str] = mapped_column(String(240), nullable=False)
-    answers: Mapped[Optional[dict]] = mapped_column(JSON)
+    answers: Mapped[dict | None] = mapped_column(JSON)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
@@ -1043,10 +1051,10 @@ class KnowledgeChunk(Base):
     # Packed little-endian float32. Kept as opaque bytes so the storage engine
     # never requires pgvector and `alembic upgrade head` still succeeds on a
     # developer machine without the extension installed.
-    embedding: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
-    embedding_dim: Mapped[Optional[int]] = mapped_column(Integer)
-    embedding_model: Mapped[Optional[str]] = mapped_column(String(120))
-    embedding_digest: Mapped[Optional[str]] = mapped_column(String(80))
+    embedding: Mapped[bytes | None] = mapped_column(LargeBinary)
+    embedding_dim: Mapped[int | None] = mapped_column(Integer)
+    embedding_model: Mapped[str | None] = mapped_column(String(120))
+    embedding_digest: Mapped[str | None] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(),
     )

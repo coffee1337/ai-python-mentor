@@ -3,25 +3,25 @@ from __future__ import annotations
 
 import base64
 import hashlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import and_, case, delete, exists, or_, select, update
 from sqlalchemy.orm import Session
 
+from app.db.account_models import AccountToken, AuthThrottle, NotificationOutbox
 from app.db.base import Base
 from app.db.models import AuthSession, User
-from app.db.account_models import AccountToken, AuthThrottle, NotificationOutbox
 from app.security import new_token, token_digest
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def aware(value: datetime) -> datetime:
-    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
 def throttle_key(scope: str, subject: str) -> str:

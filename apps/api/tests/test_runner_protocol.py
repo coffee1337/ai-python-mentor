@@ -5,6 +5,7 @@ Only tests and minimal fixtures live in this file.
 """
 import pytest
 from sqlalchemy import select
+from test_auth import client, csrf
 
 from app.db.models import (
     CodingAttempt,
@@ -12,15 +13,14 @@ from app.db.models import (
     KnowledgeCheckAttempt,
     MentorConversation,
     MentorMessage,
-    SubmissionResult,
     SkillEvidence,
+    SubmissionResult,
     User,
 )
 from app.db.session import get_db
 from app.main import app
 from app.runner import Runner, RunnerResult, RunnerUnavailable
 from app.skill_evidence import derive_assistance, record_evidence
-from test_auth import client, csrf
 
 
 def setup_user(c, email):

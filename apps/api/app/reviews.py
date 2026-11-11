@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import sha256
 from math import isfinite
-from typing import Sequence
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
@@ -18,7 +18,6 @@ from app.skill_evidence import (
     _record_review_evidence,
     derive_review_assistance,
 )
-
 
 REVIEW_POLICY_VERSION = "review-v1"
 _REVIEW_INTERVALS_DAYS = (7, 14, 30, 60)
@@ -113,14 +112,13 @@ def record_review_attempt(
         raise InvalidEvidence("Review score is invalid")
     if not isinstance(idempotency_key, str) or not idempotency_key or len(idempotency_key) > 240:
         raise InvalidEvidence("Review idempotency key is invalid")
-    if answers is not None:
-        if (
-            not isinstance(answers, dict)
-            or not 1 <= len(answers) <= 20
-            or not all(isinstance(key, str) and 1 <= len(key) <= 100 for key in answers)
-            or not all(isinstance(value, str) and 1 <= len(value) <= 200 for value in answers.values())
-        ):
-            raise InvalidEvidence("Review answers are invalid")
+    if answers is not None and (
+        not isinstance(answers, dict)
+        or not 1 <= len(answers) <= 20
+        or not all(isinstance(key, str) and 1 <= len(key) <= 100 for key in answers)
+        or not all(isinstance(value, str) and 1 <= len(value) <= 200 for value in answers.values())
+    ):
+        raise InvalidEvidence("Review answers are invalid")
 
     try:
         user_id = UUID(str(user_id))
@@ -128,7 +126,7 @@ def record_review_attempt(
     except (TypeError, ValueError, AttributeError) as exc:
         raise InvalidEvidence("Review owner or session ID is invalid") from exc
 
-    event_at = datetime.now(timezone.utc)
+    event_at = datetime.now(UTC)
     request_key = "sha256:" + sha256(idempotency_key.encode("utf-8")).hexdigest()
 
     # Serialize per-user review submissions before checking replay/due state.

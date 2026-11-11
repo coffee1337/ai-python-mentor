@@ -12,11 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT.parent / "api"))
 
-from runner_worker.policy import Policy  # noqa: E402
-from runner_worker.execution import evaluate  # noqa: E402
-from runner_worker.sandbox_kernel import landlock_abi  # noqa: E402
-
-from app.runner_exercise_content import RUNNER_EXERCISES  # noqa: E402
+from app.runner_exercise_content import RUNNER_EXERCISES
+from runner_worker.execution import evaluate
+from runner_worker.policy import Policy
+from runner_worker.sandbox_kernel import landlock_abi
 
 ABI = landlock_abi()
 

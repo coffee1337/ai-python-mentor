@@ -1,7 +1,7 @@
 """Version-bound generated exercises: advisory prose, authored coding evidence."""
 import hashlib
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -50,8 +50,8 @@ def _response(db, row):
     result = {"id": str(row.id), "status": row.status, "feedback": row.feedback,
               "coding_attempt_id": str(row.coding_attempt_id) if row.coding_attempt_id else None,
               "created_at": row.created_at}
-    created = row.created_at.replace(tzinfo=timezone.utc) if row.created_at.tzinfo is None else row.created_at
-    if row.status == "pending" and datetime.now(timezone.utc) - created > timedelta(minutes=2):
+    created = row.created_at.replace(tzinfo=UTC) if row.created_at.tzinfo is None else row.created_at
+    if row.status == "pending" and datetime.now(UTC) - created > timedelta(minutes=2):
         result["status"] = "unavailable"
         result["feedback"] = {"message": "Ответ сохранён, но проверка не завершилась. Отправьте новую попытку.", "advisory": True, "mastery_credit": False}
     if row.coding_attempt_id:

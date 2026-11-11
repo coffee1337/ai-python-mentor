@@ -3,7 +3,7 @@
 Facts come from persisted owned sources and append-only evidence. Reading this
 module never publishes exercises, opens grading sessions, or awards credit.
 """
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,18 +14,35 @@ from sqlalchemy.orm import Session
 from app.auth import current_auth
 from app.content_publication import PUBLICATION_REPLACEMENTS
 from app.db.models import (
-    AssessmentResponse, AssessmentRun, AuthSession, CodingAttempt,
-    CurriculumActivity, CurriculumPlanRevision, CurriculumSession,
-    ExerciseVersion, Goal, KnowledgeCheckAttempt, KnowledgeCheckSession,
-    LearningPlan, LearningPlanItem, LessonCompletion, LessonSession,
-    ReviewAttempt, SkillEdge, SkillEvidence, User, UserSkill,
+    AssessmentResponse,
+    AssessmentRun,
+    AuthSession,
+    CodingAttempt,
+    CurriculumActivity,
+    CurriculumPlanRevision,
+    CurriculumSession,
+    ExerciseVersion,
+    Goal,
+    KnowledgeCheckAttempt,
+    KnowledgeCheckSession,
+    LearningPlan,
+    LearningPlanItem,
+    LessonCompletion,
+    LessonSession,
+    ReviewAttempt,
+    SkillEdge,
+    SkillEvidence,
+    User,
+    UserSkill,
 )
 from app.db.session import get_db
 from app.exercise_snapshots import authored_snapshot
 from app.learning import _lesson_from_snapshot, require_onboarding
 from app.learning_content import LESSONS
 from app.prerequisites import (
-    PrerequisiteState, _primary_skill_for_completion, mastery_value,
+    PrerequisiteState,
+    _primary_skill_for_completion,
+    mastery_value,
 )
 from app.reviews_api import _due_rows
 from app.skill_graph import EDGES, SKILLS
@@ -148,11 +165,11 @@ class TodayResponse(PublicModel):
 
 
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _utc(value: datetime) -> datetime:
-    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 class CourseView:
@@ -397,7 +414,7 @@ def progress(days: int = Query(default=7, ge=7, le=30, json_schema_extra={"enum"
     now = _utc_now()
     end_date = (now + timedelta(minutes=utc_offset_minutes)).date()
     start_date = end_date - timedelta(days=days - 1)
-    start = datetime.combine(start_date, time.min, tzinfo=timezone.utc) - timedelta(minutes=utc_offset_minutes)
+    start = datetime.combine(start_date, time.min, tzinfo=UTC) - timedelta(minutes=utc_offset_minutes)
     calendar = {start_date + timedelta(days=index): {
         "date": start_date + timedelta(days=index), "activity_count": 0, "lessons_completed": 0,
         "acquisition_observations": 0, "independent_observations": 0,

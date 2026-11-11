@@ -1,11 +1,9 @@
 """Exercise the documented launchers on Windows PowerShell 5.1, without Docker."""
 from __future__ import annotations
 
-from contextlib import closing
 import http.cookiejar
 import json
 import os
-from pathlib import Path
 import shutil
 import sqlite3
 import subprocess
@@ -15,6 +13,8 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+from contextlib import closing
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SECRET = "private-startup-test-password"

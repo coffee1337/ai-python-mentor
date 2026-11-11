@@ -1,8 +1,10 @@
 """Independent watchdog service; keep running when the HTTP worker crashes."""
 import json
 import time
+
 from .execution import cleanup
-from .policy import LABEL, Policy, NotReady, command
+from .policy import LABEL, Policy, command
+
 
 def reap(policy, *, force=False):
     sandbox = policy.sandbox()

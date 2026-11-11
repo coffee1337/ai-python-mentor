@@ -13,6 +13,7 @@ refusal (``NotReady``), never a degraded run.
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -20,7 +21,6 @@ import shutil
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -58,14 +58,10 @@ def solve(payload):
 
 
 def _kill_group(process: subprocess.Popen) -> None:
-    try:
+    with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-    except (ProcessLookupError, PermissionError):
-        pass
-    try:
+    with contextlib.suppress(ProcessLookupError):
         process.kill()
-    except ProcessLookupError:
-        pass
 
 
 def stray_processes(marker: str) -> list[int]:
@@ -219,22 +215,16 @@ class LandlockSandbox:
         finally:
             if process is not None:
                 _kill_group(process)
-                try:
+                with contextlib.suppress(subprocess.TimeoutExpired):
                     process.wait(timeout=CLEANUP_SECONDS)
-                except subprocess.TimeoutExpired:
-                    pass
                 for pipe in (process.stdin, process.stdout, process.stderr):
                     if pipe is not None and not pipe.closed:
-                        try:
+                        with contextlib.suppress(OSError):
                             pipe.close()
-                        except OSError:
-                            pass
             leftovers = stray_processes(job_id)
             for pid in leftovers:
-                try:
+                with contextlib.suppress(ProcessLookupError, PermissionError):
                     os.kill(pid, signal.SIGKILL)
-                except (ProcessLookupError, PermissionError):
-                    pass
             if leftovers and stray_processes(job_id):
                 (self.state / "quarantined").write_text("cleanup_not_confirmed", encoding="utf-8")
                 raise NotReady("cleanup_not_confirmed")
@@ -260,8 +250,6 @@ class LandlockSandbox:
             if force or marker not in known:
                 victims.append(int(entry.name))
         for pid in victims:
-            try:
+            with contextlib.suppress(ProcessLookupError, PermissionError):
                 os.kill(pid, signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                pass
         return len(victims)

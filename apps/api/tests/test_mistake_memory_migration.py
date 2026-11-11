@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
 import runpy
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -171,7 +171,7 @@ def test_mistake_memory_seed_is_idempotent_and_downgrade_removes_new_tables(tmp_
             )
         )
         user_mistake_id = uuid4().hex
-        occurred_at = datetime(2026, 10, 3, tzinfo=timezone.utc)
+        occurred_at = datetime(2026, 10, 3, tzinfo=UTC)
         connection.execute(
             text(
                 "INSERT INTO user_mistakes "

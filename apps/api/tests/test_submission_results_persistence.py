@@ -6,6 +6,7 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.exc import IntegrityError
+from test_auth import client
 
 from app.db.models import (
     CodingAttempt,
@@ -15,7 +16,6 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.main import app
-from test_auth import client
 
 
 def test_submission_results_keep_test_visibility_and_enforce_idempotency(client):

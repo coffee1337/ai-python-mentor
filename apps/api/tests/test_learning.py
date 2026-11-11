@@ -1,13 +1,13 @@
+from content_helpers import enable_choice_feedback
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
+from test_auth import client, csrf  # reuse the existing isolated database fixture
 
 from app.db.models import ExerciseHint, ExerciseVersion, HintReveal, LessonCompletion, LessonSession, User
 from app.db.session import get_db
 from app.exercise_hints import _persisted_idempotency_key, _seed_exercise
-from app.main import app
 from app.learning_content import EXERCISE_HINT_LADDERS, LESSONS, LESSONS_BY_ID
-from content_helpers import enable_choice_feedback
-from test_auth import client, csrf  # reuse the existing isolated database fixture
+from app.main import app
 
 
 def register(client, email="learning@example.com"):

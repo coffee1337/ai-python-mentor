@@ -7,9 +7,8 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import ExerciseVersion, LessonCompletion, SkillEdge, UserSkill
 from app.content_publication import PUBLICATION_REPLACEMENTS
-
+from app.db.models import ExerciseVersion, LessonCompletion, SkillEdge, UserSkill
 
 # Completions recorded before immutable lesson snapshots were introduced do
 # not carry a trusted exercise_version_id. Keep their primary-skill meanings

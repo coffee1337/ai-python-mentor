@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import func, select, update
+from test_auth import client, csrf
 
 from app import notifications
 from app.account_services import issue_token, owned_table_predicates, throttle, utcnow
@@ -16,7 +17,6 @@ from app.db.models import AuthSession, MentorConversation, MentorMessage, User, 
 from app.db.session import get_db
 from app.main import app
 from app.security import token_digest
-from test_auth import client, csrf
 
 
 def register(client, email="account@example.com"):
@@ -54,7 +54,7 @@ def test_verification_is_single_use_and_never_stores_raw_token_in_token_table(cl
 def test_expired_and_superseded_links_fail_and_production_dev_flag_is_ignored(client, monkeypatch):
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("DEV_ACCOUNT_TOKENS", "true")
-    user_id = register(client)
+    register(client)
     first = post(client, "/auth/email-verification/request").json()["development_token"]
     second = post(client, "/auth/email-verification/request").json()["development_token"]
     assert client.post("/auth/email-verification/confirm", json={"token": first}).status_code == 400
@@ -157,7 +157,7 @@ def test_export_and_transactional_delete_include_derived_rows_and_preserve_other
         db.add(conversation); db.flush()
         db.add(MentorMessage(conversation_id=conversation.id, role="user", content="private learner text"))
         db.add(TelegramBinding(user_id=first, chat_id="12345"))
-        raw, expiry = issue_token(db, first, "email_verify", 15)
+        raw, _expiry = issue_token(db, first, "email_verify", 15)
         notifications.enqueue(db, user_id=first, channel="email", template="email_verify",
                               payload={"token": raw}, idempotency_key="private-token")
         db.commit()
@@ -178,7 +178,7 @@ def test_export_and_transactional_delete_include_derived_rows_and_preserve_other
 
 
 def test_preferences_and_telegram_binding_require_csrf_secret_ownership_and_one_use(client, monkeypatch):
-    user_id = register(client)
+    register(client)
     assert client.patch("/me/notifications", json={"telegram_enabled": True}).status_code == 403
     assert client.patch("/me/notifications", headers={"X-CSRF-Token": csrf(client)}, json={"telegram_enabled": "yes"}).status_code == 422
     assert post(client, "/me/telegram/bind-token").status_code == 503

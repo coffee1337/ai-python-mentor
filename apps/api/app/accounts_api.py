@@ -5,7 +5,7 @@ import hmac
 import json
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
@@ -14,7 +14,15 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app import billing, notifications
-from app.account_services import consume_token, delete_account, export_account, issue_token, revoke_sessions, throttle, utcnow
+from app.account_services import (
+    consume_token,
+    delete_account,
+    export_account,
+    issue_token,
+    revoke_sessions,
+    throttle,
+    utcnow,
+)
 from app.auth import _clear_auth_cookies, csrf_protected, current_auth
 from app.db.account_models import AccountToken, AdminAudit, NotificationOutbox, NotificationPreference, TelegramBinding
 from app.db.models import AIUsageLedger, AuthSession, CodingAttempt, User

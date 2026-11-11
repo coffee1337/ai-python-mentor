@@ -121,20 +121,19 @@ def _total_budget() -> float:
 
 def _call_once(config: GatewayConfig, model: str, messages: list[dict[str, str]],
                budget: int, timeout: float) -> tuple[str, dict | None]:
-    with httpx.Client(timeout=timeout, follow_redirects=False, trust_env=False) as client:
-        with client.stream(
-            "POST", config.url,
-            headers={"Authorization": f"Bearer {config.key}"},
-            json={"model": model, "messages": messages, "max_completion_tokens": budget},
-        ) as response:
-            if response.status_code in RETRY_STATUS:
-                raise httpx.HTTPStatusError("retryable", request=response.request, response=response)
-            response.raise_for_status()
-            raw = bytearray()
-            for chunk in response.iter_bytes():
-                raw.extend(chunk)
-                if len(raw) > MAX_RESPONSE_BYTES:
-                    raise ValueError("Response too large")
+    with httpx.Client(timeout=timeout, follow_redirects=False, trust_env=False) as client, client.stream(
+        "POST", config.url,
+        headers={"Authorization": f"Bearer {config.key}"},
+        json={"model": model, "messages": messages, "max_completion_tokens": budget},
+    ) as response:
+        if response.status_code in RETRY_STATUS:
+            raise httpx.HTTPStatusError("retryable", request=response.request, response=response)
+        response.raise_for_status()
+        raw = bytearray()
+        for chunk in response.iter_bytes():
+            raw.extend(chunk)
+            if len(raw) > MAX_RESPONSE_BYTES:
+                raise ValueError("Response too large")
     parsed = ProviderResponse.model_validate(json.loads(raw))
     choice = parsed.choices[0]
     if choice.message.role != "assistant" or choice.finish_reason != "stop" or not choice.message.content.strip():

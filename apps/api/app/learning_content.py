@@ -1114,7 +1114,8 @@ LESSONS = (
         ],
         "answer": "Что функция может вернуть `None`, если данных нет",
     },
-) + BACKEND_PHASE_ONE_LESSONS
+    *BACKEND_PHASE_ONE_LESSONS,
+)
 
 
 # The quiz lesson ids are the stable public exercise keys for the MVP.  The
@@ -1507,12 +1508,13 @@ def validate_hint_ladders() -> None:
 validate_hint_ladders()
 
 # Publish corrections under new IDs; keep historical IDs available to bound flows.
-from app.completion_content import COMPLETION_LESSONS, COMPLETION_LADDERS
-from app.content_publication import PUBLICATION_REPLACEMENTS, corrected_lessons, corrected_ladders
-from app.beginner_content import BEGINNER_LESSONS, BEGINNER_LADDERS
+from app.beginner_content import BEGINNER_LADDERS, BEGINNER_LESSONS
+from app.completion_content import COMPLETION_LADDERS, COMPLETION_LESSONS
+from app.content_publication import PUBLICATION_REPLACEMENTS, corrected_ladders, corrected_lessons
+
 HISTORICAL_LESSONS = tuple(item for item in LESSONS if item["id"] in PUBLICATION_REPLACEMENTS)
 _replacements = {item["skill_id"]: item for item in (*corrected_lessons(LESSONS), *BEGINNER_LESSONS)}
-LESSONS = tuple(_replacements.get(item["skill_id"], item) for item in LESSONS) + COMPLETION_LESSONS
+LESSONS = (*tuple(_replacements.get(item["skill_id"], item) for item in LESSONS), *COMPLETION_LESSONS)
 LESSONS_BY_ID = {item["id"]: item for item in (*HISTORICAL_LESSONS, *LESSONS)}
 EXERCISE_HINT_LADDERS.update(corrected_ladders(EXERCISE_HINT_LADDERS))
 EXERCISE_HINT_LADDERS.update(COMPLETION_LADDERS)

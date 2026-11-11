@@ -14,12 +14,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import sandbox_guest  # noqa: E402
-import sandbox_kernel  # noqa: E402
+import sandbox_guest
+import sandbox_kernel
 
 
 def main() -> None:
-    config = json.loads(open(sys.argv[1], "rb").read().decode("utf-8"))
+    with open(sys.argv[1], "rb") as policy_file:
+        config = json.loads(policy_file.read().decode("utf-8"))
     sandbox_kernel.apply_rlimits(
         cpu_seconds=int(config["cpu_seconds"]),
         address_space=int(config["address_space"]),

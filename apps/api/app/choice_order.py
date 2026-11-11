@@ -1,7 +1,7 @@
 """Stable question presentation without changing immutable grading content."""
-from hashlib import sha256
 import hmac
-from typing import Sequence
+from collections.abc import Sequence
+from hashlib import sha256
 
 
 def ordered_choices(choices: Sequence[str], *, session_id: object, question_id: str) -> list[str]:
@@ -10,6 +10,6 @@ def ordered_choices(choices: Sequence[str], *, session_id: object, question_id: 
     return [choice for _, choice in sorted(
         enumerate(choices),
         key=lambda pair: hmac.new(
-            key, f"choices-v1:{question_id}:{pair[0]}".encode("utf-8"), sha256,
+            key, f"choices-v1:{question_id}:{pair[0]}".encode(), sha256,
         ).digest(),
     )]

@@ -2,7 +2,7 @@
 import hashlib
 import json
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -204,7 +204,7 @@ def submit(project_id: UUID, milestone_id: str, payload: MilestoneSubmission, au
                   "message": "Добавьте обязательные разделы." if missing else "Артефакт принят. Полнота разделов проверена; корректность кода требует отдельной проверки."}
     row = ProjectSubmission(project_id=project_id, milestone_id=milestone_id, idempotency_key=payload.idempotency_key,
                             payload_hash=digest, artifact_text=payload.artifact_text, repository_url=payload.repository_url,
-                            validation=validation, created_at=datetime.now(timezone.utc))
+                            validation=validation, created_at=datetime.now(UTC))
     db.add(row)
     try:
         db.commit()

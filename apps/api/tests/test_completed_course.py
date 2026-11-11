@@ -1,22 +1,24 @@
 import contextlib
-from copy import deepcopy
 import io
+from copy import deepcopy
+
 from sqlalchemy import select
+from test_auth import client, csrf
+
 from app.completion_content import TOPICS
+from app.db.account_models import NotificationOutbox, TelegramBinding
+from app.db.models import SkillEvidence, User, UserSkill
+from app.db.session import get_db
 from app.learning import LessonResponse
 from app.learning_content import LESSONS
+from app.main import app
 from app.runner_exercise_content import RUNNER_EXERCISES
 from app.skill_graph import SKILLS
-from app.db.models import SkillEvidence, User, UserSkill
-from app.db.account_models import NotificationOutbox, TelegramBinding
-from app.db.session import get_db
-from app.main import app
-from test_auth import client, csrf
 
 
 def test_all_graph_skills_have_valid_lesson_and_trusted_practice():
     assert len(LESSONS)==90
-    assert {l['skill_id'] for l in LESSONS}=={s['id'] for s in SKILLS}
+    assert {lesson['skill_id'] for lesson in LESSONS}=={skill['id'] for skill in SKILLS}
     for lesson in LESSONS:
         LessonResponse.model_validate(lesson)
         if lesson.get('practice_submission_type') == 'guided_reading':

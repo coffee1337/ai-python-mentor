@@ -1,12 +1,12 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from uuid import uuid4
 
 from sqlalchemy import select
+from test_auth import client, csrf
 
 from app.db.models import Misconception, MisconceptionVersion, User, UserMistake
 from app.db.session import get_db
 from app.main import app
-from test_auth import client, csrf
 
 
 def _setup_user(test_client, email):
@@ -76,7 +76,7 @@ def test_get_mistakes_returns_empty_for_authenticated_user(client):
 
 def test_get_mistakes_returns_only_own_repeated_rows_and_public_fields(client):
     _setup_user(client, "mistakes-own@example.com")
-    last_seen = datetime(2026, 10, 2, 12, 30, tzinfo=timezone.utc)
+    last_seen = datetime(2026, 10, 2, 12, 30, tzinfo=UTC)
     with next(app.dependency_overrides[get_db]()) as db:
         user = db.scalar(
             select(User).where(User.email == "mistakes-own@example.com")
@@ -135,7 +135,7 @@ def test_get_mistakes_ignores_requested_user_id_and_isolates_current_user(client
             code="owner-only",
             error_text="Owner error",
             count=2,
-            last_seen_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+            last_seen_at=datetime(2026, 10, 1, tzinfo=UTC),
         )
         db.commit()
 
@@ -157,7 +157,7 @@ def test_get_mistakes_ignores_requested_user_id_and_isolates_current_user(client
             code="other-only",
             error_text="Other error",
             count=2,
-            last_seen_at=datetime(2026, 10, 2, tzinfo=timezone.utc),
+            last_seen_at=datetime(2026, 10, 2, tzinfo=UTC),
         )
         db.commit()
 

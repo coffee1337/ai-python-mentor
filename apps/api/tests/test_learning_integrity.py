@@ -1,5 +1,8 @@
 from uuid import UUID
+
 from sqlalchemy import select
+from test_auth import client, csrf
+
 from app.assessment_content import QUESTIONS
 from app.choice_order import ordered_choices
 from app.db.models import ExerciseVersion, LessonSession, SkillEvidence, User
@@ -7,7 +10,6 @@ from app.db.session import get_db
 from app.exercise_hints import _seed_exercise
 from app.learning import LessonResponse, _lesson_response
 from app.main import app
-from test_auth import client, csrf
 
 
 def register(c, email="integrity@example.com"):

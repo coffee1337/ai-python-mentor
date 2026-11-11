@@ -1,8 +1,9 @@
 """Private project source and persistent vacancy-to-lesson continuity."""
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 from sqlalchemy import event, func, select
+from test_auth import client, csrf
 
 from app.db.models import LessonCompletion, SkillEvidence, User
 from app.db.product_models import ProjectSubmission, VacancyAnalysis, VacancyTarget
@@ -10,7 +11,6 @@ from app.db.session import get_db
 from app.learning_content import LESSONS
 from app.main import app
 from app.projects import PROJECT_TEMPLATES
-from test_auth import client, csrf
 
 
 def setup_account(client, email="continuity@example.com"):
@@ -110,7 +110,7 @@ def test_project_metadata_is_bounded_and_never_contains_source(client):
             idempotency_key="older-completed-milestone", payload_hash="b" * 64,
             artifact_text="OLDER PRIVATE COMPLETED MATERIAL", repository_url=None,
             validation={"status": "artifact_received", "missing_sections": [], "execution_status": "not_executed", "mastery_credit": False, "message": "Материал принят."},
-            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            created_at=datetime(2025, 1, 1, tzinfo=UTC),
         )
         db.add(old_completed)
         db.flush()
@@ -120,7 +120,7 @@ def test_project_metadata_is_bounded_and_never_contains_source(client):
                                      idempotency_key=f"bounded-{index}", payload_hash="a" * 64,
                                      artifact_text="PRIVATE SOURCE SHOULD STAY PRIVATE", repository_url=None,
                                      validation={"status": "needs_revision", "missing_sections": [], "execution_status": "not_executed", "mastery_credit": False, "message": "Добавьте разделы."},
-                                     created_at=datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=index)))
+                                     created_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=index)))
         db.commit()
     response = client.get(f"/projects/{selected['id']}")
     assert len(response.json()["submissions"]) == 100
@@ -149,11 +149,11 @@ def test_selected_vacancy_survives_reload_and_recent_history_bound(client):
     with next(app.dependency_overrides[get_db]()) as db:
         user = db.scalar(select(User).where(User.email == "continuity@example.com"))
         old = db.get(VacancyAnalysis, UUID(selected["id"]))
-        old.created_at = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        old.created_at = datetime(2025, 1, 1, tzinfo=UTC)
         for index in range(55):
             db.add(VacancyAnalysis(user_id=user.id, title=f"Более новая вакансия {index}", source_text="Приватный текст вакансии",
                                   source_url=None, analyzer_version="authored-keywords-v1", requirements=[],
-                                  created_at=datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=index)))
+                                  created_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=index)))
         db.commit()
     for _ in range(2):
         current = client.get("/vacancies/current")

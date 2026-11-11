@@ -1,13 +1,15 @@
+from datetime import UTC, datetime, timedelta, timezone
+
 from content_helpers import authored_answer, authored_wrong_answer
 from sqlalchemy import select
-from datetime import datetime, timedelta, timezone
+from test_auth import client, csrf
 
-from app.db.models import AssessmentRun, LessonCompletion, LearningPlan, LearningPlanItem, User, UserSkill
-from app.db.session import get_db
 from app.assessment_content import MAX_QUESTIONS
+from app.db.models import AssessmentRun, LearningPlan, LearningPlanItem, LessonCompletion, User, UserSkill
+from app.db.session import get_db
 from app.learning_content import LESSONS
 from app.main import app
-from test_auth import client, csrf
+
 
 def setup_user(c, email="plan@example.com"):
     assert c.post("/auth/register", json={"email":email,"password":"safe-password"}).status_code == 201
@@ -97,7 +99,7 @@ def test_plan_recommendation_follows_progress_and_reassessment_updates_version(c
 
 def test_plan_appends_due_review_only_for_completed_lessons(client):
     setup_user(client, "plan-review@example.com")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with next(app.dependency_overrides[get_db]()) as db:
         user = db.scalar(select(User))
         run = AssessmentRun(

@@ -1,16 +1,17 @@
 import contextlib
 import io
 import json
+
 import pytest
 from sqlalchemy import select
+from test_auth import client, csrf
+from test_learning_plan import setup_user
 
 from app.assessment_content import HISTORICAL_QUESTIONS, QUESTIONS, QUESTIONS_BY_ID
 from app.db.models import AssessmentResponse, AssessmentRun, ExerciseVersion, User
 from app.db.session import get_db
 from app.exercise_hints import _seed_exercise
 from app.main import app
-from test_auth import client, csrf
-from test_learning_plan import setup_user
 
 
 @pytest.mark.parametrize("old_id,new_id", [

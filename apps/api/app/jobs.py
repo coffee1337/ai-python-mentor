@@ -3,19 +3,21 @@
 Expired running claims are reconciled with exactly the same worker key. The
 worker journal, rather than HTTP retry delivery, enforces at-most-once launch.
 """
-import json
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
+
 from sqlalchemy import select
+
 from app.db.job_models import ExecutionJob
 from app.db.models import CodingAttempt, ExerciseVersion, User
 from app.db.session import SessionLocal
 from app.practice import _persist_result_and_evidence, _unavailable_result
 from app.runner import RunnerError, RunnerUnavailable, runner
 
+
 def dispatch_one(session_factory=SessionLocal):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with session_factory() as db:
         job = db.scalar(select(ExecutionJob).where(
             (ExecutionJob.status == "queued") | ((ExecutionJob.status == "running") & (ExecutionJob.lease_expires_at < now))
@@ -30,8 +32,8 @@ def dispatch_one(session_factory=SessionLocal):
             return False
         attempt = db.get(CodingAttempt, job.coding_attempt_id)
         version = db.get(ExerciseVersion, attempt.exercise_version_id)
-        expires = job.expires_at.replace(tzinfo=timezone.utc) if job.expires_at.tzinfo is None else job.expires_at
-        if job.status == "queued" and expires <= now or job.status == "running" and expires + timedelta(seconds=120) <= now:
+        expires = job.expires_at.replace(tzinfo=UTC) if job.expires_at.tzinfo is None else job.expires_at
+        if (job.status == "queued" and expires <= now) or (job.status == "running" and expires + timedelta(seconds=120) <= now):
             job.status = "unavailable"
             _persist_result_and_evidence(db, attempt, _unavailable_result("Истёк срок ожидания задания; код не выполнялся."))
             return True
@@ -57,7 +59,7 @@ def dispatch_one(session_factory=SessionLocal):
         attempt = db.get(CodingAttempt, attempt_id)
         if result.status == "in_progress":
             # Poll the same durable worker claim, never issue a fresh execution key.
-            job.lease_expires_at = datetime.now(timezone.utc) + timedelta(seconds=2)
+            job.lease_expires_at = datetime.now(UTC) + timedelta(seconds=2)
             db.commit()
             return True
         job.status = "unavailable" if result.status == "unavailable" else "finished" if result.status in {"passed", "failed"} else "failed"

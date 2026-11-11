@@ -1,15 +1,15 @@
 """UTF-8 assets must survive a legacy Windows default text encoding."""
 import json
-from pathlib import Path
 import runpy
 import sys
+from pathlib import Path
 from uuid import uuid4
 
+import pytest
+import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-import pytest
-import sqlalchemy as sa
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 

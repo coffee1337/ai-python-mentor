@@ -1,8 +1,8 @@
 """Explainable vacancy matching from pasted text, without fetching untrusted URLs."""
 import re
-from datetime import datetime, timezone
-from uuid import UUID
+from datetime import UTC, datetime
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -107,7 +107,7 @@ def _owned(db, user, vacancy_id):
 def _roadmap(db: Session, user: User, requirements: list[dict]) -> list[dict]:
     from app.prerequisites import MASTERY_READINESS_THRESHOLD
     from app.study_progress import CourseView
-    course = CourseView(db, user, datetime.now(timezone.utc))
+    course = CourseView(db, user, datetime.now(UTC))
     rows = course.mastery
     state = course.readiness
     target = {item["skill_id"] for item in requirements}

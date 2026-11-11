@@ -1,10 +1,10 @@
 """Environment-backed settings for private service integrations."""
 from __future__ import annotations
 
-import os
 import json
-from pathlib import Path
+import os
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urlsplit
 
 
