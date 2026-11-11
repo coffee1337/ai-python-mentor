@@ -9,8 +9,8 @@
 | Показатель | Значение |
 |---|---|
 | Всего строк | 250 |
-| done | 67 |
-| partial | 127 |
+| done | 69 |
+| partial | 125 |
 | missing | 35 |
 | out-of-scope | 21 |
 | строк без статуса | 0 |
@@ -295,7 +295,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
-| 30.1 | Modular monolith без микросервисов | `partial` | `apps/api/app/main.py:42; docs/decisions.md:5` | `нет` | архитектура соблюдена, теста границ модулей нет |
+| 30.1 | Modular monolith без микросервисов | `done` | `apps/api/app/main.py:42; docs/decisions.md:5` | `tests/test_observability_contracts.py::test_api_never_imports_the_execution_host; tests/test_observability_contracts.py::test_runner_never_imports_the_application` | один процесс API и отдельный процесс runner; импорт через границу запрещён и проверяется разбором AST |
 | 30.2 | Модули auth/users/goals/skills/courses/assessments/roadmap/learning/exercises/submissions/tutor/memory/execution/repositories/billing/notifications | `partial` | `apps/api/app/` | `нет` | repositories отсутствует; модули файлами, а не пакетами |
 | 30.3 | Stack FastAPI, SQLAlchemy, Alembic, PostgreSQL, Pydantic, Redis, Celery | `partial` | `apps/api/requirements.lock:1` | `tests/test_health.py::test_health_returns_api_and_database_status` | Redis/Celery не используются: очередь и лимиты на БД |
 
@@ -527,7 +527,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
-| 62.1 | Structured logs и request ID | `partial` | `apps/api/app/main.py:99` | `tests/test_completed_course.py::test_request_body_cap_and_error_response_redact_private_details` | X-Request-ID и route-лог есть; тест проверяет только редакцию |
+| 62.1 | Structured logs и request ID | `done` | `apps/api/app/main.py:143` | `tests/test_observability_contracts.py::test_every_response_carries_a_correlation_id; tests/test_observability_contracts.py::test_the_log_line_repeats_the_id_and_never_the_payload` | id возвращается в заголовке, повторяется в JSON-строке лога, пароль и логин в лог не попадают |
 | 62.2 | Error monitoring, tracing, DB latency, queue depth, sandbox latency | `partial` | `apps/api/app/accounts_api.py:321` | `нет` | есть счётчики статусов; трейсинга и метрик задержек нет |
 | 62.3 | AI latency, token usage, cost per feature/user | `partial` | `apps/api/app/billing.py:63; apps/api/app/accounts_api.py:331` | `tests/test_account_services.py::test_billing_usage_counts_reserved_calls_without_assuming_free_provider` | токены и оценка стоимости есть, latency и per-feature cost нет |
 | 62.4 | Не логировать пароли, токены, секреты и код | `done` | `apps/api/app/main.py:109; apps/api/app/ai_gateway.py:68` | `tests/test_knowledge_base.py::test_gateway_key_never_reaches_logs_or_responses` | в логах только тип ошибки и request id |
