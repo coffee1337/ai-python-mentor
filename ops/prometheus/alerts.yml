@@ -1,0 +1,81 @@
+groups:
+  - name: apm-critical
+    rules:
+      - alert: ApiDown
+        expr: up{job="api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API не отвечает на /metrics"
+          description: "Prometheus не может опросить api:8000/metrics более 2 минут."
+
+      - alert: DatabaseDown
+        expr: apm_db_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "База данных недоступна"
+          description: "Healthcheck базы внутри API возвращает ошибку."
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(apm_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(apm_http_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Более 5% запросов завершаются 5xx"
+          description: "Доля ошибок {{ $value | humanizePercentage }} за 5 минут."
+
+      - alert: SlowApi
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(apm_http_request_duration_seconds_bucket[10m])) by (le)
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P95 latency выше 2 секунд"
+          description: "P95 {{ $value | humanizeDuration }} за 10 минут."
+
+      - alert: AiSpendHigh
+        expr: sum(increase(apm_ai_spend_micro_usd_total[1h])) / 1000000 > 4
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Расход на AI приближается к дневному лимиту"
+          description: "За последний час потрачено ${{ $value | printf \"%.2f\" }}; лимит задаётся AI_SPEND_DAILY_LIMIT_USD."
+
+      - alert: AiQuotaRejections
+        expr: sum(increase(apm_quota_rejections_total[15m])) > 20
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Много отказов по квотам AI"
+          description: "{{ $value }} отказов за 15 минут — проверьте лимиты и стоимость."
+
+      - alert: ExecutionQueueBacklog
+        expr: apm_execution_queue_depth > 25
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Очередь исполнения кода растёт"
+          description: "{{ $value }} заданий ждут runner более 10 минут."
+
+      - alert: AiGatewayErrors
+        expr: |
+          sum(rate(apm_ai_calls_total{status="error"}[10m]))
+            / clamp_min(sum(rate(apm_ai_calls_total[10m])), 0.001) > 0.25
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Более 25% вызовов AI завершаются ошибкой"
+          description: "Проверьте провайдера и fallback-цепочку."

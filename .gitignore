@@ -36,3 +36,7 @@ certificates/
 
 # Local runner bundle (generated PKI, catalog with hidden tests)
 .runner-dev/
+
+# Production environment files (secrets)
+.env.prod
+.env.runner

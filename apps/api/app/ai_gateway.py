@@ -162,6 +162,8 @@ def _report(task: str | None, model: str, usage: dict | None, attempts: int,
     enriched.update({"model": model, "attempts": attempts, "latency_ms": latency_ms})
     if micro is not None:
         enriched["micro_usd"] = micro
+    from app import metrics
+    metrics.observe_ai(task, model, status, enriched)
     return enriched
 
 
@@ -232,6 +234,8 @@ def generate_with_usage(
                 break
             if attempt + 1 < ATTEMPTS_PER_MODEL:
                 time.sleep(_retry_delay(attempt))
+        from app import metrics
+        metrics.observe_ai(config.task, model, "error")
         logger.info(json.dumps({"event": "ai_call_failed", "task": config.task, "model": model,
                                 "status": last_status, "attempts": attempts,
                                 "error": type(last_error).__name__ if last_error else None},

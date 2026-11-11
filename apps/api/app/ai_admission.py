@@ -44,6 +44,12 @@ def _usd_limit_micro(name: str, default_usd: float) -> int:
     return int(round(value * 1_000_000))
 
 
+def _quota(reason: str) -> None:
+    from app import metrics
+
+    metrics.observe_quota(reason)
+
+
 def _alert_daily_spend(day: str, spent: int, limit: int) -> None:
     """Emit one structured alert per UTC day when the soft threshold is crossed."""
     if day in _spend_alerts:
@@ -72,6 +78,7 @@ def reserve_ai_call(
     lease = db.get(AIRequestLease, (user_id, operation, request_key))
     if lease and lease.status == "processing" and _utc(lease.expires_at) > now:
         db.rollback()
+        _quota("lease_busy")
         raise GatewayError(409, "AI request is already processing; retry later")
     count = db.scalar(select(func.count(AICallReservation.id)).where(
         AICallReservation.user_id == user_id,
@@ -80,6 +87,7 @@ def reserve_ai_call(
     )) or 0
     if count >= limit:
         db.rollback()
+        _quota("window_limit")
         raise GatewayError(429, "AI request limit exceeded; retry later")
     daily_limit = _setting("AI_DAILY_CALL_LIMIT", 100, maximum=100000)
     try:
@@ -100,6 +108,7 @@ def reserve_ai_call(
         raise GatewayError(503, "AI cost reservation must be configured when a budget is enabled")
     if daily_count >= daily_limit or budget and daily_cost + reservation_cost > budget:
         db.rollback()
+        _quota("daily_budget")
         raise GatewayError(429, "Daily AI budget exceeded; retry tomorrow")
     # Installation-wide guard: every user shares one provider account, so a
     # single noisy tenant must not drain the day's budget.
@@ -110,6 +119,7 @@ def reserve_ai_call(
         ).where(AICallReservation.created_at >= start)) or 0
         if spent_today + reservation_cost >= global_limit:
             db.rollback()
+            _quota("global_budget")
             raise GatewayError(429, "Daily AI budget exhausted; retry tomorrow")
         if (spent_today + reservation_cost) * 10 >= global_limit * 8:
             _alert_daily_spend(start.date().isoformat(), int(spent_today + reservation_cost), global_limit)

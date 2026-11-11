@@ -47,8 +47,10 @@ async def lifespan(_: FastAPI):
 
 
 from app.logging_config import configure_logging
+from app.observability import init_sentry
 
 configure_logging()
+init_sentry()
 
 app = FastAPI(title="AI-наставник API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(RequestSizeLimit)
@@ -148,5 +150,7 @@ async def request_observation(request, call_next):
         # must never be retained in a shared HTTP cache.
         response.headers["Cache-Control"] = "no-store"
     route = getattr(request.scope.get("route"), "path", "unmatched")
+    from app import metrics
+    metrics.observe_request(request.method, route, response.status_code, monotonic() - started)
     logging.getLogger("mentor.request").info("request_finished id=%s method=%s route=%s status=%s duration_ms=%d",request_id,request.method,route,response.status_code,int((monotonic()-started)*1000))
     return response
