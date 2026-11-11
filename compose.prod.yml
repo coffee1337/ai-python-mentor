@@ -127,7 +127,7 @@ services:
       # The worker refuses to serve until the independent reaper proves it is alive;
       # starting it first removes the crash-loop on a cold start.
       runner-reaper:
-        condition: service_started
+        condition: service_healthy
     networks: [internal]
 
   runner-reaper:
@@ -140,6 +140,14 @@ services:
     # The image defines ENTRYPOINT, so `command` would be appended as arguments and
     # the container would run the HTTP server instead of the watchdog.
     entrypoint: ["python", "-m", "runner_worker.reaper"]
+    # Admission needs a fresh heartbeat, so the worker must wait for a beating
+    # watchdog instead of racing it on a cold start.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import pathlib,time,sys; p=pathlib.Path('/var/lib/ai-tutor-runner/reaper-heartbeat'); sys.exit(0 if p.exists() and time.time()-float(p.read_text().strip())<5 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
     volumes:
       - runner_state:/var/lib/ai-tutor-runner
       - ./ops/runner-config:/etc/ai-tutor-runner:ro
