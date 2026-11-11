@@ -12,6 +12,27 @@
 
 ---
 
+---
+
+## 📸 Screenshots
+
+Реальные снимки из браузерного прогона (`npx playwright test`, Chromium 153, 1440×900),
+не макеты.
+
+| Экран | Скриншот |
+|---|---|
+| Лендинг | ![Лендинг](docs/screenshots/landing.png) |
+| Онбординг | ![Онбординг](docs/screenshots/onboarding.png) |
+| Урок | ![Урок](docs/screenshots/lesson.png) |
+| Практика | ![Практика](docs/screenshots/practice.png) |
+| Дашборд «На сегодня» | ![Дашборд](docs/screenshots/dashboard.png) |
+| Карта курса | ![Карта курса](docs/screenshots/course-path.png) |
+| Прогресс | ![Прогресс](docs/screenshots/progress.png) |
+| Повторения | ![Повторения](docs/screenshots/reviews.png) |
+| Проекты | ![Проекты](docs/screenshots/projects.png) |
+| Публичное портфолио | ![Портфолио](docs/screenshots/portfolio.png) |
+| Диагностика | ![Диагностика](docs/screenshots/diagnostic.png) |
+
 ## ✨ Overview
 
 AI Python Mentor — full-stack приложение для изучения Python с нуля до backend-разработки.
@@ -32,11 +53,29 @@ AI Python Mentor — full-stack приложение для изучения Pyt
 ---
 ## 🚧 Project Status
 
-**Active development**
+**Работающий продукт, идёт подготовка релиза v1.0.0.**
 
-The core learning platform, backend, AI integration, database layer and CI infrastructure are implemented.
+Что проверено командами, а не заявлено:
 
-Current work focuses on product polish, content quality, AI evaluation and production deployment.
+| Область | Команда | Результат |
+|---|---|---|
+| API-тесты | `cd apps/api && python -m pytest -q` | 350 passed, 10 skipped (5:49) |
+| PostgreSQL-набор | `RUN_POSTGRES_TESTS=1 pytest tests/test_postgres_specific.py` | 7 passed |
+| Исполнение кода | `python -m unittest apps.runner.tests.test_exercise_catalog` | 90 заданий, 288 кейсов, эталоны 100 % |
+| Изоляция runner | `python -m unittest apps.runner.tests.test_landlock_sandbox` | 15 тестов: сеть, ФС, fork, exec, сигналы, CPU/RAM/вывод |
+| Браузерные сценарии | `cd scripts/ui-smoke && npx playwright test` | 8 passed (desktop + mobile) |
+| Веб | `cd apps/web && npm run lint && npm run build` | зелёные |
+| Линтеры | `ruff check apps scripts` | All checks passed |
+| Миграции | `alembic upgrade head` / `downgrade` на PostgreSQL 16 | обратимы, данные сохраняются |
+| Бэкап и restore | `scripts/backup.sh`, `scripts/restore-drill.sh` | 0.7 c / 3.2 c, digests совпали |
+| AI-контур | `scripts/ai-smoke.py` | живые ответы RU+EN, 3–8 c, стоимость в логах |
+| Нагрузка | `k6 run scripts/load/learning.js` | p95 = 76 ms, 0 % ошибок, 27.9 req/s (10 VU) |
+
+Ограничения, которые нельзя обойти на сборочной машине: здесь нет Docker и root, поэтому
+`compose.prod.yml` проверен структурно, а контейнерный бэкенд runner (runsc + cgroups v2) —
+только unit-тестами. Живой прогон — на целевом хосте по `docs/RUNBOOK.md`.
+Матрица трассировки спеки: `docs/SPEC-MATRIX.md`, аудит дефектов: `docs/AUDIT.md`,
+статус: `docs/STATUS.md`, безопасность: `docs/SECURITY-ASVS.md`.
 
 ---
 
@@ -348,44 +387,42 @@ npm run dev
 
 ---
 
-## 🐳 Docker
-
-Создайте конфигурацию:
+## 🐳 Docker (разработка)
 
 ```bash
 cp .env.example .env
-```
-
-Запустите PostgreSQL:
-
-```bash
 docker compose up -d db
-```
-
-Примените миграции:
-
-```bash
 docker compose run --rm api alembic upgrade head
-```
-
-Запустите приложение:
-
-```bash
 docker compose up -d api web
 ```
 
-После запуска:
-
 ```text
-Frontend
-http://localhost:3000
-
-API
-http://localhost:8000
-
-Swagger
-http://localhost:8000/docs
+Frontend   http://localhost:3000
+API        http://localhost:8000
+Swagger    http://localhost:8000/docs
 ```
+
+Runner и фоновые обработчики включаются профилями: `--profile execution` (исполнение кода)
+и `--profile notifications` (письма и Telegram).
+
+## 🚢 Production: одна команда
+
+```bash
+git clone https://github.com/coffee1337/ai-python-mentor.git /opt/mentor && cd /opt/mentor
+cp .env.prod.example .env.prod && $EDITOR .env.prod      # домен, пароли, ключ AI-шлюза
+PYTHONPATH=apps/api python scripts/runner-dev-bootstrap.py /etc/ai-tutor
+PYTHONPATH=apps/api python scripts/export-runner-catalog.py /etc/ai-tutor/catalog.json
+cp .env.runner.example .env.runner && $EDITOR .env.runner
+docker compose -f compose.prod.yml --env-file .env.prod up -d --build
+```
+
+Что произойдёт: `db` → `migrate` (alembic upgrade head) → `seed-check` (90 навыков и 90 заданий,
+иначе деплой падает) → `api` → `execution-worker`, `notification-worker`, `runner`,
+`runner-reaper`, `web`, `caddy` с автоматическим TLS. Наружу открыты только 80/443;
+`/metrics` и `/internal/*` снаружи отдают 404.
+
+Проверка и дальнейшие шаги: `curl -fsS https://$DOMAIN/ready`, полный runbook —
+`docs/RUNBOOK.md` (деплой, обновление, откат, бэкап, restore drill, реакция на алерты).
 
 ---
 

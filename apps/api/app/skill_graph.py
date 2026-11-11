@@ -808,31 +808,42 @@ validate_graph()
 
 
 def seed_skill_graph(db):
+    """Idempotently materialise the authored graph.
+
+    This runs on the read path (every access check), so it must not issue a
+    query per skill, edge and lesson: the existing rows are loaded in three
+    queries and only genuinely missing rows are inserted, with a single flush.
+    """
     validate_graph()
+    existing_skills = {row.id: row for row in db.scalars(select(Skill))}
     for item in SKILLS:
-        skill = db.get(Skill, item["id"]) or Skill(
-            id=item["id"],
-            name=item["name"],
-            category=item["category"],
-            difficulty=item["difficulty"],
-            importance=item["importance"],
-            tags=item["tags"],
-            description=item["description"],
-        )
+        skill = existing_skills.get(item["id"])
+        if skill is None:
+            db.add(Skill(
+                id=item["id"],
+                name=item["name"],
+                category=item["category"],
+                difficulty=item["difficulty"],
+                importance=item["importance"],
+                tags=item["tags"],
+                description=item["description"],
+            ))
+            continue
         skill.name = item["name"]
         skill.category = item["category"]
         skill.difficulty = item["difficulty"]
         skill.importance = item["importance"]
         skill.tags = item["tags"]
         skill.description = item["description"]
-        db.add(skill)
-    db.flush()
-    for source, target, relation in dict.fromkeys(tuple(edge) for edge in EDGES):
-        if db.query(SkillEdge).filter_by(from_skill_id=source, to_skill_id=target, relation=relation).first() is None:
-            db.add(SkillEdge(from_skill_id=source, to_skill_id=target, relation=relation))
-        db.flush()
+    existing_edges = {
+        (row.from_skill_id, row.to_skill_id, row.relation) for row in db.scalars(select(SkillEdge))
+    }
+    for edge in dict.fromkeys(tuple(item) for item in EDGES):
+        if edge not in existing_edges:
+            db.add(SkillEdge(from_skill_id=edge[0], to_skill_id=edge[1], relation=edge[2]))
+    existing_lessons = {(row.lesson_id, row.skill_id) for row in db.scalars(select(LessonSkill))}
     for lesson_id, skill_id in LESSON_SKILLS:
-        if db.query(LessonSkill).filter_by(lesson_id=lesson_id, skill_id=skill_id).first() is None:
+        if (lesson_id, skill_id) not in existing_lessons:
             db.add(LessonSkill(lesson_id=lesson_id, skill_id=skill_id))
     db.flush()
 

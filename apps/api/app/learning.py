@@ -450,12 +450,17 @@ def accessible_lesson(
             _lesson_from_snapshot(_lesson_session_version(db, session, lesson_id), lesson_id)
             if session else _persisted_lesson(lesson_id, db)
         )
-    summary = next((item for item in learning_path(db, user).lessons if item.id == lesson_id), None)
-    # Historical publications remain readable/finishable under the same
-    # prerequisite policy even after their replacement becomes active.
-    locked = summary.status == "locked" if summary is not None else not prerequisite_state(db, user.id).is_lesson_ready(lesson)
-    if locked and not bound_pending_flow:
-        raise HTTPException(409, "Complete prerequisite lessons first")
+    # A lesson bound to an open session is already authorised: the session was
+    # created by an admitted GET, so rebuilding the whole course path here would
+    # cost a hundred queries for a decision that cannot change the outcome.
+    if not bound_pending_flow:
+        summary = next((item for item in learning_path(db, user).lessons if item.id == lesson_id), None)
+        # Historical publications remain readable/finishable under the same
+        # prerequisite policy even after their replacement becomes active.
+        locked = (summary.status == "locked" if summary is not None
+                  else not prerequisite_state(db, user.id).is_lesson_ready(lesson))
+        if locked:
+            raise HTTPException(409, "Complete prerequisite lessons first")
     return lesson
 
 
