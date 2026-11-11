@@ -1,0 +1,49 @@
+# AppArmor profile for the learner-code container. Loaded by
+# scripts/runner-docker-bootstrap.py when the host kernel provides AppArmor.
+# The container itself is read-only, network-less and unprivileged; this profile
+# removes the remaining file and capability surface a guest could reach.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile ai-tutor-runner flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  #include <abstractions/python>
+
+  network,
+  capability,
+  file,
+  umount,
+
+  deny @{PROC}/*/mem rw,
+  deny @{PROC}/kcore r,
+  deny @{PROC}/sys/kernel/** r,
+  deny /sys/firmware/** r,
+  deny /sys/kernel/** r,
+  deny /sys/module/** r,
+  deny /dev/mem rw,
+  deny /dev/kmem rw,
+  deny /dev/port rw,
+  deny /root/** rwklx,
+  deny /home/** rwklx,
+  deny /var/lib/ai-tutor-runner/** rwklx,
+  deny /etc/shadow rwklx,
+  deny /etc/sudoers rwklx,
+
+  /tmp/** rwkl,
+  /usr/local/** r,
+  /usr/lib/** r,
+  /usr/bin/** rix,
+  /lib/** r,
+  /lib64/** r,
+  /etc/ld.so.cache r,
+  /etc/ld.so.preload r,
+  /etc/passwd r,
+  /etc/group r,
+  /etc/nsswitch.conf r,
+  /etc/hosts r,
+  /etc/resolv.conf r,
+  /etc/localtime r,
+  /proc/sys/kernel/osrelease r,
+  @{PROC}/ r,
+  @{PROC}/** r,
+}

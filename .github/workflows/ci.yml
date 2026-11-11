@@ -238,6 +238,46 @@ jobs:
       # the wire protocol with httpx, so the API deps are required here too.
       - run: pip install -r apps/api/requirements.lock
       - run: python -m unittest discover -s apps/runner/tests -v
+  runner-container:
+    name: Learner code in containers (gVisor and kernel parity)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/api/requirements.lock
+      - run: pip install -r apps/api/requirements.lock
+      # The production backend isolates the guest on a user-space kernel. If this
+      # step cannot provide runsc, the job fails loudly instead of degrading.
+      - name: Install gVisor (runsc)
+        run: |
+          curl -fsSL https://gvisor.dev/archive.key | sudo gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | sudo tee /etc/apt/sources.list.d/gvisor.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq runsc
+          sudo runsc install
+          sudo systemctl restart docker
+          docker info --format '{{json .Runtimes}}'
+          runsc --version
+      - name: Prepare the container host
+        run: |
+          sudo mkdir -p /var/lib/ai-tutor-runner
+          sudo chown "$USER" /var/lib/ai-tutor-runner
+          python scripts/runner-docker-bootstrap.py --state-dir /var/lib/ai-tutor-runner --require-gvisor --github-env
+      - name: Escapes, catalog and backend parity
+        env:
+          RUNNER_DOCKER_FULL: "1"
+        run: python -m unittest apps.runner.tests.test_docker_backend apps.runner.tests.test_landlock_sandbox -v
+      - name: Host state on failure
+        if: failure()
+        run: |
+          docker ps -a
+          docker images
+          free -m
+          df -h
   windows-encoding:
     name: Windows UTF-8 assets and migrations
     runs-on: windows-latest

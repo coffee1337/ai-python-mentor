@@ -65,6 +65,38 @@ def select_backend() -> str:
 class NotReady(RuntimeError):
     pass
 
+
+def host_layers(info: dict, runtime: str) -> dict:
+    """Which isolation layers the container host actually provides.
+
+    Every layer is read from the runtime itself, never from a config file, so a
+    host that silently lost cgroups v2 or seccomp is refused instead of trusted.
+    """
+    options = " ".join(info.get("SecurityOptions") or ())
+    runtimes = info.get("Runtimes") or {}
+    return {
+        "linux": info.get("OSType") == "linux",
+        "cgroup2": info.get("CgroupVersion") == "2",
+        "limits": bool(info.get("MemoryLimit")) and bool(info.get("PidsLimit")),
+        "seccomp": "seccomp" in options,
+        "apparmor": "apparmor" in options,
+        "userns": "userns" in options,
+        # gVisor runs the guest on its own kernel; anything else is the host kernel.
+        "gvisor": runtime in runtimes and runtime.startswith("runsc"),
+        "runtime": info.get("DefaultRuntime") or "",
+        "layers": sorted(options.split()),
+    }
+
+
+def apparmor_ready(profile: str = "ai-tutor-runner") -> bool:
+    """True when the runner AppArmor profile is loaded on this host."""
+    try:
+        profiles = Path("/sys/kernel/security/apparmor/profiles").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return any(line.split(" ", 1)[0].startswith(profile) for line in profiles.splitlines())
+
+
 def command(args, timeout=5):
     # Runtime responses are not exposed in public errors or logs.
     try:
@@ -85,6 +117,10 @@ class Policy:
     attestation_file: Path
     runtime: str = "runsc"
     backend: str = "docker"
+    # AppArmor is only requested when the profile is actually loaded on the host;
+    # asking for a missing profile makes `docker create` fail, which used to turn
+    # the container backend into dead code.
+    apparmor: bool = False
 
     @classmethod
     def from_environment(cls):
@@ -102,7 +138,7 @@ class Policy:
             return cls("", "", state, catalog, attestation, backend="landlock")
         try:
             policy = cls(os.environ["SANDBOX_IMAGE"], os.environ["SANDBOX_SECCOMP_FILE"],
-                         state, catalog, attestation)
+                         state, catalog, attestation, apparmor=apparmor_ready())
         except KeyError:
             raise NotReady("policy_missing") from None
         if not re.fullmatch(r"[a-zA-Z0-9./_-]+@sha256:[a-f0-9]{64}", policy.image):
@@ -140,23 +176,27 @@ class Policy:
             if require_reaper and time.time() - float(self.state.joinpath("reaper-heartbeat").read_text()) > 3:
                 raise ValueError()
             info = json.loads(command(["docker", "info", "--format", "{{json .}}"] ))
-            options = " ".join(info.get("SecurityOptions", []))
-            if info.get("OSType") != "linux" or info.get("CgroupVersion") != "2":
+            layers = host_layers(info, self.runtime)
+            if not all(layers[key] for key in ("linux", "cgroup2", "limits", "seccomp")):
                 raise ValueError()
-            if not all(value in options for value in ("seccomp", "apparmor", "userns")):
+            # Either the guest runs on a user-space kernel (gVisor) or the host
+            # remaps container users; a plain root runtime with neither is refused.
+            if not (layers["gvisor"] or layers["userns"]):
                 raise ValueError()
-            if self.runtime not in info.get("Runtimes", {}) or not info.get("MemoryLimit") or not info.get("PidsLimit"):
-                raise ValueError()
+            self.state.joinpath("host-layers.json").write_text(json.dumps(layers, sort_keys=True))
             command(["docker", "image", "inspect", self.image])  # Never pull while admitting.
         except (OSError, ValueError, TypeError, json.JSONDecodeError):
             raise NotReady("host_not_verified") from None
 
     def argv(self, name, job_digest, deadline, guest_program):
+        hardening = ["--security-opt", "no-new-privileges=true"]
+        if self.apparmor:
+            hardening += ["--security-opt", "apparmor=ai-tutor-runner"]
         return ["docker", "create", "--name", name, "--label", f"{LABEL}=true",
                 "--label", f"{LABEL}.job={job_digest}", "--label", f"{LABEL}.deadline={deadline}",
                 "--runtime", self.runtime, "--network", "none", "--ipc", "none",
                 "--read-only", "--user", "65532:65532", "--cap-drop", "ALL",
-                "--security-opt", "no-new-privileges=true", "--security-opt", "apparmor=ai-tutor-runner",
+                *hardening,
                 "--security-opt", f"seccomp={self.seccomp_file}", "--pids-limit", "32",
                 "--cpus", "1", "--memory", "512m", "--memory-swap", "512m",
                 "--ulimit", "nofile=64:64", "--ulimit", "core=0:0", "--log-driver", "none",
