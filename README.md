@@ -32,6 +32,8 @@
 | Проекты | ![Проекты](docs/screenshots/projects.png) |
 | Публичное портфолио | ![Портфолио](docs/screenshots/portfolio.png) |
 | Диагностика | ![Диагностика](docs/screenshots/diagnostic.png) |
+| Мобильный дашборд (360px) | ![Мобильный дашборд](docs/screenshots/mobile-dashboard.png) |
+| Мобильный урок (360px) | ![Мобильный урок](docs/screenshots/mobile-lesson.png) |
 
 ## ✨ Overview
 
@@ -73,6 +75,8 @@ AI Python Mentor — full-stack приложение для изучения Pyt
 | AI-контур | `scripts/ai-smoke.py` | живые ответы RU+EN, 3–8 c, стоимость в логах |
 | Нагрузка | `k6 run scripts/load/learning.js` | p95 = 76 ms, 0 % ошибок, 27.9 req/s (10 VU) |
 | CI | `gh run view <id>` | 8 jobs зелёные, включая исполнение кода в браузере |
+| Визуальный аудит | `npx playwright test visual.spec.mjs` | 6 passed: 360/768/1440 без горизонтального переполнения |
+| Конфигурация ops | `python scripts/validate-ops.py` | promtool: config + 8 правил; caddy: Valid configuration |
 
 Ограничения, которые нельзя обойти на сборочной машине: здесь нет Docker и root, поэтому
 `compose.prod.yml` проверен структурно, а контейнерный бэкенд runner (runsc + cgroups v2) —

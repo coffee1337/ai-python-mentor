@@ -58,9 +58,17 @@ def solve(payload):
 
 
 def _kill_group(process: subprocess.Popen) -> None:
+    """Kill the guest's process group, but never a pid that already exited.
+
+    ``capture`` reaps the child on success, which releases its pid; signalling a
+    released pid can hit a recycled process — the next case in a tight loop —
+    and kill it. ``poll()`` is the authority on whether the child is still ours.
+    """
+    if process.poll() is not None:
+        return
     with contextlib.suppress(ProcessLookupError, PermissionError):
         os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-    with contextlib.suppress(ProcessLookupError):
+    with contextlib.suppress(ProcessLookupError, OSError):
         process.kill()
 
 

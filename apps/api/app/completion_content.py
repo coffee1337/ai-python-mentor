@@ -428,7 +428,7 @@ TOPICS = [
     ),
     topic(
         "backend.async_python",
-        "async def и await",
+        "Асинхронные функции: async def и await",
         ["backend.password_hashing"],
         "Вызов async def создаёт coroutine; выполнение запускается await или планированием задачи. await позволяет event loop переключаться во время ожидания. CPU-работа без await и блокирующий sleep по-прежнему блокируют поток; async не превращает вычисления в параллельные.",
         "import asyncio\nasync def value(): return 7\nasync def main(): print(await value())\nasyncio.run(main())",
