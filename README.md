@@ -71,6 +71,7 @@ AI Python Mentor — full-stack приложение для изучения Pyt
 | Бэкап и restore | `scripts/backup.sh`, `scripts/restore-drill.sh` | 0.7 c / 3.2 c, digests совпали |
 | AI-контур | `scripts/ai-smoke.py` | живые ответы RU+EN, 3–8 c, стоимость в логах |
 | Нагрузка | `k6 run scripts/load/learning.js` | p95 = 76 ms, 0 % ошибок, 27.9 req/s (10 VU) |
+| CI | `gh run view <id>` | 8 jobs зелёные, включая исполнение кода в браузере |
 
 Ограничения, которые нельзя обойти на сборочной машине: здесь нет Docker и root, поэтому
 `compose.prod.yml` проверен структурно, а контейнерный бэкенд runner (runsc + cgroups v2) —

@@ -23,6 +23,7 @@
 | Деплой-конфигурация | `tests/test_deploy_config.py` | 8 passed (сервисы, healthcheck, порты, секреты) |
 | E2E браузер | `npx playwright test` (desktop+mobile) | 8 passed |
 | E2E исполнения кода | `EXECUTION_E2E=1 npx playwright test execution.spec.mjs` | 2 passed (браузер → runner → 3/3) |
+| CI целиком | GitHub Actions, 8 jobs | зелёные, включая job исполнения кода |
 | Нагрузка | `k6 run scripts/load/learning.js` | p95 = 76 ms, 0 % ошибок (порог 800 ms) |
 | Чистота | `grep -rn "TODO\|FIXME" apps` | 0 |
 | Линтеры | `ruff check apps scripts` | All checks passed |
@@ -34,6 +35,7 @@
 | Пункт DoD | Состояние | Что нужно |
 |---|---|---|
 | `docker compose up` на чистом хосте | конфигурация готова, прогон невозможен | верстак без Docker и root → нужен целевой хост |
+| Sentry на frontend | не подключён (backend есть) | `@sentry/nextjs` + `NEXT_PUBLIC_SENTRY_DSN` |
 | Контейнерный бэкенд runner (runsc + cgroups v2) | код есть, проверен unit-тестами | хост с Docker и runsc |
 | Email / Telegram / платежи | адаптеры готовы, ADR описывает поведение без провайдеров: checkout скрыт, письма не уходят, Telegram не привязан | SMTP, отдельный бот, платёжный аккаунт — от владельца (ADR в docs/decisions.md) |
 | E2E: публикация проекта | не покрыто браузерным тестом | сценарий публикации в портфолио |
