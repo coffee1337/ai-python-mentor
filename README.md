@@ -64,6 +64,7 @@ AI Python Mentor — full-stack приложение для изучения Pyt
 | Исполнение кода | `python -m unittest apps.runner.tests.test_exercise_catalog` | 90 заданий, 288 кейсов, эталоны 100 % |
 | Изоляция runner | `python -m unittest apps.runner.tests.test_landlock_sandbox` | 15 тестов: сеть, ФС, fork, exec, сигналы, CPU/RAM/вывод |
 | Браузерные сценарии | `cd scripts/ui-smoke && npx playwright test` | 8 passed (desktop + mobile) |
+| Исполнение кода в браузере | `EXECUTION_E2E=1 npx playwright test execution.spec.mjs` | 2 passed: решение ученика считается 3 из 3 в runner |
 | Веб | `cd apps/web && npm run lint && npm run build` | зелёные |
 | Линтеры | `ruff check apps scripts` | All checks passed |
 | Миграции | `alembic upgrade head` / `downgrade` на PostgreSQL 16 | обратимы, данные сохраняются |

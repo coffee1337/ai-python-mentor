@@ -133,8 +133,18 @@ PostgreSQL 16.15 в пользовательском пространстве (c
 устройствами, изоляция чужого аккаунта). Прогон локальный с CI-паритетом: `CI=1`, свежая БД,
 `seed-recovery.py`, Chromium 153.
 
-Осталось: сквозной сценарий с исполнением кода через runner (в браузерном стенде worker не поднят),
-публикация проекта в портфолио, сброс пароля.
+Добавлен сквозной сценарий исполнения кода: `scripts/ui-smoke/execution.spec.mjs` проходит весь
+путь браузер → API → очередь заданий → worker → mTLS runner → песочница → «Тесты: 3 из 3» и
+«Обработка завершена». Прогон с `EXECUTION_E2E=1` при поднятой цепочке:
+
+```
+npx playwright test execution.spec.mjs --reporter=list
+  ✓ [desktop] learner solution runs in the isolated runner and grades to 3 of 3 (7.7s)
+  ✓ [mobile]  learner solution runs in the isolated runner and grades to 3 of 3 (6.7s)
+  2 passed
+```
+
+Осталось: публикация проекта в портфолио и сброс пароля как отдельные браузерные сценарии.
 
 ```
 $ npx playwright test --reporter=list
