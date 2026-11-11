@@ -2,6 +2,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
 
@@ -30,8 +31,9 @@ def test_0018_version_capacity_roundtrip(tmp_path, monkeypatch):
     assert inspect(engine).get_columns("alembic_version")[0]["type"].length == 128
 
     command.upgrade(config, "head")
+    # Compare with the scripted head instead of a literal: a new migration must not
+    # force an edit of this test (and must never leave the database behind head).
+    head = ScriptDirectory.from_config(config).get_current_head()
     with engine.connect() as connection:
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == (
-            "0039_study_sessions"
-        )
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == head
     engine.dispose()
