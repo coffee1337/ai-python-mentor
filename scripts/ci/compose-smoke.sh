@@ -146,6 +146,13 @@ main() {
 
 status=0
 main || status=1
+if [ "$status" -ne 0 ] || [ "$FAILURES" -ne 0 ]; then
+  log "diagnostics"
+  for service in runner-reaper runner api execution-worker; do
+    echo "--- $service"
+    $COMPOSE logs --no-color --tail 60 "$service" 2>&1 | tail -60
+  done
+fi
 if [ "$FAILURES" -ne 0 ]; then status=1; fi
 log "result"
 if [ "$status" -eq 0 ]; then echo "COMPOSE SMOKE: ok"; else echo "COMPOSE SMOKE: $FAILURES failure(s)"; fi

@@ -22,9 +22,15 @@ def main():
     policy = Policy.from_environment()
     policy.state.mkdir(mode=0o700, parents=True, exist_ok=True)
     while True:
+        # Cleanup is best-effort and must not stop the beat: the heartbeat means
+        # "the watchdog loop is alive", not "there was nothing to clean". A host
+        # that fails verification is still quarantined, which blocks admission.
         try:
-            # Cleanup continues even if an attestation expires or host is quarantined.
             reap(policy)
+        except Exception:
+            policy.state.joinpath("reaper-cleanup-failures").write_text(str(time.time()))
+            print("runner_reaper_cleanup_failed", flush=True)
+        try:
             policy.verify(require_reaper=False)
             policy.state.joinpath("reaper-heartbeat").write_text(str(time.time()))
         except Exception:
