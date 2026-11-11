@@ -111,6 +111,15 @@ def render(template: str, payload: dict, *, base: str | None = None) -> tuple[st
             "все активные сессии отзываются.\n"
             "Если запрос не ваш, просто удалите письмо: пароль останется прежним.\n",
         )
+    if template == "weekly_report":
+        from app.weekly_report import WeeklyReport, render_email
+
+        report = payload.get("report") or {}
+        try:
+            subject, body = render_email(WeeklyReport(**report))
+        except TypeError:
+            raise MailError("invalid_report") from None
+        return subject, body
     if template == "failed_login":
         attempts = payload.get("attempts", "")
         count = f" ({attempts} попытки)" if attempts else ""

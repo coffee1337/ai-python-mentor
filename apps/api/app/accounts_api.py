@@ -200,6 +200,17 @@ def remove_account(payload: DeleteAccountRequest, response: Response, auth=Depen
     _clear_auth_cookies(response)
 
 
+@router.get("/me/weekly-report")
+def weekly_report_endpoint(auth=Depends(current_auth), db: Session = Depends(get_db)):
+    """The same report the bot and the email carry, rendered for the cabinet."""
+    from app.weekly_report import render_web, report_for_user
+
+    report = report_for_user(db, auth[0].id)
+    if report is None:
+        raise HTTPException(404, "Report is unavailable")
+    return render_web(report)
+
+
 @router.get("/me/notifications")
 def preferences(auth=Depends(current_auth), db: Session = Depends(get_db)):
     return notifications.preferences_response(db, auth[0].id)
@@ -228,8 +239,11 @@ def telegram_token(auth=Depends(csrf_protected), db: Session = Depends(get_db)):
     db.execute(select(User.id).where(User.id == user.id).with_for_update()).scalar_one()
     raw, expiry = issue_token(db, user.id, "telegram_bind", 15)
     db.commit()
+    from app.telegram_bot import link_url
+
     username = os.getenv("TELEGRAM_BOT_USERNAME", "").strip()
-    return {"token": raw, "expires_at": expiry, "bot_username": username or None}
+    # The deep link binds the chat in one tap; the code stays single-use and short-lived.
+    return {"token": raw, "expires_at": expiry, "bot_username": username or None, "deep_link": link_url(raw)}
 
 
 @router.post("/me/telegram/unbind", status_code=204)

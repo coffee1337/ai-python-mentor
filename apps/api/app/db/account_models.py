@@ -2,7 +2,7 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid, func
+from sqlalchemy import JSON, BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -37,10 +37,26 @@ class NotificationPreference(Base):
 
 
 class TelegramBinding(Base):
+    """Account <-> chat link. Revocation keeps the row: history is not deleted."""
+
     __tablename__ = "telegram_bindings"
     user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    chat_id: Mapped[str] = mapped_column(String(32), unique=True)
+    chat_id: Mapped[str] = mapped_column(String(40), unique=True)
+    username: Mapped[str | None] = mapped_column(String(64))
+    notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # Quiet hours as "HH:MM-HH:MM" in UTC; delivery inside the window is postponed.
+    quiet_hours: Mapped[str | None] = mapped_column(String(11))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TelegramUpdate(Base):
+    """Webhook delivery ledger: a repeated update_id never replays an action."""
+
+    __tablename__ = "telegram_updates"
+    update_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    chat_id: Mapped[str | None] = mapped_column(String(40))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class NotificationOutbox(Base):

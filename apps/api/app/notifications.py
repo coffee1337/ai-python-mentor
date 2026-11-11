@@ -24,7 +24,9 @@ from app import mailer
 from app.account_services import aware, consume_token, utcnow
 from app.db.account_models import NotificationOutbox, NotificationPreference, TelegramBinding
 from app.db.models import User, UserSkill
+from app.quiet_hours import in_quiet_hours
 from app.security import new_token, token_digest
+from app.weekly_report import enqueue_weekly_reports
 
 
 def development_mail_enabled() -> bool:
@@ -204,8 +206,14 @@ def _deliver(db: Session, row: NotificationOutbox) -> None:
         headers = {"Authorization": f"Bearer {key}", "Idempotency-Key": row.idempotency_key}
     else:
         key, binding = telegram_configuration(), db.get(TelegramBinding, row.user_id)
-        if key is None or binding is None:
+        if key is None or binding is None or binding.revoked_at is not None:
             raise HTTPException(503, "Telegram delivery is not configured")
+        if not binding.notifications_enabled or in_quiet_hours(binding.quiet_hours):
+            # Postpone instead of dropping: the learner asked for quiet, not silence.
+            row.status = "pending"
+            row.available_at = utcnow() + timedelta(minutes=30)
+            db.commit()
+            return
         if row.template == "telegram_tutor":
             reply = generate_telegram_reply(db, row)
         else:
@@ -453,6 +461,7 @@ def main():
         try:
             with SessionLocal() as db:
                 enqueue_due_reviews(db, limit=100)
+                enqueue_weekly_reports(db)
                 dispatch_outbox(db, limit=25)
         except Exception:
             print("notification_dispatch_unavailable", flush=True)

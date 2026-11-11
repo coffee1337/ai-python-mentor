@@ -38,6 +38,7 @@ from app.skill_graph_api import router as skill_graph_router
 from app.study_drafts import router as study_drafts_router
 from app.study_progress import router as study_progress_router
 from app.study_sessions import router as study_sessions_router
+from app.telegram_bot import router as telegram_router
 from app.vacancies import router as vacancies_router
 
 configure_logging()
@@ -81,6 +82,7 @@ app.include_router(vacancies_router)
 app.include_router(projects_router)
 app.include_router(generated_practice_router)
 app.include_router(jobs_router)
+app.include_router(telegram_router)
 app.include_router(health_router)
 app.include_router(study_progress_router)
 app.include_router(study_drafts_router)

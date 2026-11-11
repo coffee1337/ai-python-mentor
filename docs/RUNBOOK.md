@@ -147,3 +147,32 @@ docker compose -f compose.prod.yml up -d api execution-worker runner
 
 Ключ AI-шлюза меняется только в `.env.prod` + `up -d api`: маршрутизация моделей остаётся в
 `apps/api/config/model-routing.json`.
+
+## Telegram-бот продукта (W4)
+
+```bash
+# 1. Переменные (только .env на хосте, 0600). Секрет вебхука — 32+ символа.
+TELEGRAM_BOT_TOKEN=<token из @BotFather>
+TELEGRAM_BOT_USERNAME=nastavn1kAI_bot
+TELEGRAM_WEBHOOK_SECRET=<openssl rand -hex 32>
+
+# 2. Вебхук ставится только после того, как домен отвечает по HTTPS из интернета.
+curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
+  -d "url=https://<домен>/telegram/webhook/$TELEGRAM_WEBHOOK_SECRET" \
+  -d "secret_token=$TELEGRAM_WEBHOOK_SECRET" \
+  -d 'allowed_updates=["message","callback_query"]'
+
+# 3. Проверка и откат.
+curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
+curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/deleteWebhook"
+```
+
+Ротация токена: новый токен в @BotFather → заменить `TELEGRAM_BOT_TOKEN` → `deleteWebhook` →
+`setWebhook` с прежним секретом (секрет можно не менять, он не связан с токеном).
+
+Поведение при 429 от Telegram: вызов логируется как `telegram_call_failed method=sendMessage
+status=429`, сообщение остаётся в outbox и повторяется диспетчером (до 5 попыток). Токен и тело
+ответа в лог не попадают.
+
+Без токена канал выключен: `/telegram/status` отдаёт `configured=false`, вебхук — 503, кнопка
+привязки в кабинете не выдаёт код. Остальное приложение работает.
