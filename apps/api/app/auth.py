@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app import passwords
 from app.account_services import throttle
 from app.db.models import AuthSession, Goal, Profile, User
 from app.db.session import get_db
@@ -27,6 +28,9 @@ from app.security import hash_password, new_token, token_digest, verify_password
 SESSION_COOKIE = "mentor_session"
 CSRF_COOKIE = "mentor_csrf"
 SESSION_TTL = timedelta(days=30)
+# Absolute cap: even if a future change adds sliding renewal, a session can
+# never outlive this window (ASVS 3.7.2).
+SESSION_ABSOLUTE_TTL = timedelta(days=30)
 AUTH_RATE_LIMIT = 20
 AUTH_RATE_WINDOW_SECONDS = 60.0
 _attempts: dict[str, list[float]] = {}
@@ -92,7 +96,12 @@ def _find_session(request: Request, db: Session) -> tuple[User, AuthSession]:
     session = db.scalar(select(AuthSession).where(AuthSession.token_hash == token_digest(raw_token)))
     now = _now()
     expires_at = session.expires_at.replace(tzinfo=UTC) if session is not None and session.expires_at.tzinfo is None else (session.expires_at if session is not None else None)
-    if session is None or session.revoked_at is not None or expires_at <= now or session.user is None or not session.user.is_active:
+    created_at = (session.created_at.replace(tzinfo=UTC)
+                  if session is not None and session.created_at.tzinfo is None
+                  else (session.created_at if session is not None else None))
+    if (session is None or session.revoked_at is not None or expires_at <= now
+            or created_at is None or created_at + SESSION_ABSOLUTE_TTL <= now
+            or session.user is None or not session.user.is_active):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
     session.last_seen_at = now
     return session.user, session
@@ -138,6 +147,9 @@ def account_scoped_csrf(auth: tuple[User, AuthSession] = Depends(csrf_protected)
 @router.post("/auth/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterRequest, response: Response, request: Request, db: Session = Depends(get_db)) -> AuthResponse:
     _rate_limit(request, db, payload.email)
+    if passwords.is_breached(payload.password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Password appears in a public breach; choose another one")
     if db.scalar(select(User).where(User.email == payload.email)) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Unable to create account")
     user = User(email=payload.email, password_hash=hash_password(payload.password))

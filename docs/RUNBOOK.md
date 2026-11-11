@@ -13,7 +13,7 @@
 | `AI_GATEWAY_API_KEY` | живой AI-контур | наставник отвечает 503, остальное работает |
 | SMTP-провайдер | подтверждение email, сброс пароля | регистрация без письма: смотри ADR в `docs/decisions.md` |
 | Платёжный провайдер | подписки | billing UI скрыт, лимиты по тарифу free |
-| `SENTRY_DSN` | ошибки backend/frontend | ошибки только в JSON-логах |
+| `SENTRY_DSN` и `NEXT_PUBLIC_SENTRY_DSN` | ошибки backend и frontend | ошибки только в JSON-логах; фронт собирается без трекера |
 | `GRAFANA_ADMIN_PASSWORD` | дашборды | профиль `monitoring` не стартует |
 
 ## 2. Первый деплой [host]

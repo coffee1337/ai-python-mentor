@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError, 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from app import billing, notifications
+from app import billing, notifications, passwords
 from app.account_services import (
     consume_token,
     delete_account,
@@ -158,6 +158,8 @@ def change_password(payload: PasswordChangeRequest, response: Response,
     user = db.scalar(select(User).where(User.id == user.id).with_for_update(), execution_options={"populate_existing": True})
     if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(403, "Current password is incorrect")
+    if passwords.is_breached(payload.password):
+        raise HTTPException(422, "Password appears in a public breach; choose another one")
     user.password_hash = hash_password(payload.password)
     revoke_sessions(db, user.id)
     db.execute(update(AccountToken).where(AccountToken.user_id == user.id,

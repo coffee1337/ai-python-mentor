@@ -4,13 +4,26 @@ import type { NextConfig } from "next";
 // Inline script and style stay allowed because the Next.js runtime ships the
 // hydration payload and styled-jsx output inline; everything else is pinned to
 // 'self'.
+// The error tracker is opt-in: its ingest endpoint is allowed only when a DSN
+// is configured at build time.
+const sentryDsn = process.env.NEXT_PUBLIC_SENTRY_DSN ?? process.env.SENTRY_DSN ?? "";
+const sentryOrigin = (() => {
+  if (!sentryDsn) return null;
+  try {
+    const url = new URL(sentryDsn);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return null;
+  }
+})();
+
 const contentSecurityPolicy = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self'",
+  sentryOrigin ? `connect-src 'self' ${sentryOrigin}` : "connect-src 'self'",
   "worker-src 'self' blob:",
   "frame-ancestors 'none'",
   "base-uri 'self'",
