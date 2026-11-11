@@ -98,11 +98,27 @@ Ran 3 tests in 41.262s
 OK
 ```
 
-### P0-3. AI Gateway без провайдера и без учёта стоимости — `open`
+### P0-3. AI Gateway без провайдера и без учёта стоимости — `fixed`
 
-`apps/api/app/ai_gateway.py` — адаптер; `AI_GATEWAY_URL`/`MODEL`/`API_KEY` не заполнены, реальных
-вызовов нет. Ключ шлюза владельца (`CHEAPCODE_API_KEY`, `https://ru.cheapvibecode.ru/v1`) в репозитории
-отсутствует и должен лежать только в `.env`.
+Было: адаптер без ключа, один вызов, без роутинга, ретраев и стоимости.
+
+Стало: живой провайдер `https://ru.cheapvibecode.ru/v1` (48 моделей в каталоге), роутинг по тирам
+`apps/api/config/model-routing.json` (fast/balanced/strong), цепочка моделей с 2 попытками и
+экспоненциальным бэкоффом, переход на следующую модель при 429/5xx/таймауте, общий бюджет 45 с,
+прогрев модели при старте, токены и стоимость в каждом вызове, дневной лимит
+`AI_SPEND_DAILY_LIMIT_USD` (по умолчанию $5) с алертом на 80 %.
+
+```
+$ python ../../scripts/ai-smoke.py
+ok task=tutor_chat lang=ru model=gpt-6-luna prompt=43 completion=37 cost=$0.000024 attempts=1 latency=3553ms
+ok task=tutor_chat lang=en model=gpt-6-luna prompt=41 completion=35 cost=$0.000023 attempts=1 latency=8046ms
+ok task=lesson_generation lang=ru model=gpt-6.1-sol ... latency=2739ms
+ok task=lesson_generation lang=en model=gpt-6.1-sol ... latency=5370ms
+RESULT: ok
+```
+
+Ключ живёт только в `.env` (не в git), в логах и ответах API его нет — проверено тестом
+`test_every_call_is_logged_with_tokens_and_cost` (в записи журнала нет текста промпта).
 
 ### P1-1. PostgreSQL-набор фактически не запускался (на верстаке не было сервера) — `fixed`
 
@@ -110,55 +126,80 @@ OK
 PostgreSQL 16.15 в пользовательском пространстве (conda-forge), миграции применены, тесты прогнаны: 6 passed.
 В CI PG-набор есть, но локально он не воспроизводился.
 
-### P1-2. Браузерный набор покрывает один сценарий — `open`
+### P1-2. Браузерный набор — `partial`
 
-`scripts/ui-smoke/journey.spec.mjs` содержит **один** тест (`grep -c "test(" → 1`) на desktop+mobile.
-В DoD требуются регистрация → урок → квиз → задача с исполнением → AI-чат → прогресс → публикация.
-Отсутствуют: исполнение кода через runner, AI-чат, публикация проекта, восстановление пароля.
+Было: один сценарий. Стало после слияния #5/#6: 4 сценария × 2 вьюпорта = **8 тестов, 8 passed**
+(новичок и его рабочее пространство, восстановление кода, синхронизация черновиков между
+устройствами, изоляция чужого аккаунта). Прогон локальный с CI-паритетом: `CI=1`, свежая БД,
+`seed-recovery.py`, Chromium 153.
 
-### P1-3. Мониторинга нет — `open`
+Осталось: сквозной сценарий с исполнением кода через runner (в браузерном стенде worker не поднят),
+публикация проекта в портфолио, сброс пароля.
 
-`grep -rln "prometheus|sentry|grafana|opentelemetry"` по исходникам даёт только `node_modules` и
-артефакты сборки `.next`; ни Prometheus-метрик, ни Sentry, ни дашбордов, ни алертов в коде нет.
-`opentelemetry-api` есть в lock-файле, но не используется приложением.
-
-### P1-4. Нет production-деплоя и `compose.prod.yml` — `open`
-
-```bash
-$ ls compose.prod.yml
-ls: cannot access 'compose.prod.yml': No such file or directory
+```
+$ npx playwright test --reporter=list
+  8 passed (3.1m)
 ```
 
-Есть только `docker-compose.yml` для разработки (db/api/web/execution-dispatcher). Нет runner-сервиса,
-reverse-proxy с TLS, миграций на старте, идемпотентного сида.
+### P1-3. Мониторинг — `fixed`
 
-### P1-5. Runner-сервис не входит в compose и не имеет production-упаковки — `open`
+Было: `grep -rln "prometheus|sentry|grafana"` даёт только `node_modules` и `.next` — метрик,
+Sentry, дашбордов и алертов не было.
 
-`apps/runner/deploy/` содержит systemd-юниты для отдельного хоста, но compose-профиля для runner нет.
+Стало: `/metrics` с латентностью, кодами по шаблону маршрута, токенами и стоимостью AI, отказами
+по квотам, очередью executions и доступностью БД (`apps/api/app/metrics.py`); Sentry с очисткой
+тела запроса, query string, `Authorization`, `Cookie` и `user` (`app/observability.py`);
+Prometheus с 7 алертами (`ops/prometheus/alerts.yml`); Grafana с дашбордом на 10 панелей
+(`ops/grafana/dashboards/apm.json`); структурные JSON-логи (`app/logging_config.py`).
 
-### P2-1. LICENSE отсутствует — `open`
-
-```bash
-$ ls LICENSE*
-ls: cannot access 'LICENSE*': No such file or directory
+```
+$ python -m pytest tests/test_metrics.py tests/test_deploy_config.py -q
+14 passed
 ```
 
-### P2-2. Нет `docs/SPEC-MATRIX.md` — `in progress`
+### P1-4. Production-деплой — `partial` (артефакты готовы, живой прогон заблокирован)
 
-Матрица трассируемости собирается отдельным проходом по спеке, README и UNIMPLEMENTED_STAGES.
+Было: `ls compose.prod.yml` → файла нет; только dev-стек без runner, TLS и миграций на старте.
+
+Стало: `compose.prod.yml` поднимает db → migrate → seed-check → api → workers → runner + reaper →
+web → Caddy; профиль `monitoring` добавляет Prometheus и Grafana. Наружу публикует порты только
+Caddy, `/metrics` и `/internal/*` закрыты. `docker compose up` на верстаке невозможен: нет Docker и
+root — проверка структурная (8 тестов) плюс `docker compose config` на целевом хосте.
+
+### P1-5. Runner в production-стеке — `fixed`
+
+Добавлены `apps/runner/Dockerfile`, сервисы `runner` и `runner-reaper` в `compose.prod.yml`,
+`.env.runner.example` без единого секрета приложения: тест
+`test_runner_is_isolated_from_application_secrets` падает, если в окружении runner появится
+`DATABASE_URL`, `AI_GATEWAY_API_KEY` или docker.sock.
+
+### P2-1. LICENSE — `fixed`
+
+Добавлен `LICENSE` (MIT, copyright 2026 coffee1337).
+
+### P2-2. `docs/SPEC-MATRIX.md` — `fixed`
+
+Матрица собрана: **250 строк**, done 68 / partial 126 / missing 35 / out-of-scope 21,
+строк без статуса — 0. Каждая строка содержит код и тест или явное «нет».
 
 ### P2-3. Платёжный, email- и Telegram-контуры без боевых провайдеров — `open`
 
 Адаптеры есть (`app/billing.py`, `app/notifications.py`), провайдеры не подключены, доставка не
 проверялась. Решение по каждому — sandbox-прогон или ADR «вырезано».
 
-### P3-1. PR #5 и #6 не слиты — `open`
+### P3-1. PR #5 и #6 — `fixed`
 
-```bash
-$ gh pr list --state open
-6  Sync private learning drafts across devices and track study sessions  codex/study-sync-sessions
-5  Complete daily learning, progress and saved-work recovery            codex/study-workspace-completion
+Оба перебазированы на актуальный main, прогнаны на PostgreSQL и SQLite, влиты fast-forward,
+ветки удалены, PR закрыты.
+
 ```
+$ gh pr list --state open
+open-prs: 0
+```
+
+#5: 289 API-тестов, 7 PG-тестов, web lint+build — зелено.
+#6: миграции 0038–0039 проверены на копии PostgreSQL (upgrade → downgrade 0037 → upgrade,
+контрольные данные сохранены, `alembic check` чист), 329 API-тестов, Playwright 8/8.
 
 ## 4. Что этот аудит не проверяет и почему
 
