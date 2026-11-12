@@ -6395,3 +6395,42 @@ small {
   font-size: 0.78rem;
   border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
 }
+
+.admin-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin: 0 0 10px;
+}
+
+.admin-metrics div {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.admin-metrics dt {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.admin-metrics dd {
+  margin: 0;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.admin-table th,
+.admin-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}

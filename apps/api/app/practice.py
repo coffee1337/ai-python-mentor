@@ -168,6 +168,15 @@ def _persist_result_and_evidence(db: Session, attempt: CodingAttempt, result: Ru
     """
     attempt.status = result.status
     attempt.result = json.dumps(result.__dict__)
+    from app import analytics
+
+    analytics.emit(
+        db,
+        user_id=attempt.user_id,
+        name="coding_graded",
+        exercise_id=attempt.exercise_id,
+        status=result.status,
+    )
     try:
         with db.begin_nested():
             submission = _persist_submission_result(db, attempt, result)

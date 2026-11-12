@@ -577,6 +577,9 @@ def complete_lesson(lesson_id: str, payload: AnswerRequest,
         ).where(MentorConversation.user_id == user.id,
                 MentorConversation.lesson_id == lesson_id,
                 MentorMessage.role == "assistant").limit(1)) is not None
+        from app import analytics
+
+        analytics.emit(db, user_id=user.id, name="lesson_completed", lesson_id=lesson_id)
         db.add(LessonCompletion(user_id=user.id, lesson_id=lesson_id, answer=payload.answer,
                                exercise_version_id=version.id,
                                evidence_type="authored_quiz_assisted" if assisted else "authored_quiz_correct"))

@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app import notifications, passwords
+from app import analytics, notifications, passwords
 from app.account_services import throttle
 from app.db.models import AuthSession, Goal, Profile, User
 from app.db.session import get_db
@@ -160,6 +160,7 @@ def register(payload: RegisterRequest, response: Response, request: Request, db:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Unable to create account") from None
     session_token, csrf_token = _create_session(db, user)
+    analytics.emit(db, user_id=user.id, name="user_registered", source="web")
     db.commit()
     db.refresh(user)
     _set_auth_cookies(response, session_token, csrf_token)
@@ -238,6 +239,7 @@ def complete_onboarding(payload: OnboardingRequest, auth: tuple[User, AuthSessio
     goal.target_role = payload.target_role.strip()
     goal.weekly_minutes = payload.weekly_minutes
     goal.motivation = payload.motivation.strip() if payload.motivation else None
+    analytics.emit(db, user_id=user.id, name="onboarding_completed", level=payload.experience_level)
     db.commit()
     db.refresh(user)
     return OnboardingResponse(completed=True, profile=user.profile, goal=user.goal)

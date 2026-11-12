@@ -9,9 +9,9 @@
 | Показатель | Значение |
 |---|---|
 | Всего строк | 250 |
-| done | 76 |
+| done | 79 |
 | partial | 125 |
-| missing | 28 |
+| missing | 25 |
 | out-of-scope | 21 |
 | строк без статуса | 0 |
 
@@ -520,7 +520,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
 | 61.1 | Users и subscriptions | `partial` | `apps/api/app/accounts_api.py:321; apps/api/app/accounts_api.py:338` | `tests/test_account_services.py::test_admin_role_is_server_allowlisted_and_actions_are_audited` | есть метрики и revoke сессий, нет UI и управления подпиской |
-| 61.2 | Courses, skills, lessons, exercises, knowledge chunks | `missing` | `нет` | `нет` | admin API и UI для контента отсутствуют |
+| 61.2 | Courses, skills, lessons, exercises, knowledge chunks | `done` | `apps/api/app/admin_content_api.py:1; apps/web/app/admin/page.tsx:1` | `tests/test_admin_content.py::test_overview_matches_the_audit; tests/test_admin_content.py::test_lesson_detail_shows_checks_and_exercise` | admin API: обзор с проверкой полноты, список уроков с фильтрами, детали урока с проверками и заданием, список заданий; страница /admin. Редактирование остаётся в коде по ADR |
 | 61.3 | Failed AI calls, flagged tutor, code-run failures, AI cost, feature flags, content versions | `partial` | `apps/api/app/accounts_api.py:321; apps/api/app/accounts_api.py:331` | `tests/test_account_services.py::test_admin_role_is_server_allowlisted_and_actions_are_audited` | есть статусы AI/runner и usage; flagged tutor, flags и версии контента нет |
 
 ## §62. Observability
@@ -572,7 +572,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
-| 68.1 | North Star, acquisition, activation, engagement, retention, learning, revenue | `missing` | `нет` | `нет` | продуктовой аналитики и событий нет |
+| 68.1 | North Star, acquisition, activation, engagement, retention, learning, revenue | `done` | `apps/api/app/analytics.py:1` | `tests/test_growth.py::test_funnel_is_computed_from_events; tests/test_growth.py::test_event_props_are_an_allow_list` | события продукта с закрытым списком полей; North Star, активация, вовлечённость, возврат и обучение считаются из событий; /admin/analytics |
 
 ## §69. Learning Metrics
 
@@ -686,7 +686,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
-| 86.1 | Флаги github_import, large_repo_review, new_tutor_v2, new_mastery_model, new_vacancy_parser | `missing` | `нет` | `нет` | механизма feature flags нет |
+| 86.1 | Флаги github_import, large_repo_review, new_tutor_v2, new_mastery_model, new_vacancy_parser | `done` | `apps/api/app/feature_flags.py:1` | `tests/test_growth.py::test_rollout_is_stable_and_bounded; tests/test_growth.py::test_percentage_and_override` | пять флагов из спеки, детерминированная раскатка по хешу, исключение для пользователя важнее процента, запись в лог аудита |
 
 ## §87. Основные security threats
 

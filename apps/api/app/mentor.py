@@ -307,6 +307,9 @@ def chat(lesson_id: str, payload: ChatRequest,
                               status="completed", reply_to_id=existing.id,
                               created_at=datetime.now(UTC))
     db.add(assistant)
+    from app import analytics as product_analytics
+
+    product_analytics.emit(db, user_id=user_id, name="tutor_message", lesson_id=lesson_id, source=mode)
     db.commit()
     db.refresh(assistant)
     # The reason is user-facing: the learner sees why the mode was chosen.

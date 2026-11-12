@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.responses import JSONResponse
 
 from app.accounts_api import router as accounts_router
+from app.admin_content_api import router as admin_content_router
 from app.ai_curriculum_api import router as ai_curriculum_router
 from app.assessment import router as assessment_router
 from app.auth import router as auth_router
@@ -20,6 +21,7 @@ from app.curriculum_api import router as curriculum_router
 from app.db.session import engine
 from app.exercise_hints import router as exercise_hints_router
 from app.generated_practice import router as generated_practice_router
+from app.growth_api import router as growth_router
 from app.health_api import router as health_router
 from app.http_limits import RequestSizeLimit
 from app.jobs_api import router as jobs_router
@@ -85,6 +87,8 @@ app.include_router(generated_practice_router)
 app.include_router(jobs_router)
 app.include_router(telegram_router)
 app.include_router(code_review_router)
+app.include_router(growth_router)
+app.include_router(admin_content_router)
 app.include_router(health_router)
 app.include_router(study_progress_router)
 app.include_router(study_drafts_router)
