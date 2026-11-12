@@ -6434,3 +6434,73 @@ small {
   padding: 6px 8px;
   border-bottom: 1px solid var(--line);
 }
+
+.public-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 14px clamp(16px, 4vw, 40px);
+  border-bottom: 1px solid var(--line);
+}
+
+.public-brand {
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.public-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-right: auto;
+  font-size: 0.9rem;
+}
+
+.public-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.public-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+}
+
+.public-meta {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.public-article {
+  display: grid;
+  gap: 10px;
+}
+
+.public-article h2 {
+  margin: 8px 0 0;
+  font-size: 1rem;
+}
+
+.public-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.public-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.page-lead {
+  max-width: 70ch;
+  color: var(--muted);
+}

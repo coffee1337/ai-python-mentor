@@ -9,9 +9,9 @@
 | Показатель | Значение |
 |---|---|
 | Всего строк | 250 |
-| done | 80 |
+| done | 83 |
 | partial | 125 |
-| missing | 24 |
+| missing | 21 |
 | out-of-scope | 21 |
 | строк без статуса | 0 |
 
@@ -192,7 +192,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 | 17.2 | Skill Memory: структурированное mastery по навыку | `done` | `apps/api/app/db/models.py:756` | `tests/test_skill_graph.py::test_mastery_fallback_is_consistent_across_path_plan_and_curriculum` | UserSkill — проекция evidence |
 | 17.3 | Mistake Memory: тип, описание, first/last seen, count | `partial` | `apps/api/app/db/models.py:388` | `tests/test_mistake_memory.py::test_distinct_mapped_mistakes_increment_but_reprocessing_is_idempotent` | нет resolved-статуса; описание берётся из MisconceptionVersion, category/fingerprint отсутствуют |
 | 17.4 | Misconception Memory: отличие механической ошибки от неверной модели | `partial` | `apps/api/app/db/models.py:306; apps/api/app/db/models.py:351` | `tests/test_mistake_memory.py::test_assessment_wrong_response_uses_only_its_exact_authored_mapping` | только authored misconception versions, авто-извлечения нет |
-| 17.5 | Interaction Summary и Behavioral Memory | `missing` | `нет` | `нет` | сводок сессий и поведенческих сигналов нет |
+| 17.5 | Interaction Summary и Behavioral Memory | `done` | `apps/api/app/memory.py:1` | `tests/test_memory.py::test_summary_counts_and_flags_an_unanswered_question; tests/test_memory.py::test_profile_measures_preference_and_pass_rate; tests/test_memory.py::test_mentor_receives_the_summary_as_untrusted_data` | сводка диалога (вопросы, ответы, повторяющиеся термины, неотвеченный вопрос) и поведенческий профиль (режим, доля пройденных запусков, темп) считаются из записей; в промпт уходит ограниченный блок как untrusted, транскрипт не передаётся |
 
 ## §18. Spaced Repetition
 
@@ -277,7 +277,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
-| 28.1 | PWA installable experience | `missing` | `нет` | `нет` | manifest и service worker отсутствуют |
+| 28.1 | PWA installable experience | `done` | `apps/web/app/manifest.ts:1; apps/web/public/sw.js:1` | `tests/test_public_surfaces.py::test_manifest_declares_an_installable_app; tests/test_public_surfaces.py::test_service_worker_never_caches_the_api_and_has_an_offline_fallback; tests/test_public_surfaces.py::test_pwa_icons_are_real_png_files` | манифест с иконками 192/512, service worker кэширует только оболочку и никогда /api, офлайн-страница, регистрация воркера после загрузки |
 | 28.2 | Mobile: теория, quiz, flashcards, короткие правки, чат, roadmap | `partial` | `apps/web/app/globals.css:1` | `нет` | адаптивная вёрстка есть, flashcards и PWA нет |
 | 28.3 | Сообщение «задание удобнее продолжить на компьютере» | `missing` | `нет` | `нет` | ограничения мобильного редактора не сообщаются |
 
@@ -641,7 +641,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
-| 79.1 | Публичные страницы concepts, roadmaps, error explanations, interview guides, skill pages | `missing` | `apps/web/app/page.tsx:1` | `нет` | только лендинг |
+| 79.1 | Публичные страницы concepts, roadmaps, error explanations, interview guides, skill pages | `done` | `apps/web/app/concepts/[slug]/page.tsx:1; apps/web/app/roadmaps/[slug]/page.tsx:1; apps/web/app/errors/[slug]/page.tsx:1; apps/web/app/interviews/[slug]/page.tsx:1; apps/web/app/skills/[slug]/page.tsx:1` | `tests/test_public_surfaces.py::test_seo_snapshot_covers_the_whole_course; tests/test_public_surfaces.py::test_seo_snapshot_never_carries_graded_content; tests/test_public_surfaces.py::test_seo_snapshot_matches_the_authored_course` | 90 страниц тем, 90 страниц навыков, 3 маршрута, 90 разборов ошибок и 6 гайдов по собеседованию; статическая генерация, sitemap и robots; оцениваемые поля в снапшот не попадают, устаревший снапшот ловится тестом |
 
 ## §80. Referral
 

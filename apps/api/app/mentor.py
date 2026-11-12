@@ -248,6 +248,12 @@ def chat(lesson_id: str, payload: ChatRequest,
         MentorMessage.id != existing.id,
     ).order_by(MentorMessage.created_at.desc()).limit(6)))))
     messages = context_messages(lesson, level, mode)
+    from app import memory as student_memory
+
+    summary = student_memory.interaction_summary(db, user_id=user_id, lesson_id=lesson_id)
+    if summary.questions:
+        # Structured memory instead of a transcript: bounded, count-based, untrusted.
+        messages.insert(2, {"role": "user", "content": "Untrusted " + summary.prompt_block()})
     messages += [{"role": message.role, "content": message.content} for message in prior]
     messages.append({"role": "user", "content": payload.message})
     conversation_id = conversation.id

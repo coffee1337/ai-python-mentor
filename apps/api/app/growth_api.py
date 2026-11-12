@@ -34,6 +34,18 @@ def my_features(auth=Depends(current_auth), db: Session = Depends(get_db)) -> di
     return {"flags": feature_flags.snapshot(db, auth[0].id)}
 
 
+@router.get("/me/memory")
+def my_memory(lesson_id: str | None = None, auth=Depends(current_auth), db: Session = Depends(get_db)) -> dict:
+    """What the product remembers about this learner: counts, not a transcript."""
+    from app import memory
+
+    profile = memory.behavioural_profile(db, user=auth[0])
+    if not lesson_id:
+        return {"profile": profile, "dialogue": None}
+    summary = memory.interaction_summary(db, user_id=auth[0].id, lesson_id=lesson_id)
+    return {"profile": profile, "dialogue": summary.as_dict()}
+
+
 @router.get("/admin/features")
 def flags_state(auth=Depends(admin_auth), db: Session = Depends(get_db)) -> dict:
     return {"catalogue": feature_flags.CATALOGUE, "flags": feature_flags.state(db)}
