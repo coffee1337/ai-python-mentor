@@ -136,6 +136,11 @@ def enqueue_owned(
         raise HTTPException(422, "Invalid idempotency key")
     if payload.language != "python" or payload.mode != "function" or len(payload.source_code.encode()) > 64 * 1024:
         raise HTTPException(422, "Only bounded Python function submissions are supported")
+    from app import secret_scan
+
+    scan = secret_scan.scan(payload.source_code)
+    if not scan.clean:
+        raise HTTPException(422, scan.guidance())
     digest = hashlib.sha256(idempotency_key.encode()).hexdigest()
     body = hashlib.sha256(json.dumps([exercise_id, payload.model_dump()], sort_keys=True).encode()).hexdigest()
     if db.get_bind().dialect.name == "postgresql":

@@ -9,9 +9,9 @@
 | Показатель | Значение |
 |---|---|
 | Всего строк | 250 |
-| done | 83 |
+| done | 88 |
 | partial | 125 |
-| missing | 21 |
+| missing | 16 |
 | out-of-scope | 21 |
 | строк без статуса | 0 |
 
@@ -287,7 +287,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 |---|---|---|---|---|---|
 | 29.1 | Привязка аккаунта одноразовым токеном | `done` | `apps/api/app/accounts_api.py:212; apps/api/app/notifications.py:80` | `tests/test_account_services.py::test_preferences_and_telegram_binding_require_csrf_secret_ownership_and_one_use` | TTL 15 минут, single-use |
 | 29.2 | Daily reminder, review cards и deep link в desktop task | `partial` | `apps/api/app/notifications.py:93` | `tests/test_account_services.py::test_outbox_preferences_and_idempotency_prevent_unwanted_delivery` | текст-напоминание без карточек, тем и ссылок |
-| 29.3 | Quick quiz, streak, weekly summary | `missing` | `нет` | `нет` | ни quiz, ни streak, ни weekly summary в боте нет |
+| 29.3 | Quick quiz, streak, weekly summary | `done` | `apps/api/app/telegram_bot.py:246; apps/api/app/weekly_report.py:1` | `tests/test_telegram_bot.py::test_binding_then_today_progress_and_quiz; tests/test_weekly_report.py::test_reports_are_queued_once_per_week_and_channel` | /quiz с inline-кнопками и записью в evidence, /streak и /progress, недельная сводка уходит в бот и в письмо из одного генератора |
 | 29.4 | Tutor chat | `done` | `apps/api/app/notifications.py:259; apps/api/app/accounts_api.py:245` | `tests/test_completed_course.py::test_telegram_questions_enqueue_once_without_sending_messages` | ответ сохраняется до отправки, без выдуманного mastery |
 | 29.5 | Один backend и одна память у сайта и бота | `done` | `apps/api/app/notifications.py:245` | `tests/test_completed_course.py::test_telegram_questions_enqueue_once_without_sending_messages` | бот пишет в те же таблицы через сервис |
 
@@ -449,7 +449,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
-| 51.1 | Поиск API keys, private keys, passwords, tokens, .env при загрузке; redaction, предупреждение, rotation | `missing` | `нет` | `нет` | сканирования секретов нет, загрузок репозитория тоже |
+| 51.1 | Поиск API keys, private keys, passwords, tokens, .env при загрузке; redaction, предупреждение, rotation | `done` | `apps/api/app/secret_scan.py:1` | `tests/test_feedback_and_secrets.py::test_secret_patterns_are_detected_and_masked; tests/test_feedback_and_secrets.py::test_submission_with_a_secret_is_refused; tests/test_feedback_and_secrets.py::test_mentor_refuses_a_pasted_key` | 10 шаблонов (ключи провайдеров, приватные ключи, токены ботов, JWT, строки подключения, .env); отправка с секретом отклоняется 422 без сохранения, ревью редактирует текст перед моделью, сообщение с ключом не уходит провайдеру |
 
 ## §52. Prompt Injection из кода
 
@@ -585,7 +585,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
-| 70.1 | Кнопки «помогло / не помогло» после AI-ответа и причины 👎 | `missing` | `нет` | `нет` | UI и API обратной связи отсутствуют |
+| 70.1 | Кнопки «помогло / не помогло» после AI-ответа и причины 👎 | `done` | `apps/api/app/feedback_api.py:1; apps/web/app/learning/mentor-chat.tsx:1` | `tests/test_feedback_and_secrets.py::test_feedback_is_one_vote_and_can_be_changed; tests/test_feedback_and_secrets.py::test_feedback_summary_is_admin_only_and_aggregates_reasons` | одна оценка на ответ (можно изменить), причина при 👎, кнопки под каждым ответом наставника, агрегация в /admin/analytics/feedback |
 
 ## §71. Motivation и геймификация
 
@@ -610,7 +610,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
-| 74.1 | Вопрос «насколько уверен 1–5» и сравнение с результатом | `missing` | `нет` | `нет` | self-report уверенности не собирается |
+| 74.1 | Вопрос «насколько уверен 1–5» и сравнение с результатом | `done` | `apps/api/app/feedback_api.py:96` | `tests/test_feedback_and_secrets.py::test_confidence_is_compared_with_the_real_result; tests/test_feedback_and_secrets.py::test_confidence_range_is_enforced` | самооценка 1–5 перед проверкой; сравнение с фактическим результатом и явный вердикт: overconfident / underconfident / aligned / pending |
 
 ## §75. User Explanation Tasks
 
@@ -628,7 +628,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
-| 77.1 | Недельный отчёт: сессии, упражнения, минуты, рост, повторяющаяся ошибка, цель; email/Telegram | `missing` | `нет` | `нет` | рассылки weekly report нет |
+| 77.1 | Недельный отчёт: сессии, упражнения, минуты, рост, повторяющаяся ошибка, цель; email/Telegram | `done` | `apps/api/app/weekly_report.py:1` | `tests/test_weekly_report.py::test_one_structure_feeds_three_channels; tests/test_weekly_report.py::test_reports_are_queued_once_per_week_and_channel` | один генератор и три рендера: бот, письмо, кабинет (/me/weekly-report); дедуп по ISO-неделе и каналу |
 
 ## §78. Notifications
 

@@ -288,6 +288,12 @@ def submit(
         accessible_lesson(exercise_id, db, user)
     if payload.language != "python" or payload.mode != "function":
         raise HTTPException(422, "Only Python function exercises are supported")
+    from app import secret_scan
+
+    scan = secret_scan.scan(payload.source_code)
+    if not scan.clean:
+        # A live key never reaches storage, logs or the model; the learner is told why.
+        raise HTTPException(422, scan.guidance())
     from app.account_services import throttle
 
     throttle(db, scope="coding_submission", subject=str(user.id), limit=LIMIT, window_seconds=int(WINDOW))

@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app import ai_gateway
+from app import ai_gateway, secret_scan
 from app.ai_admission import finish_ai_call, reserve_ai_call
 from app.ai_embeddings import LOCAL_EMBEDDING_MODEL, embedding_configuration, local_embedding
 from app.auth import csrf_protected, current_auth
@@ -217,7 +217,7 @@ def chat(lesson_id: str, payload: ChatRequest,
     if existing:
         if conversation is None or existing.conversation_id != conversation.id or existing.role != "user":
             raise HTTPException(404, "Message not found")
-        if existing.content != payload.message:
+        if existing.content not in {payload.message, secret_scan.redact(payload.message)}:
             raise HTTPException(409, "Request ID already used for another message")
         if existing.status == "completed":
             assistant = db.scalar(select(MentorMessage).where(MentorMessage.reply_to_id == existing.id))
@@ -228,6 +228,10 @@ def chat(lesson_id: str, payload: ChatRequest,
                           output=assistant.content, usage=None, cache_hit=True, status="cache_hit")
             db.commit()
             return assistant
+    scan = secret_scan.scan(payload.message)
+    if not scan.clean:
+        raise HTTPException(422, scan.guidance())
+    safe_message = secret_scan.redact(payload.message)
     now = datetime.now(UTC)
     if conversation is None:
         conversation = MentorConversation(user_id=user.id, lesson_id=lesson_id)
@@ -235,7 +239,7 @@ def chat(lesson_id: str, payload: ChatRequest,
         db.flush()
     if existing is None:
         existing = MentorMessage(id=payload.request_id, conversation_id=conversation.id,
-                                 role="user", content=payload.message, status="failed",
+                                 role="user", content=safe_message, status="failed",
                                  attempt_count=0, created_at=now)
         db.add(existing)
     existing.mode = mode
@@ -255,7 +259,7 @@ def chat(lesson_id: str, payload: ChatRequest,
         # Structured memory instead of a transcript: bounded, count-based, untrusted.
         messages.insert(2, {"role": "user", "content": "Untrusted " + summary.prompt_block()})
     messages += [{"role": message.role, "content": message.content} for message in prior]
-    messages.append({"role": "user", "content": payload.message})
+    messages.append({"role": "user", "content": safe_message})
     conversation_id = conversation.id
     # Authored mistake memory is a possible signal, not a diagnosis or grade.
     from app.db.models import MisconceptionVersion, UserMistake

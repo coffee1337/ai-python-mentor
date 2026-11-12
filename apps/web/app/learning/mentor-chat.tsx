@@ -43,6 +43,9 @@ export default function MentorChat({ lessonId }: { lessonId: string }) {
   const [modes, setModes] = useState<TutorMode[]>([]);
   const [mode, setMode] = useState<string>("");
   const [autoMode, setAutoMode] = useState<string>("");
+  const [voted, setVoted] = useState<Record<string, boolean>>({});
+  const [reasonFor, setReasonFor] = useState<string>("");
+  const [reasonText, setReasonText] = useState<string>("");
   const path = `/learning/lessons/${encodeURIComponent(lessonId)}/chat`;
 
   useEffect(() => {
@@ -113,6 +116,19 @@ export default function MentorChat({ lessonId }: { lessonId: string }) {
     }
   }
 
+  async function vote(messageId: string, helpful: boolean, reason?: string) {
+    try {
+      await api(`/learning/mentor/messages/${messageId}/feedback`, {
+        method: "POST",
+        body: JSON.stringify(reason ? { helpful, reason } : { helpful }),
+      });
+      setVoted((current) => ({ ...current, [messageId]: helpful }));
+      if (helpful) setReasonFor("");
+    } catch {
+      setError("Оценка не сохранилась. Попробуйте ещё раз.");
+    }
+  }
+
   function submit(event: FormEvent) {
     event.preventDefault();
     if (text.trim())
@@ -174,6 +190,53 @@ export default function MentorChat({ lessonId }: { lessonId: string }) {
                 {message.role === "user" ? "Вы" : "Наставник"}
               </strong>
               <RichText text={message.content} />
+              {message.role === "assistant" ? (
+                <div className="mentor-feedback" aria-label="Оценить ответ">
+                  <span className="product-field-hint">
+                    {voted[message.id] === undefined ? "Ответ помог?" : "Спасибо, оценка сохранена."}
+                  </span>
+                  <button
+                    type="button"
+                    className={`text-button ${voted[message.id] === true ? "is-active" : ""}`}
+                    aria-pressed={voted[message.id] === true}
+                    onClick={() => void vote(message.id, true)}
+                  >
+                    Помогло
+                  </button>
+                  <button
+                    type="button"
+                    className={`text-button ${voted[message.id] === false ? "is-active" : ""}`}
+                    aria-pressed={voted[message.id] === false}
+                    onClick={() => setReasonFor(reasonFor === message.id ? "" : message.id)}
+                  >
+                    Не помогло
+                  </button>
+                  {reasonFor === message.id ? (
+                    <form
+                      className="mentor-reason"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void vote(message.id, false, reasonText.trim() || undefined);
+                        setReasonText("");
+                      }}
+                    >
+                      <label className="visually-hidden" htmlFor={`reason-${message.id}`}>
+                        Почему ответ не помог
+                      </label>
+                      <input
+                        id={`reason-${message.id}`}
+                        value={reasonText}
+                        onChange={(event) => setReasonText(event.target.value)}
+                        placeholder="Что было не так: не по теме, слишком общо, ошибка"
+                        maxLength={280}
+                      />
+                      <button className="button button-secondary" type="submit" disabled={busy}>
+                        Отправить
+                      </button>
+                    </form>
+                  ) : null}
+                </div>
+              ) : null}
               {message.status === "failed" && message.role === "user" && (
                 <button
                   className="text-button"

@@ -185,6 +185,32 @@ class FeatureFlagOverride(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
+class AIFeedback(Base):
+    """One vote per mentor answer: useful or not, with an optional reason."""
+
+    __tablename__ = "ai_feedback"
+    __table_args__ = (UniqueConstraint("message_id", name="uq_ai_feedback_message"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    message_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("mentor_messages.id", ondelete="CASCADE"), index=True)
+    helpful: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(280))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ConfidenceReport(Base):
+    """Self-reported confidence before a check, compared with the actual result."""
+
+    __tablename__ = "confidence_reports"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    lesson_id: Mapped[str] = mapped_column(String(80), index=True, nullable=False)
+    confidence: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class CodeReview(Base):
     """One rubric review of one submission; the total is computed server-side."""
 

@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import ai_gateway, rubric
+from app import ai_gateway, rubric, secret_scan
 from app.auth import csrf_protected, current_auth
 from app.db.models import CodeReview, CodingAttempt, User
 from app.db.session import get_db
@@ -55,8 +55,11 @@ def review(
     except ai_gateway.GatewayError:
         raise HTTPException(503, "AI-ревью сейчас недоступно; код и тесты работают.") from None
     try:
+        # Defence in depth: even a submission stored before scanning existed is
+        # redacted before it can reach a provider.
+        safe_source = secret_scan.redact(attempt.source_code)
         answer = ai_gateway.generate(
-            config, rubric.messages(attempt.source_code, level=level, exercise_title=exercise_id)
+            config, rubric.messages(safe_source, level=level, exercise_title=exercise_id)
         )
     except ai_gateway.GatewayError:
         raise HTTPException(503, "AI-ревью сейчас недоступно; попробуйте позже.") from None
