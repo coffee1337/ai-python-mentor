@@ -236,12 +236,62 @@ def _cosine(left: list[float], right: list[float]) -> float:
     return dot / (norm_left * norm_right)
 
 
+STOPWORDS = {"и", "в", "во", "на", "с", "со", "а", "но", "что", "как", "это", "the", "a", "an", "of", "to", "is", "in"}
+SUFFIXES = ("ами", "ями", "ов", "ев", "ий", "ый", "ая", "ое", "ые", "ам", "ям", "ах", "ях", "ом", "ем", "ой", "ей",
+            "ing", "ed", "es", "s", "а", "ы", "и", "о", "е", "у", "ю", "я")
+RRF_K = 60
+
+
+def _tokens(text: str) -> list[str]:
+    """Lowercase words without a light suffix; deterministic and dependency-free."""
+    words = [word for word in "".join(ch if ch.isalnum() else " " for ch in text.casefold()).split() if word]
+    tokens = []
+    for word in words:
+        if word in STOPWORDS or len(word) < 2:
+            continue
+        for suffix in SUFFIXES:
+            if len(word) - len(suffix) >= 3 and word.endswith(suffix):
+                word = word[: -len(suffix)]
+                break
+        tokens.append(word)
+    return tokens
+
+
+def _lexical_scores(query_tokens: list[str], documents: list[list[str]]) -> list[float]:
+    """BM25-lite over the candidate set: term frequency with in-set inverse document frequency."""
+    if not query_tokens or not documents:
+        return [0.0 for _ in documents]
+    total = len(documents)
+    document_frequency = {token: sum(1 for doc in documents if token in doc) for token in set(query_tokens)}
+    scores = []
+    for doc in documents:
+        score = 0.0
+        for token in query_tokens:
+            term_frequency = doc.count(token)
+            if not term_frequency:
+                continue
+            idf = math.log((total + 1) / (document_frequency[token] + 0.5))
+            score += idf * term_frequency / (term_frequency + 1.2)
+        scores.append(score)
+    return scores
+
+
+def _fuse(ranks: list[list[int]]) -> dict[int, float]:
+    """Reciprocal rank fusion: a chunk ranked by both signals beats one strong in a single list."""
+    fused: dict[int, float] = {}
+    for ranking in ranks:
+        for position, index in enumerate(ranking):
+            fused[index] = fused.get(index, 0.0) + 1.0 / (RRF_K + position + 1)
+    return fused
+
+
 def retrieve(
     db: Session,
     *,
     exercise_version_id: UUID,
     skill_id: str,
     query_vector: list[float] | None = None,
+    query_text: str | None = None,
     limit: int = MAX_RETRIEVAL_CHUNKS,
 ) -> list[RetrievedChunk]:
     """Return chunks for one skill and one content version, best first."""
@@ -254,7 +304,7 @@ def retrieve(
                KnowledgeChunk.skill_id == skill_id)
         .order_by(KnowledgeChunk.ordinal)
     ))
-    if not candidates or query_vector:
+    if not candidates or query_vector or query_text:
         ranked: list[RetrievedChunk] = []
         for chunk in candidates:
             score = 0.0
@@ -275,15 +325,45 @@ def retrieve(
                 score=score,
                 has_embedding=stored is not None,
             ))
-        ranked.sort(key=lambda item: (-item.score, item.ordinal))
         if query_vector:
-            # A vectorless chunk cannot clear the similarity bar honestly, but
-            # dropping it silently would hide the lesson entirely. It stays as
-            # a last-resort candidate, below every genuinely similar chunk.
+            # Rank-fusion values are not similarities, so the similarity bar is
+            # applied to the vector score before fusion.
             ranked = [
                 item for item in ranked
                 if item.score >= MIN_SIMILARITY or not item.has_embedding
             ]
+        if query_text:
+            # Hybrid retrieval: the vector finds paraphrases, the lexical layer finds
+            # the exact term the learner used, and rank fusion decides the order so
+            # neither signal can drown the other.
+            query_tokens = _tokens(query_text)
+            lexical = _lexical_scores(query_tokens, [_tokens(item.content) for item in ranked])
+            semantic_order = sorted(range(len(ranked)), key=lambda index: (-ranked[index].score, ranked[index].ordinal))
+            lexical_order = sorted(range(len(ranked)), key=lambda index: (-lexical[index], ranked[index].ordinal))
+            fused = _fuse([semantic_order, lexical_order])
+            order = sorted(range(len(ranked)), key=lambda index: (-fused[index], -lexical[index], ranked[index].ordinal))
+            ranked = [
+                RetrievedChunk(
+                    skill_id=ranked[index].skill_id,
+                    exercise_version_id=ranked[index].exercise_version_id,
+                    section=ranked[index].section,
+                    ordinal=ranked[index].ordinal,
+                    content=ranked[index].content,
+                    score=round(fused[index], 6),
+                    has_embedding=ranked[index].has_embedding,
+                )
+                for index in order
+            ]
+        else:
+            ranked.sort(key=lambda item: (-item.score, item.ordinal))
+            if query_vector:
+                # A vectorless chunk cannot clear the similarity bar honestly, but
+                # dropping it silently would hide the lesson entirely. It stays as
+                # a last-resort candidate, below every genuinely similar chunk.
+                ranked = [
+                    item for item in ranked
+                    if item.score >= MIN_SIMILARITY or not item.has_embedding
+                ]
         return ranked[:limit]
     return [
         RetrievedChunk(

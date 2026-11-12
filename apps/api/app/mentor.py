@@ -163,6 +163,7 @@ def _retrieval_context(db: Session, lesson_id: str, message: str, *, user: User 
             exercise_version_id=version_id,
             skill_id=skill_id,
             query_vector=vector,
+            query_text=message,
         )
         result = retrieval_messages(chunks, skill_id=skill_id)
         db.commit()

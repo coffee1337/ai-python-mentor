@@ -9,9 +9,9 @@
 | Показатель | Значение |
 |---|---|
 | Всего строк | 250 |
-| done | 79 |
+| done | 80 |
 | partial | 125 |
-| missing | 25 |
+| missing | 24 |
 | out-of-scope | 21 |
 | строк без статуса | 0 |
 
@@ -181,7 +181,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 | 16.1 | Источники KB: свои материалы, официальная документация, curated examples, ошибки, задачи, specs, rubrics | `partial` | `apps/api/app/knowledge_base.py:35` | `tests/test_knowledge_base.py::test_indexing_is_scoped_to_skill_and_version` | индексируется только авторская теория урока |
 | 16.2 | Pipeline: authoring → normalization → chunking → metadata → embeddings | `done` | `apps/api/app/knowledge_base.py:78; apps/api/app/knowledge_base.py:132` | `tests/test_knowledge_base.py::test_indexing_is_scoped_to_skill_and_version` | чанки идемпотентны, переиндексация только изменённого |
 | 16.3 | Metadata-фильтр по skill и версии; pgvector/HNSW/IVFFlat | `partial` | `apps/api/app/knowledge_base.py:232; apps/api/app/db/models.py:996` | `tests/test_knowledge_base.py::test_retrieval_never_returns_another_skill_or_version` | pgvector нет: LargeBinary + cosine в домене (ADR) |
-| 16.4 | Semantic + full-text + rerank | `missing` | `нет` | `нет` | только cosine по одному вектору, без hybrid и rerank |
+| 16.4 | Semantic + full-text + rerank | `done` | `apps/api/app/knowledge_base.py:228` | `tests/test_hybrid_retrieval.py::test_exact_term_wins_over_a_slightly_better_vector; tests/test_hybrid_retrieval.py::test_fusion_puts_the_chunk_both_signals_like_first` | семантика по локальным эмбеддингам + лексический слой (BM25-lite) + ранговое слияние RRF; фильтр по навыку и версии остаётся жёстким, оцениваемые секции не индексируются |
 | 16.5 | Не отправлять весь курс: top-k и бюджет контекста | `done` | `apps/api/app/knowledge_base.py:50; apps/api/app/knowledge_base.py:303` | `tests/test_knowledge_base.py::test_retrieval_budget_is_capped` | 2 чанка, 2400 символов |
 
 ## §17. Long-term Memory
