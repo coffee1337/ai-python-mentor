@@ -141,7 +141,11 @@ main() {
       case "$status" in finished|failed|unavailable|error) break;; esac
       sleep 2
     done
-    expect "job finished" finished "$status"
+    if [ "$status" != "finished" ]; then
+      fail "job finished: expected finished, got $status; body: $(curl -s --cacert "$CA" -b "$jar" "$API/learning/jobs/$job_id")"
+    else
+      ok "job finished ($status)"
+    fi
   fi
 
   log "telegram webhook refuses unsigned traffic"

@@ -143,8 +143,10 @@ class DockerSandboxTests(unittest.TestCase):
         self.assertEqual(result["tests_passed"], 0, result)
 
     def test_fork_bomb_hits_the_pid_limit(self):
+        # Children must stay alive: a fork that exits immediately is not a bomb and
+        # can legitimately run 200 times. The pid limit bounds *concurrent* processes.
         result = self.run_source(
-            "    import os\n"
+            "    import os, time\n"
             "    spawned=0\n"
             "    for _ in range(200):\n"
             "        try:\n"
@@ -152,9 +154,10 @@ class DockerSandboxTests(unittest.TestCase):
             "        except OSError:\n"
             "            break\n"
             "        if pid==0:\n"
+            "            time.sleep(30)\n"
             "            os._exit(0)\n"
             "        spawned+=1\n"
-            "    return spawned < 200\n"
+            "    return spawned < 100\n"
         )
         # gVisor kills the group when the pid limit is reached; the kernel sandbox
         # refuses the fork with EAGAIN. Both are refusals, a full spawn is not.
