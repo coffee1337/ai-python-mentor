@@ -200,6 +200,14 @@ def remove_account(payload: DeleteAccountRequest, response: Response, auth=Depen
     _clear_auth_cookies(response)
 
 
+@router.get("/me/progress")
+def progress_endpoint(auth=Depends(current_auth), db: Session = Depends(get_db)):
+    """Streak, XP, level and achievements derived from verified actions."""
+    from app.gamification import build
+
+    return build(db, auth[0]).as_dict()
+
+
 @router.get("/me/weekly-report")
 def weekly_report_endpoint(auth=Depends(current_auth), db: Session = Depends(get_db)):
     """The same report the bot and the email carry, rendered for the cabinet."""

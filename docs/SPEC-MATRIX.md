@@ -9,9 +9,9 @@
 | Показатель | Значение |
 |---|---|
 | Всего строк | 250 |
-| done | 71 |
+| done | 72 |
 | partial | 125 |
-| missing | 33 |
+| missing | 32 |
 | out-of-scope | 21 |
 | строк без статуса | 0 |
 
@@ -591,7 +591,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
-| 71.1 | Streak, XP, уровни, achievements, milestones | `missing` | `apps/api/app/reviews.py:36` | `нет` | есть только independent_success_streak в расписании, не в UI |
+| 71.1 | Streak, XP, уровни, achievements, milestones | `done` | `apps/api/app/gamification.py:1; apps/web/app/dashboard/progress-card.tsx:1` | `tests/test_gamification.py::test_api_returns_the_same_numbers_as_the_pricing_table; tests/test_gamification.py::test_achievements_are_predicates_over_facts; tests/test_gamification.py::test_streak_counts_days_with_a_completion` | XP по фиксированной таблице за проверенные действия, шесть уровней, серия по дням с завершённым уроком, шесть достижений-предикатов; карточка на дашборде
 
 ## §72. Difficulty Adaptation
 

@@ -6334,3 +6334,64 @@ small {
     padding: .875rem;
   }
 }
+
+.progress-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.progress-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.progress-card__xp {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.progress-card__stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.progress-card__stats div {
+  display: grid;
+  gap: 2px;
+}
+
+.progress-card__stats dt {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.progress-card__stats dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.progress-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.progress-card__badges li {
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
+}

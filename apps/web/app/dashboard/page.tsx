@@ -5,6 +5,7 @@ import { useUser } from "../lib/use-user";
 import AppHeader from "../components/app-header";
 import AppIcon from "../components/app-icon";
 import TodayFocus from "./today-focus";
+import ProgressCard from "./progress-card";
 
 const milestones = [
   {
@@ -34,6 +35,7 @@ export default function DashboardPage() {
     <main className="dashboard-shell">
       <AppHeader />
       <div className="page-content">
+        {user ? <ProgressCard /> : null}
         {!user ? (
           <section className="panel empty-state">
             {loading && <p role="status">Готовим ваше учебное пространство…</p>}
