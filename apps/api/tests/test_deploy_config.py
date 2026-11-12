@@ -105,3 +105,26 @@ def test_runner_image_services_override_the_entrypoint_not_the_command():
         if "command" in service and "entrypoint" not in service:
             offenders.append(name)
     assert offenders == [], f"runner-image services must set entrypoint: {offenders}"
+
+
+def test_every_service_that_calls_the_runner_sees_the_pki():
+    """A worker without the client certificates fails silently at admission time.
+
+    The api image is shared by the API, the execution worker and the notification
+    worker; the mTLS material must be mounted wherever RUNNER_URL is used, not only
+    in the API container.
+    """
+    compose = yaml.safe_load((ROOT / "compose.prod.yml").read_text(encoding="utf-8"))
+    offenders = []
+    for name, service in compose["services"].items():
+        if service.get("build", {}).get("context") != "./apps/api":
+            continue
+        environment = service.get("environment") or {}
+        uses_runner = any(str(key).startswith("RUNNER_") for key in environment)
+        mounts = " ".join(service.get("volumes") or [])
+        if uses_runner and "/etc/ai-tutor/api" not in mounts:
+            offenders.append(name)
+    assert offenders == [], f"runner callers without the PKI mount: {offenders}"
+    # The anchor itself must carry the mount, so a new service inherits it.
+    common = compose["services"]["api"].get("volumes") or []
+    assert any("/etc/ai-tutor/api" in mount for mount in common)
