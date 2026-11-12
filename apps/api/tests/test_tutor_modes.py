@@ -12,8 +12,7 @@ from sqlalchemy import select
 from test_auth import client, csrf
 from test_learning import onboard, register
 
-from app import ai_gateway
-from app import tutor_modes
+from app import ai_gateway, tutor_modes
 from app.db.models import MentorMessage
 from app.db.session import get_db
 from app.main import app
