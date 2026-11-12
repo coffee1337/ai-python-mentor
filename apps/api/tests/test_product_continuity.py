@@ -81,7 +81,7 @@ def test_owner_source_is_exact_read_only_and_history_portfolio_are_redacted(clie
         "published": True, "title": "Учебный CLI", "summary": "Опубликованное описание учебной работы.", "repository_url": None,
     }).json()
     public = client.get(publication["public_path"]).json()
-    assert set(public) == {"title", "summary", "repository_url", "verification", "updated_at"}
+    assert set(public) == {"title", "summary", "explanation", "repository_url", "verification", "updated_at"}
     assert "artifact_text" not in str(public) and artifact not in str(public) and revised not in str(public)
     with next(app.dependency_overrides[get_db]()) as db:
         assert db.scalar(select(func.count()).select_from(SkillEvidence)) == before[1]

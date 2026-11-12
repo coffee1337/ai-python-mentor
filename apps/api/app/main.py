@@ -143,6 +143,23 @@ def health() -> dict[str, str]:
 
 
 @app.middleware("http")
+def _schema_hint(error: Exception) -> str:
+    """SQLSTATE and the object name from a database error, never the statement."""
+    orig = getattr(error, "orig", None)
+    sqlstate = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+    diag = getattr(orig, "diag", None)
+    table = getattr(diag, "table_name", None) or getattr(orig, "sqlite_errorname", None)
+    column = getattr(diag, "column_name", None)
+    parts = [f"sqlstate={sqlstate}"] if sqlstate else []
+    if getattr(diag, "constraint_name", None):
+        parts.append(f"constraint={diag.constraint_name}")
+    if table:
+        parts.append(f"object={table}")
+    if column:
+        parts.append(f"column={column}")
+    return " ".join(parts) if parts else "schema_hint=none"
+
+
 async def request_observation(request, call_next):
     from time import monotonic
     from uuid import uuid4
@@ -153,8 +170,11 @@ async def request_observation(request, call_next):
     try:
         response = await call_next(request)
     except Exception as error:
-        # Exception text/SQL/body may contain learner source, tokens or PII.
-        logging.getLogger("mentor.request").error("request_failed id=%s type=%s", request_id, type(error).__name__)
+        # Exception text/SQL/body may contain learner source, tokens or PII. A SQLSTATE
+        # and the constraint/column name are schema facts, not user data, and they are
+        # the difference between a five-minute fix and a blind guess.
+        logging.getLogger("mentor.request").error(
+            "request_failed id=%s type=%s %s", request_id, type(error).__name__, _schema_hint(error))
         response = JSONResponse({"detail":"Service is temporarily unavailable","request_id":request_id},status_code=503 if isinstance(error, SQLAlchemyError) else 500)
     response.headers["X-Request-ID"] = request_id
     if request.url.path in {"/me", "/learning/drafts"} or request.url.path.startswith(("/me/", "/auth/", "/learning/study-session")):

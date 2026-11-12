@@ -86,7 +86,7 @@ def test_projects_idempotency_validation_and_private_portfolio(client):
     publication = client.patch(f"/projects/{project['id']}/portfolio", headers=_headers(client), json=public).json()
     public_path = publication["public_path"]
     page = client.get(public_path).json()
-    assert set(page) == {"title", "summary", "repository_url", "verification", "updated_at"}
+    assert set(page) == {"title", "summary", "explanation", "repository_url", "verification", "updated_at"}
     assert "email" not in json.dumps(page) and "artifact_text" not in json.dumps(page)
     assert client.patch(f"/projects/{project['id']}/portfolio", headers=_headers(client), json={**public, "published": False}).status_code == 200
     assert client.get(public_path).status_code == 404
