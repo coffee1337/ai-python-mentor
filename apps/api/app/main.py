@@ -15,6 +15,7 @@ from app.accounts_api import router as accounts_router
 from app.ai_curriculum_api import router as ai_curriculum_router
 from app.assessment import router as assessment_router
 from app.auth import router as auth_router
+from app.code_review_api import router as code_review_router
 from app.curriculum_api import router as curriculum_router
 from app.db.session import engine
 from app.exercise_hints import router as exercise_hints_router
@@ -83,6 +84,7 @@ app.include_router(projects_router)
 app.include_router(generated_practice_router)
 app.include_router(jobs_router)
 app.include_router(telegram_router)
+app.include_router(code_review_router)
 app.include_router(health_router)
 app.include_router(study_progress_router)
 app.include_router(study_drafts_router)

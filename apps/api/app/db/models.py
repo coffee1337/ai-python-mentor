@@ -161,6 +161,23 @@ class MentorMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
+class CodeReview(Base):
+    """One rubric review of one submission; the total is computed server-side."""
+
+    __tablename__ = "code_reviews"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    exercise_id: Mapped[str] = mapped_column(String(80), index=True, nullable=False)
+    attempt_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("coding_attempts.id", ondelete="SET NULL"))
+    level: Mapped[str] = mapped_column(String(24), nullable=False)
+    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    grades: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    notes: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    model: Mapped[str] = mapped_column(String(80), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class CodingAttempt(Base):
     __tablename__ = "coding_attempts"
 

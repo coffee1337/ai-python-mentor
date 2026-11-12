@@ -9,9 +9,9 @@
 | Показатель | Значение |
 |---|---|
 | Всего строк | 250 |
-| done | 72 |
+| done | 76 |
 | partial | 125 |
-| missing | 32 |
+| missing | 28 |
 | out-of-scope | 21 |
 | строк без статуса | 0 |
 
@@ -378,9 +378,9 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
 | 40.1 | Public и hidden tests, source hidden не передаётся пользователю | `done` | `apps/api/app/runner_exercise_content.py:1` | `tests/test_runner_protocol.py::test_public_hidden_results_expose_counts_not_sources` | визибилити хранится на кейсе |
-| 40.2 | Rubric: correctness 50, readability 15, edge cases 10, testing 10, complexity 10, style 5 | `missing` | `нет` | `нет` | оценка только pass/fail по тестам |
-| 40.3 | Вес rubric зависит от уровня пользователя | `missing` | `нет` | `нет` | rubric и уровня в оценке нет |
-| 40.4 | LLM получает task, test results, linter output, уровень, ошибки и rubric | `missing` | `apps/api/app/mentor.py:186` | `нет` | mentor не принимает submission, код и результаты тестов |
+| 40.2 | Rubric: correctness 50, readability 15, edge cases 10, testing 10, complexity 10, style 5 | `done` | `apps/api/app/rubric.py:1` | `tests/test_code_review.py::test_endpoint_scores_by_level_and_stores_the_review` | шесть критериев 0–2, взвешенный итог считает сервер; ревью сохраняется с моделью и уровнем |
+| 40.3 | Вес rubric зависит от уровня пользователя | `done` | `apps/api/app/rubric.py:33` | `tests/test_code_review.py::test_weights_follow_the_level_and_sum_to_one_hundred` | веса по уровню: beginner 60/20/10/5/0/5, advanced 40/10/15/15/10/10, сумма всегда 100 |
+| 40.4 | LLM получает task, test results, linter output, уровень, ошибки и rubric | `done` | `apps/api/app/rubric.py:118` | `tests/test_code_review.py::test_model_total_is_ignored_and_score_is_computed_here` | итог модели игнорируется: балл считается из оценок и весов на сервере |
 
 ## §41. Data flow одного submission
 
@@ -435,7 +435,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
-| 49.1 | Socratic review кода ученика с вопросом вместо переписанного решения | `missing` | `нет` | `нет` | code review кода ученика отсутствует; ADR, выводящего его из scope, нет |
+| 49.1 | Socratic review кода ученика с вопросом вместо переписанного решения | `done` | `apps/api/app/code_review_api.py:34` | `tests/test_code_review.py::test_rubric_endpoint_lists_all_weights` | GET /learning/rubric отдаёт критерии, веса по уровням и порог прохождения |
 
 ## §50. Recurring Mistake Detection
 
