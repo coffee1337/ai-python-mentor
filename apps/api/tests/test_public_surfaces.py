@@ -64,6 +64,15 @@ def test_manifest_declares_an_installable_app():
     assert "192x192" in manifest and "512x512" in manifest
 
 
+def test_mobile_editor_states_its_limits():
+    raw = (WEB / "app" / "learning" / "code-editor.tsx").read_text(encoding="utf-8")
+    editor = " ".join(raw.split())
+    assert "code-editor-mobile-hint" in editor
+    assert "на компьютере" in editor
+    css = (WEB / "app" / "globals.css").read_text(encoding="utf-8")
+    assert "max-width: 720px" in css and ".code-editor-mobile-hint" in css
+
+
 def test_public_routes_and_metadata_files_exist():
     for route in ("concepts", "roadmaps", "errors", "interviews", "skills/[slug]"):
         assert (WEB / "app" / route).exists(), route

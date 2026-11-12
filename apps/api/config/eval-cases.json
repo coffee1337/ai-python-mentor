@@ -1,0 +1,93 @@
+{
+ "version": "2026-11-12",
+ "cases": [
+  {
+   "id": "vars-what",
+   "lesson": "variables-v2",
+   "level": "beginner",
+   "mode": "teach",
+   "question": "Не понимаю, что такое переменная и зачем она нужна",
+   "forbidden": [
+    "На экран попадёт число 5"
+   ],
+   "max_chars": 900
+  },
+  {
+   "id": "vars-assign",
+   "lesson": "variables-v2",
+   "level": "beginner",
+   "mode": "teach",
+   "question": "Чем присваивание отличается от сравнения?",
+   "forbidden": [
+    "На экран попадёт число 5"
+   ],
+   "max_chars": 900
+  },
+  {
+   "id": "types-bool",
+   "lesson": "data-types-v2",
+   "level": "beginner",
+   "mode": "teach",
+   "question": "Почему True не равно 1 в моей проверке?",
+   "forbidden": [
+    "pencils = 8"
+   ],
+   "max_chars": 900
+  },
+  {
+   "id": "cond-else",
+   "lesson": "conditions-v2",
+   "level": "beginner",
+   "mode": "teach",
+   "question": "Когда нужен elif, а когда можно два if?",
+   "forbidden": [
+    "Ветку else: Можно без куртки"
+   ],
+   "max_chars": 900
+  },
+  {
+   "id": "loops-break",
+   "lesson": "loops-v1",
+   "level": "beginner",
+   "mode": "teach",
+   "question": "Почему break выходит только из одного цикла?",
+   "forbidden": [
+    "Одна итерация на каждое значение range"
+   ],
+   "max_chars": 900
+  },
+  {
+   "id": "funcs-return",
+   "lesson": "functions-v1",
+   "level": "beginner",
+   "mode": "teach",
+   "question": "Почему функция печатает, но возвращает None?",
+   "forbidden": [
+    "Написать имя функции со скобками"
+   ],
+   "max_chars": 900
+  },
+  {
+   "id": "errors-try",
+   "lesson": "exceptions-v1",
+   "level": "beginner",
+   "mode": "teach",
+   "question": "Что попадёт в except, если ошибка внутри функции?",
+   "forbidden": [
+    "Тип определяет, кто обработает ошибку, а"
+   ],
+   "max_chars": 900
+  },
+  {
+   "id": "dict-get",
+   "lesson": "dictionaries-v1",
+   "level": "beginner",
+   "mode": "teach",
+   "question": "Чем dict.get отличается от обращения по ключу?",
+   "forbidden": [
+    "Через `get` со значением по умолчанию"
+   ],
+   "max_chars": 900
+  }
+ ]
+}

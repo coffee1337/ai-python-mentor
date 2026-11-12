@@ -9,12 +9,13 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import analytics, feature_flags
+from app import analytics, feature_flags, prompt_variants
 from app.accounts_api import admin_auth, admin_csrf
-from app.auth import current_auth
+from app.auth import csrf_protected, current_auth
 from app.db.session import get_db
 
 router = APIRouter(tags=["growth"])
@@ -32,6 +33,41 @@ class OverrideRequest(BaseModel):
 @router.get("/me/features")
 def my_features(auth=Depends(current_auth), db: Session = Depends(get_db)) -> dict:
     return {"flags": feature_flags.snapshot(db, auth[0].id)}
+
+
+class InterestsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    interests: list[str] = Field(default_factory=list, max_length=3)
+
+
+@router.get("/me/interests")
+def my_interests(auth=Depends(current_auth), db: Session = Depends(get_db)) -> dict:
+    from app import interests
+
+    return {"vocabulary": interests.VOCABULARY, "selected": interests.for_user(db, auth[0].id)}
+
+
+@router.put("/me/interests")
+def set_interests(payload: InterestsRequest, auth=Depends(csrf_protected), db: Session = Depends(get_db)) -> dict:
+    """Interests change the example in a practice prompt, never the graded answer."""
+    from app import interests
+
+    try:
+        selected = interests.set_for_user(db, auth[0].id, payload.interests)
+    except interests.UnknownInterest:
+        raise HTTPException(422, f"Допустимые интересы: {', '.join(interests.VOCABULARY)}") from None
+    except LookupError:
+        raise HTTPException(409, "Сначала завершите онбординг") from None
+    db.commit()
+    return {"selected": selected, "scenario": interests.scenario(selected)}
+
+
+@router.get("/admin/analytics/interests")
+def interests_demand(auth=Depends(admin_auth), db: Session = Depends(get_db)) -> dict:
+    from app import interests
+
+    return {"counts": interests.counts(db)}
 
 
 @router.get("/me/memory")
@@ -69,6 +105,63 @@ def analytics_summary(days: int = 30, auth=Depends(admin_auth), db: Session = De
     if not 1 <= days <= 365:
         raise HTTPException(422, "Window must be between 1 and 365 days")
     return analytics.summary(db, days=days)
+
+
+@router.get("/admin/ai-eval")
+def eval_history(limit: int = 10, auth=Depends(admin_auth), db: Session = Depends(get_db)) -> dict:
+    from app import ai_eval
+
+    return {"runs": ai_eval.history(db, limit=max(1, min(limit, 50)))}
+
+
+@router.post("/admin/ai-eval/run", status_code=201)
+def eval_run(auth=Depends(admin_csrf), db: Session = Depends(get_db)) -> dict:
+    """Run the benchmark against the configured provider and store the numbers."""
+    from app import ai_eval, ai_gateway
+
+    try:
+        config = ai_gateway.configuration(task="tutor_chat")
+    except ai_gateway.GatewayError:
+        raise HTTPException(503, "AI-провайдер не настроен: замер невозможен") from None
+    row = ai_eval.run(db, config=config)
+    return {"id": str(row.id), "score": row.score, "cases": row.cases,
+            "metrics": {key: value for key, value in (row.metrics or {}).items() if key != "results"}}
+
+
+@router.get("/admin/analytics/ai")
+def ai_metrics(days: int = 7, auth=Depends(admin_auth), db: Session = Depends(get_db)) -> dict:
+    """Latency and cost per operation, from the usage ledger."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.db.models import AIUsageLedger
+
+    since = datetime.now(UTC) - timedelta(days=max(1, min(days, 90)))
+    rows = db.execute(
+        select(
+            AIUsageLedger.operation,
+            func.count(),
+            func.avg(AIUsageLedger.latency_ms),
+            func.sum(AIUsageLedger.input_tokens),
+            func.sum(AIUsageLedger.output_tokens),
+        )
+        .where(AIUsageLedger.created_at >= since)
+        .group_by(AIUsageLedger.operation)
+    ).all()
+    return {
+        "window_days": days,
+        "operations": [
+            {
+                "operation": operation,
+                "calls": int(count),
+                "avg_latency_ms": round(float(latency), 1) if latency is not None else None,
+                "input_tokens": int(prompt_tokens or 0),
+                "output_tokens": int(completion_tokens or 0),
+            }
+            for operation, count, latency, prompt_tokens, completion_tokens in rows
+        ],
+        "prompt_variants": [item for item in prompt_variants.comparison(db, days=days)
+                            if "prompt_version" in item],
+    }
 
 
 @router.get("/admin/analytics/events/{user_id}")

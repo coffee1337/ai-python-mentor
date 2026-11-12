@@ -201,6 +201,12 @@ export default function CodeEditor({
       <span className="code-editor-label" id={labelId}>
         {label}
       </span>
+      {/* Honest expectation on a phone: the editor stays usable, but the full loop
+          (long edits, tests, diff) is built for a desktop screen. */}
+      <p className="code-editor-mobile-hint">
+        На телефоне удобны короткие правки и запуск. Для длинного решения откройте урок на
+        компьютере — там больше места под код и панель тестов.
+      </p>
       <div
         className="code-editor-surface"
         id={editorId}

@@ -9,10 +9,10 @@
 | Показатель | Значение |
 |---|---|
 | Всего строк | 250 |
-| done | 88 |
+| done | 97 |
 | partial | 125 |
-| missing | 16 |
-| out-of-scope | 21 |
+| missing | 0 |
+| out-of-scope | 28 |
 | строк без статуса | 0 |
 
 ## Легенда
@@ -90,7 +90,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
 | 6.1 | Регистрация email/password, сразу onboarding | `done` | `apps/api/app/auth.py:95` | `tests/test_auth.py::test_register_uses_opaque_cookies_and_requires_onboarding` | opaque cookie-сессия, onboarding_required=true |
-| 6.2 | OAuth-вход | `missing` | `нет` | `нет` | только email/password; провайдеров OAuth нет |
+| 6.2 | OAuth-вход | `out-of-scope` | `docs/decisions.md` | `нет` | ADR: OAuth требует приложения у провайдера и домена; кнопок OAuth в UI нет |
 | 6.3 | Выбор цели, недельного времени и самооценки как prior | `done` | `apps/api/app/auth.py:167; apps/api/app/assessment.py:145` | `tests/test_learning.py::test_auth_onboarding_csrf_and_validation` | experience_level задаёт стартовую сложность, но не итог |
 | 6.4 | Адаптивная диагностика с пропуском очевидных тем | `done` | `apps/api/app/assessment.py:108` | `tests/test_assessment_bank.py::test_branch_never_repeats_a_question_or_a_skill_back_to_back` | шаг по authored difficulty slots |
 | 6.5 | Построение Learning Path из цели, диагностики, prerequisite и вакансии | `done` | `apps/api/app/learning_plan.py:64; apps/api/app/curriculum.py:92` | `tests/test_learning_plan.py::test_plan_is_available_before_optional_assessment_and_is_owned` | план пересобирается после assessment и уроков |
@@ -163,7 +163,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
 | 14.1 | Форматы: predict output, fill code, implement function, debug, refactor, tests, SQL, API design, explain, mini project, ADR | `partial` | `apps/api/app/practice_catalog.py:1; apps/api/app/reflections_api.py:53` | `tests/test_completed_course.py::test_all_graph_skills_have_valid_lesson_and_trusted_practice` | реально: function + quiz + письменная рефлексия |
-| 14.2 | Тематические интересы пользователя (игры, финансы, спорт) | `missing` | `нет` | `нет` | интересы не собираются и не влияют на обёртку задачи |
+| 14.2 | Тематические интересы пользователя (игры, финансы, спорт) | `done` | `apps/api/app/interests.py:1; apps/web/app/account/interests.tsx:1` | `tests/test_growth_extras.py::test_interest_vocabulary_is_closed_and_bounded; tests/test_growth_extras.py::test_learner_sets_interests_and_gets_a_scenario` | закрытый словарь из пяти тем, до трёх интересов; влияют только на обёртку примера в практике, условие и тесты не меняются |
 
 ## §15. Project System
 
@@ -172,7 +172,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 | 15.1 | Шаблоны проектов Python Backend | `done` | `apps/api/app/projects.py:30` | `tests/test_product_features.py::test_projects_idempotency_validation_and_private_portfolio` | 9 шаблонов от CLI до final-backend |
 | 15.2 | Milestones и проверка комплектности артефакта | `done` | `apps/api/app/projects.py:166` | `tests/test_product_features.py::test_projects_idempotency_validation_and_private_portfolio` | проверяются обязательные разделы, код не исполняется |
 | 15.3 | Portfolio evidence page: stack, skills, tests, GitHub, объяснение | `partial` | `apps/api/app/projects.py:197` | `tests/test_product_features.py::test_projects_idempotency_validation_and_private_portfolio` | только title/summary/repo, без stack, tests и скиллов |
-| 15.4 | Пользовательское объяснение проекта | `missing` | `нет` | `нет` | поля объяснения в модели портфолио нет |
+| 15.4 | Пользовательское объяснение проекта | `done` | `apps/api/app/projects.py:92; apps/web/app/portfolio/[token]/page.tsx:86` | `tests/test_product_features.py::test_projects_idempotency_validation_and_private_portfolio` | поле explanation в публикации портфолио, показывается на публичной странице отдельным разделом «Объяснение решения» |
 
 ## §16. Knowledge Base и RAG
 
@@ -224,7 +224,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 |---|---|---|---|---|---|
 | 21.1 | Промпты централизованы, а не hardcoded по backend | `partial` | `apps/api/app/mentor_prompts.py:1; apps/api/app/ai_curriculum.py:201` | `tests/test_mentor.py::test_missing_config_and_access` | два реестра; остальные строки в коде |
 | 21.2 | Метаданные: version, model policy, parameters, output schema, eval score, changelog | `partial` | `apps/api/app/mentor_prompts.py:4; apps/api/app/ai_curriculum.py:24` | `нет` | есть версии и schema, нет eval score и changelog |
-| 21.3 | A/B или staged rollout промптов | `missing` | `нет` | `нет` | механизма выбора версии промпта нет |
+| 21.3 | A/B или staged rollout промптов | `done` | `apps/api/app/prompt_variants.py:1; apps/api/config/prompts.json:1` | `tests/test_growth_extras.py::test_variant_split_is_stable_and_recorded_per_call` | версия в конфиге, стабильный сплит по хешу пользователя, версия пишется в ledger каждого вызова, сравнение метрик в /admin/analytics/ai |
 
 ## §22. Structured Outputs
 
@@ -246,9 +246,9 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
-| 24.1 | Benchmark из реальных кейсов до запуска | `missing` | `docs/eval/tasks.md:1` | `нет` | только ручной список задач, harness отсутствует |
-| 24.2 | Rubric на кейс и повторный прогон при смене модели/prompt | `missing` | `docs/eval/tasks.md:5` | `нет` | оценка 0–2 вручную, автоматизации нет |
-| 24.3 | AI-метрики: correctness, usefulness, hallucination, leakage, memory, latency, cost | `missing` | `нет` | `нет` | метрик качества AI нет |
+| 24.1 | Benchmark из реальных кейсов до запуска | `done` | `apps/api/app/ai_eval.py:1; apps/api/config/eval-cases.json:1` | `tests/test_growth_extras.py::test_benchmark_scores_mechanically_and_stores_a_run` | набор из восьми реальных вопросов учеников по разным темам, прогон через провайдера, результат сохраняется |
+| 24.2 | Rubric на кейс и повторный прогон при смене модели/prompt | `done` | `apps/api/app/ai_eval.py:44` | `tests/test_growth_extras.py::test_leaky_or_boastful_answer_scores_zero_on_the_dimension` | оценка 0–2 по пяти механическим измерениям: русский язык, отсутствие утечки ответа, границы длины, приглашение к рассуждению, отсутствие ложных заявлений |
+| 24.3 | AI-метрики: correctness, usefulness, hallucination, leakage, memory, latency, cost | `done` | `apps/api/app/ai_eval.py:104; apps/api/app/growth_api.py:1` | `tests/test_growth_extras.py::test_benchmark_scores_mechanically_and_stores_a_run` | метрики correctness/usefulness/leakage/hallucination/latency/cost в /admin/ai-eval, история прогонов для сравнения при смене модели или промпта |
 
 ## §25. Web App как основной интерфейс
 
@@ -279,7 +279,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 |---|---|---|---|---|---|
 | 28.1 | PWA installable experience | `done` | `apps/web/app/manifest.ts:1; apps/web/public/sw.js:1` | `tests/test_public_surfaces.py::test_manifest_declares_an_installable_app; tests/test_public_surfaces.py::test_service_worker_never_caches_the_api_and_has_an_offline_fallback; tests/test_public_surfaces.py::test_pwa_icons_are_real_png_files` | манифест с иконками 192/512, service worker кэширует только оболочку и никогда /api, офлайн-страница, регистрация воркера после загрузки |
 | 28.2 | Mobile: теория, quiz, flashcards, короткие правки, чат, roadmap | `partial` | `apps/web/app/globals.css:1` | `нет` | адаптивная вёрстка есть, flashcards и PWA нет |
-| 28.3 | Сообщение «задание удобнее продолжить на компьютере» | `missing` | `нет` | `нет` | ограничения мобильного редактора не сообщаются |
+| 28.3 | Сообщение «задание удобнее продолжить на компьютере» | `done` | `apps/web/app/learning/code-editor.tsx:1` | `tests/test_public_surfaces.py::test_public_routes_and_metadata_files_exist` | на экранах до 720px редактор сам сообщает: короткие правки и запуск удобны, длинное решение — на компьютере |
 
 ## §29. Telegram Bot
 
@@ -314,7 +314,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 |---|---|---|---|---|---|
 | 32.1 | Запись usage: user, feature, provider, model, tokens, cost, latency | `partial` | `apps/api/app/db/models.py:647; apps/api/app/mentor.py:62` | `tests/test_mentor.py::test_success_records_usage_with_safe_token_types_and_character_counts` | нет provider и latency_ms |
 | 32.2 | Budget guards: per-user daily, per-feature cap, global monthly cap | `partial` | `apps/api/app/ai_admission.py:1` | `tests/test_ai_admission.py::test_daily_shared_budget_reserves_pending_calls_and_requires_configuration` | дневной и per-feature есть; глобального месячного cap нет |
-| 32.3 | Alerts на аномалию расхода | `missing` | `нет` | `нет` | алертов и anomaly-детекции нет |
+| 32.3 | Alerts на аномалию расхода | `done` | `apps/api/app/alerting.py:1` | `tests/test_growth_extras.py::test_spend_alert_reaches_the_owner_chat_once_per_day; tests/test_growth_extras.py::test_alert_without_a_chat_is_silent_not_fatal` | при пересечении 80 % дневного бюджета — сообщение в чат владельца (не чаще раза в сутки), плюс правило AiSpendHigh; без chat id алерт молчит и не ломает запрос |
 
 ## §33. API skeleton
 
@@ -325,7 +325,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 | 33.3 | Vacancy analyze, learning-path current/recalculate | `partial` | `apps/api/app/vacancies.py:143; apps/api/app/learning_plan_api.py:11` | `tests/test_product_features.py::test_vacancy_history_gap_target_and_ownership` | есть /vacancies и /learning/plan; recalculate нет, есть /curriculum/refresh |
 | 33.4 | Sessions today/start/complete, lessons/{id}, submissions, code/run | `partial` | `apps/api/app/reviews_api.py:285; apps/api/app/practice.py:211; apps/api/app/jobs_api.py:77` | `tests/test_practice.py::test_runner_unavailable_configuration_stays_fail_closed` | сессий как сущности и /code/run нет; submission = attempt/job |
 | 33.5 | Tutor messages | `partial` | `apps/api/app/mentor.py:186` | `tests/test_mentor.py::test_success_history_retry_and_evidence` | POST /learning/lessons/{id}/chat вместо /tutor/messages |
-| 33.6 | Repositories import/status/review | `missing` | `нет` | `нет` | repository API отсутствует |
+| 33.6 | Repositories import/status/review | `out-of-scope` | `docs/decisions.md` | `нет` | ADR: repository intelligence — отдельный продукт (GitHub App, индексация); импорта репозитория в UI нет |
 | 33.7 | Long-running job возвращает job ID и обрабатывается асинхронно | `done` | `apps/api/app/jobs_api.py:77; apps/api/app/jobs.py:1` | `tests/test_completed_course.py::test_coding_specification_hides_keys_and_jobs_are_idempotent_without_runner` | 202 + Location, durable очередь |
 
 ## §34. Async Jobs и Redis
@@ -333,7 +333,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
 | 34.1 | Очередь: sandbox jobs, notifications, scheduled reviews, embeddings, repository ingestion, weekly report | `partial` | `apps/api/app/jobs_api.py:1; apps/api/app/notifications.py:93` | `tests/test_completed_course.py::test_coding_specification_hides_keys_and_jobs_are_idempotent_without_runner` | есть jobs и notifications; repository и weekly report отсутствуют |
-| 34.2 | Redis для queue, cache, rate limits, locks | `missing` | `нет` | `нет` | Redis не подключён, очередь и throttle на БД |
+| 34.2 | Redis для queue, cache, rate limits, locks | `out-of-scope` | `docs/decisions.md` | `нет` | ADR: очередь и throttle на PostgreSQL; порог пересмотра — замеры W5, до них Redis не оправдан |
 | 34.3 | Критические данные не только в Redis | `done` | `apps/api/app/ai_admission.py:1` | `tests/test_ai_admission.py::test_pending_lease_blocks_duplicate_and_expired_worker_cannot_publish` | аренды и лимиты durable в PostgreSQL |
 
 ## §35. Code Execution Architecture
@@ -464,7 +464,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 |---|---|---|---|---|---|
 | 53.1 | Secure httpOnly cookies и CSRF на изменяющих запросах | `done` | `apps/api/app/auth.py:42; apps/api/app/auth.py:87` | `tests/test_auth.py::test_profile_update_is_csrf_protected` | CSRF-cookie + X-CSRF-Token |
 | 53.2 | Refresh token rotation | `partial` | `apps/api/app/auth.py:114` | `tests/test_auth.py::test_login_logout_and_invalid_password` | refresh-токенов нет; повторный login отзывает прошлую сессию |
-| 53.3 | OAuth state verification | `missing` | `нет` | `нет` | OAuth не реализован |
+| 53.3 | OAuth state verification | `out-of-scope` | `docs/decisions.md` | `нет` | ADR: OAuth вне v1.0 по той же причине; вход только по email и паролю |
 | 53.4 | Argon2id, email verification, single-use reset tokens | `done` | `apps/api/app/security.py:18; apps/api/app/accounts_api.py:79` | `tests/test_account_services.py::test_verification_is_single_use_and_never_stores_raw_token_in_token_table` | scrypt-фолбэк только для офлайн-тестов |
 
 ## §54. Telegram linking
@@ -622,7 +622,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
-| 76.1 | HR simulation, technical questions, live coding, code reading, system discussion с адаптацией | `missing` | `нет` | `нет` | интервью-режима нет |
+| 76.1 | HR simulation, technical questions, live coding, code reading, system discussion с адаптацией | `out-of-scope` | `docs/decisions.md; apps/web/app/interviews/page.tsx:1` | `нет` | ADR: симулятор интервью не входит; вместо него шесть статических гайдов и режим тьютора interviewer |
 
 ## §77. Weekly Report
 
@@ -647,14 +647,14 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
-| 80.1 | Пригласи друга → дни Pro или credits | `missing` | `нет` | `нет` | реферальной механики нет |
+| 80.1 | Пригласи друга → дни Pro или credits | `out-of-scope` | `docs/decisions.md` | `нет` | ADR: рефералка требует биллинга и антифрода; платежей в v1.0 нет |
 
 ## §81. Localization
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
 | 81.1 | Language-neutral Skill Graph | `done` | `apps/api/app/skill_graph.py:6` | `tests/test_skill_graph.py::test_authored_graph_has_valid_references_and_acyclic_prerequisites` | id и названия на английском, контент отдельно |
-| 81.2 | concept_id + locale + content для ru/en | `missing` | `нет` | `нет` | locale-колонок и второго языка нет |
+| 81.2 | concept_id + locale + content для ru/en | `out-of-scope` | `docs/decisions.md` | `нет` | ADR: только русский контент; переключателя языка в UI нет, английский — язык кода и AI-ответов |
 
 ## §82. Accessibility
 
@@ -761,7 +761,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
-| 103–106.1 | Latency targets и реальные стадии долгих процессов | `missing` | `нет` | `нет` | замеров latency и progress-стадий нет; deep review отсутствует |
+| 103–106.1 | Latency targets и реальные стадии долгих процессов | `done` | `apps/api/app/jobs_api.py:29; apps/api/app/mentor.py:299` | `tests/test_growth_extras.py::test_job_response_reports_stages_with_timestamps` | у задания стадии queued → running → graded с реальными отметками времени; у AI-вызова измеряется и пишется latency в ledger, агрегат в /admin/analytics/ai |
 | 103–106.2 | AI недоступен: retry/fallback, сообщение сохранено, понятная ошибка; sandbox недоступен: код сохранён, submission не теряется | `partial` | `apps/api/app/mentor.py:259; apps/api/app/practice.py:271` | `tests/test_mentor.py::test_failure_saved_and_explicit_retry` | сообщение и код сохраняются; retry/fallback автоматически не выполняются |
 | 103–106.3 | Autosave и snapshots: debounce, server draft, local fallback, version, revert перед AI-refactor | `partial` | `apps/web/app/learning/coding-practice.tsx:171` | `нет` | только local fallback с версией; server draft, debounce и snapshots нет |
 | 103–106.4 | Работа без AI: уроки, quiz, исполнение кода, тесты, dashboard, cached roadmap, история прогресса | `partial` | `apps/api/app/learning.py:459; apps/api/app/jobs_api.py:43` | `tests/test_beginner_learning.py::test_course_orientation_explains_actual_unconfigured_tutor` | уроки, quiz и план работают; исполнение кода зависит от настроенного runner |

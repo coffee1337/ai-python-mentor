@@ -40,6 +40,7 @@ def dispatch_one(session_factory=SessionLocal):
         token = str(uuid4())
         job.claim_token = token
         job.status = "running"
+        job.started_at = now
         job.lease_expires_at = now + timedelta(seconds=90)
         job_id, attempt_id = job.id, attempt.id
         exercise_id, version_number, source = attempt.exercise_id, version.version, attempt.source_code
@@ -63,6 +64,7 @@ def dispatch_one(session_factory=SessionLocal):
             db.commit()
             return True
         job.status = "unavailable" if result.status == "unavailable" else "finished" if result.status in {"passed", "failed"} else "failed"
+        job.graded_at = datetime.now(UTC)
         job.claim_token = None
         job.lease_expires_at = None
         _persist_result_and_evidence(db, attempt, result)

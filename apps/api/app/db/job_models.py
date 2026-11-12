@@ -24,5 +24,9 @@ class ExecutionJob(Base):
     claim_token: Mapped[str | None] = mapped_column(String(36))
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Stage timestamps: the learner sees queued -> running -> graded with real times,
+    # not a spinner.
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    graded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

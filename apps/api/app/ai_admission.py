@@ -58,6 +58,10 @@ def _alert_daily_spend(day: str, spent: int, limit: int) -> None:
     logger.info(json.dumps({"event": "ai_spend_alert", "day": day, "spent_micro_usd": spent,
                             "limit_micro_usd": limit, "ratio": round(spent / limit, 4)},
                            sort_keys=True))
+    # Log alone was not an alert: the owner also gets one message in their chat.
+    from app import alerting
+
+    alerting.spend_alert(day, spent, limit)
 
 
 def reserve_ai_call(

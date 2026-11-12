@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppHeader from "../components/app-header";
+import InterestsSelector from "./interests";
 import ProfileForm from "../components/profile-form";
 import {
   api,
@@ -472,6 +473,7 @@ export default function AccountPage() {
                     </form>
                     <div className="product-divider" />
                     <div className="product-inline-heading">
+                      <InterestsSelector />
                       <h3>Telegram</h3>
                       <span className="badge">
                         {preferences.telegram_bound

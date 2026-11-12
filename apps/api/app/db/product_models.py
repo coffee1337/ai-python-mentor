@@ -58,6 +58,8 @@ class ProjectSubmission(Base):
     payload_hash: Mapped[str] = mapped_column(String(64))
     artifact_text: Mapped[str] = mapped_column(Text)
     repository_url: Mapped[str | None] = mapped_column(String(2048))
+    # The learner's own explanation of the project: what it does and why it is built this way.
+    explanation: Mapped[str | None] = mapped_column(String(2000))
     validation: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -72,6 +74,8 @@ class PortfolioEntry(Base):
     title: Mapped[str] = mapped_column(String(160))
     summary: Mapped[str] = mapped_column(String(2000))
     repository_url: Mapped[str | None] = mapped_column(String(2048))
+    # The learner's own explanation of the project: what it does and why it is built this way.
+    explanation: Mapped[str | None] = mapped_column(String(2000))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 

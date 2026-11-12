@@ -94,6 +94,8 @@ class PortfolioPublication(BaseModel):
     published: bool
     title: str = Field(min_length=2, max_length=160)
     summary: str = Field(min_length=10, max_length=2000)
+    # The learner's own explanation: what the project does and why it is built this way.
+    explanation: str | None = Field(default=None, max_length=2000)
     repository_url: str | None = Field(default=None, max_length=2048)
 
     @field_validator("repository_url")
@@ -131,6 +133,7 @@ def _project_response(db, project):
         "submissions": [_submission_response(row) for row in submissions],
         "created_at": project.created_at, "portfolio": None if portfolio is None else {
             "published": portfolio.published, "title": portfolio.title, "summary": portfolio.summary,
+            "explanation": portfolio.explanation,
             "repository_url": portfolio.repository_url, "public_path": f"/portfolio/{portfolio.public_token}" if portfolio.published else None},
         "notice": "Проверяется комплектность артефакта. Код проекта и тесты не исполняются; это не подтверждение самостоятельного mastery."}
 
@@ -239,7 +242,8 @@ def public_portfolio(public_token: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "Portfolio not found")
     # Only fields the learner expressly selected for publication. No account
     # identity, private source, grading material, or claim of verified skills.
-    return {"title": entry.title, "summary": entry.summary, "repository_url": entry.repository_url,
+    return {"title": entry.title, "summary": entry.summary, "explanation": entry.explanation,
+            "repository_url": entry.repository_url,
             "verification": "learner_published", "updated_at": entry.updated_at}
 
 

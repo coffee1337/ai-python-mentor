@@ -63,6 +63,9 @@ class Profile(Base):
     display_name: Mapped[str | None] = mapped_column(String(100))
     experience_level: Mapped[str | None] = mapped_column(String(32))
     onboarding_completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # Fixed vocabulary (games, finance, sport, travel, health): the wrapper of a
+    # task may use it, the graded answer never depends on it.
+    interests: Mapped[list | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
@@ -183,6 +186,20 @@ class FeatureFlagOverride(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
     updated_by: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class AIEvalRun(Base):
+    """One benchmark run of the tutor prompt/model on the authored case set."""
+
+    __tablename__ = "ai_eval_runs"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    model_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    cases: Mapped[int] = mapped_column(Integer, nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    metrics: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class AIFeedback(Base):
@@ -734,6 +751,8 @@ class AIUsageLedger(Base):
     input_tokens: Mapped[int | None] = mapped_column(Integer)
     output_tokens: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
+    prompt_version: Mapped[str | None] = mapped_column(String(40))
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 class AssessmentRun(Base):

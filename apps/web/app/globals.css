@@ -6547,3 +6547,23 @@ small {
   white-space: nowrap;
   border: 0;
 }
+
+.code-editor-mobile-hint {
+  display: none;
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .code-editor-mobile-hint {
+    display: block;
+  }
+}
+
+.interests-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}

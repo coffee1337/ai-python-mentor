@@ -26,6 +26,11 @@ ACTIVE = ("queued", "running")
 KEY = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
 
 
+class JobStage(BaseModel):
+    stage: str
+    at: datetime
+
+
 class JobResponse(BaseModel):
     id: UUID
     attempt_id: UUID
@@ -34,6 +39,9 @@ class JobResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     result: dict
+    # Real stages with timestamps: queued -> running -> graded.
+    stage: str = "queued"
+    timeline: list[JobStage] = []
 
 
 def execution_configured():
@@ -86,8 +94,17 @@ def coding_specification(lesson_id: str, auth=Depends(current_auth), db: Session
     }
 
 
+STAGES = {"queued": "queued", "running": "running", "finished": "graded", "failed": "graded",
+          "unavailable": "graded", "cancelled": "graded"}
+
+
 def job_response(db, job):
     attempt = db.get(CodingAttempt, job.coding_attempt_id)
+    timeline = [JobStage(stage="queued", at=job.created_at)]
+    if job.started_at is not None:
+        timeline.append(JobStage(stage="running", at=job.started_at))
+    if job.graded_at is not None:
+        timeline.append(JobStage(stage="graded", at=job.graded_at))
     return JobResponse(
         id=job.id,
         attempt_id=attempt.id,
@@ -96,6 +113,8 @@ def job_response(db, job):
         created_at=job.created_at,
         updated_at=job.updated_at,
         result=json.loads(attempt.result or "{}"),
+        stage=STAGES.get(job.status, "queued"),
+        timeline=timeline,
     )
 
 

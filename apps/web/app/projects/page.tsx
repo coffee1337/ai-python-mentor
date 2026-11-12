@@ -38,6 +38,7 @@ type Portfolio = {
   published: boolean;
   title: string;
   summary: string;
+  explanation: string | null;
   repository_url: string | null;
   public_path?: string | null;
 };
@@ -528,6 +529,7 @@ export default function ProjectsPage() {
             published: data.has("published"),
             title: data.get("title"),
             summary: data.get("summary"),
+            explanation: data.get("explanation") || null,
             repository_url: data.get("repository_url") || null,
           }),
         },
@@ -827,7 +829,7 @@ export default function ProjectsPage() {
                         </label>
                       </div>
                       <label>
-                        Описание работы
+                        Что делает проект
                         <textarea
                           name="summary"
                           defaultValue={current.portfolio?.summary ?? ""}
@@ -837,6 +839,20 @@ export default function ProjectsPage() {
                           rows={4}
                           placeholder="Какую задачу решает проект, что вы сделали и чему научились?"
                         />
+                      </label>
+                      <label>
+                        Как вы это сделали (объяснение решения)
+                        <textarea
+                          name="explanation"
+                          defaultValue={current.portfolio?.explanation ?? ""}
+                          minLength={20}
+                          maxLength={2000}
+                          rows={4}
+                          placeholder="Почему выбран такой способ, что было сложно, что бы изменили"
+                        />
+                        <span className="product-field-hint">
+                          Объяснение видно на публичной странице: оно показывает, что вы понимаете решение.
+                        </span>
                       </label>
                       <label className="check-label">
                         <input

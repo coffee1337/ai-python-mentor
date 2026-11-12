@@ -7,6 +7,7 @@ import { api, errorMessage } from "../../lib/api";
 type Portfolio = {
   title: string;
   summary: string;
+  explanation?: string | null;
   repository_url: string | null;
 };
 
@@ -86,6 +87,15 @@ export default function PortfolioPage() {
               <h2 id="portfolio-description-title">О проекте</h2>
               <p className="product-preserve-lines">{portfolio.summary}</p>
             </section>
+            {portfolio.explanation ? (
+              <section
+                className="portfolio-project-description"
+                aria-labelledby="portfolio-explanation-title"
+              >
+                <h2 id="portfolio-explanation-title">Объяснение решения</h2>
+                <p className="product-preserve-lines">{portfolio.explanation}</p>
+              </section>
+            ) : null}
             {portfolio.repository_url && (
               <a
                 className="button"

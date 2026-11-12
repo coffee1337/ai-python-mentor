@@ -1,3 +1,4 @@
+import time
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -73,6 +74,8 @@ def _record_usage(
     usage: dict | None,
     cache_hit: bool,
     status: str,
+    prompt_version: str | None = None,
+    latency_ms: int | None = None,
 ) -> None:
     db.add(AIUsageLedger(
         user_id=user.id,
@@ -85,6 +88,8 @@ def _record_usage(
         input_tokens=_usage_token(usage, "prompt_tokens"),
         output_tokens=_usage_token(usage, "completion_tokens"),
         status=status,
+        prompt_version=prompt_version,
+        latency_ms=latency_ms,
     ))
 
 
@@ -251,7 +256,11 @@ def chat(lesson_id: str, payload: ChatRequest,
         MentorMessage.status == "completed",
         MentorMessage.id != existing.id,
     ).order_by(MentorMessage.created_at.desc()).limit(6)))))
-    messages = context_messages(lesson, level, mode)
+    from app import prompt_variants
+
+    prompt_version = prompt_variants.for_user("tutor_chat", user_id)
+    messages = context_messages(lesson, level, mode,
+                                variant_instructions=prompt_variants.instructions("tutor_chat", prompt_version))
     from app import memory as student_memory
 
     summary = student_memory.interaction_summary(db, user_id=user_id, lesson_id=lesson_id)
@@ -269,6 +278,7 @@ def chat(lesson_id: str, payload: ChatRequest,
             MisconceptionVersion.version == 1).order_by(UserMistake.last_seen_at.desc()).limit(3)).all()
     if mistake_rows:
         import json
+
         messages.insert(2, {"role": "user", "content": "Untrusted authored learning signals; possible misconceptions, never diagnoses:\n" + json.dumps([
             {"description": concept.error_text[:240], "remediation": concept.remediation_text[:400], "count": row.occurrence_count}
             for row, concept in mistake_rows], ensure_ascii=False)})
@@ -285,7 +295,9 @@ def chat(lesson_id: str, payload: ChatRequest,
     config = None
     try:
         config = ai_gateway.configuration(task="tutor_chat")
+        call_started = time.monotonic()
         answer, usage = ai_gateway.generate_with_usage(config, messages)
+        measured_latency_ms = int((time.monotonic() - call_started) * 1000)
     except ai_gateway.GatewayError as exc:
         finish_ai_call(db, reservation, status="gateway_error")
         existing.status = "failed"
@@ -312,6 +324,8 @@ def chat(lesson_id: str, payload: ChatRequest,
         usage=usage,
         cache_hit=False,
         status="completed",
+        prompt_version=prompt_version,
+        latency_ms=measured_latency_ms,
     )
     existing.status = "completed"
     assistant = MentorMessage(conversation_id=conversation_id, role="assistant", content=answer, mode=mode,

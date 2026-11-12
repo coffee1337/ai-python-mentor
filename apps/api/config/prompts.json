@@ -1,0 +1,17 @@
+{
+  "tutor_chat": {
+    "active": "v1",
+    "versions": ["v1", "v2"],
+    "rollout_percent": 50,
+    "instructions": {
+      "v1": "",
+      "v2": "Before answering, name the exact line or word the learner is stuck on, then answer. Keep the answer shorter than three short paragraphs and end with one question."
+    }
+  },
+  "code_review": {
+    "active": "v1",
+    "versions": ["v1"],
+    "rollout_percent": 0,
+    "instructions": {"v1": ""}
+  }
+}
