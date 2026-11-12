@@ -9,12 +9,23 @@ type Message = {
   status: string;
   created_at: string;
 };
-type Pending = { request_id: string; message: string };
+type Pending = { request_id: string; message: string; mode?: string };
+type TutorMode = { id: string; title: string };
 type MentorOverview = {
   status: "configured" | "unconfigured";
   purpose: string;
   examples: string[];
   message: string;
+};
+const MODE_HINTS: Record<string, string> = {
+  teach: "Объясняет тему по шагам",
+  socratic: "Ведёт вопросами, без готовых ответов",
+  hint: "Даёт минимальный следующий шаг",
+  debug_coach: "Разбирает ошибку в вашем коде",
+  review: "Задаёт вопросы по качеству кода",
+  examiner: "Проверяет понимание без подсказок",
+  interviewer: "Собеседование на junior backend",
+  project_mentor: "Помогает с проектом по шагам",
 };
 const QUESTIONS = [
   "Объясни тему проще, с бытовым примером",
@@ -29,9 +40,15 @@ export default function MentorChat({ lessonId }: { lessonId: string }) {
   const [error, setError] = useState("");
   const [pending, setPending] = useState<Pending | null>(null);
   const [mentor, setMentor] = useState<MentorOverview | null>(null);
+  const [modes, setModes] = useState<TutorMode[]>([]);
+  const [mode, setMode] = useState<string>("");
+  const [autoMode, setAutoMode] = useState<string>("");
   const path = `/learning/lessons/${encodeURIComponent(lessonId)}/chat`;
 
   useEffect(() => {
+    void api<{ default: string; modes: TutorMode[] }>("/learning/modes")
+      .then((catalogue) => setModes(catalogue.modes))
+      .catch(() => setModes([]));
     const controller = new AbortController();
     setLoading(true);
     setError("");
@@ -75,10 +92,12 @@ export default function MentorChat({ lessonId }: { lessonId: string }) {
     setError("");
     setPending(payload);
     try {
-      await api<Message>(path, {
+      const answer = await api<Message & { mode?: string; mode_reason?: string }>(path, {
         method: "POST",
         body: JSON.stringify(payload),
       });
+      if (answer.mode && answer.mode_reason && answer.mode_reason !== "explicit")
+        setAutoMode(answer.mode);
       setPending(null);
       setText("");
       await refresh();
@@ -97,7 +116,11 @@ export default function MentorChat({ lessonId }: { lessonId: string }) {
   function submit(event: FormEvent) {
     event.preventDefault();
     if (text.trim())
-      void send({ request_id: newRequestId(), message: text.trim() });
+      void send({
+        request_id: newRequestId(),
+        message: text.trim(),
+        ...(mode ? { mode } : {}),
+      });
   }
 
   return (
@@ -198,6 +221,37 @@ export default function MentorChat({ lessonId }: { lessonId: string }) {
           )}
         </div>
       )}
+        {modes.length > 0 ? (
+          <div className="mentor-modes" role="group" aria-label="Режим наставника">
+            <button
+              type="button"
+              className={`mentor-mode ${mode === "" ? "is-active" : ""}`}
+              aria-pressed={mode === ""}
+              onClick={() => setMode("")}
+              title="Наставник сам выберет режим по вашим действиям"
+            >
+              Авто
+            </button>
+            {modes.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`mentor-mode ${mode === item.id ? "is-active" : ""}`}
+                aria-pressed={mode === item.id}
+                onClick={() => setMode(item.id)}
+                title={MODE_HINTS[item.id] || item.title}
+              >
+                {item.title}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {mode === "" && autoMode && MODE_HINTS[autoMode] ? (
+          <p className="product-field-hint">
+            Сейчас наставник работает в режиме «{autoMode ? MODE_HINTS[autoMode] : ""}». Режим
+            подбирается по вашим попыткам; можно выбрать вручную.
+          </p>
+        ) : null}
       {!pending && mentor?.status !== "unconfigured" && (
         <div className="mentor-suggestions" aria-label="Примеры вопросов">
           {QUESTIONS.map((question) => (

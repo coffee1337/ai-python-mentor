@@ -154,6 +154,7 @@ class MentorMessage(Base):
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="completed", server_default="completed")
+    mode: Mapped[str | None] = mapped_column(String(24))
     reply_to_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("mentor_messages.id", ondelete="CASCADE"), unique=True)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

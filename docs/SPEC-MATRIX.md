@@ -9,9 +9,9 @@
 | Показатель | Значение |
 |---|---|
 | Всего строк | 250 |
-| done | 69 |
+| done | 71 |
 | partial | 125 |
-| missing | 35 |
+| missing | 33 |
 | out-of-scope | 21 |
 | строк без статуса | 0 |
 
@@ -207,7 +207,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
 | 19.1 | Context packet: goal, topic, mastery, mistakes, exercise, knowledge, hint_level, mode, allowed_behavior | `partial` | `apps/api/app/mentor.py:225; apps/api/app/mentor_prompts.py:24` | `tests/test_mentor.py::test_success_history_retry_and_evidence` | есть урок, уровень, история, ошибки, RAG; нет goal/mastery/hint_level/mode |
-| 19.2 | Режимы Teach, Socratic, Hint, Debug Coach, Review, Examiner, Interviewer, Project Mentor | `missing` | `apps/api/app/mentor_prompts.py:5` | `tests/test_mentor.py::test_missing_config_and_access` | один системный промпт, выбора режима нет |
+| 19.2 | Режимы Teach, Socratic, Hint, Debug Coach, Review, Examiner, Interviewer, Project Mentor | `done` | `apps/api/app/tutor_modes.py:1; apps/api/app/mentor_prompts.py:24` | `tests/test_tutor_modes.py::test_catalogue_exposes_eight_modes; tests/test_tutor_modes.py::test_explicit_mode_reaches_the_provider_and_is_stored; tests/test_tutor_modes.py::test_every_mode_keeps_the_trusted_base_rules` | восемь режимов как блоки правил поверх доверенного промпта; выбор явный или серверный, режим пишется в сообщение и в ответ API |
 | 19.3 | Tutor знает про оцениваемое задание и работает как orchestrator, а не один prompt | `partial` | `apps/api/app/mentor_prompts.py:9; apps/api/app/mentor.py:186` | `tests/test_mentor.py::test_success_records_usage_with_safe_token_types_and_character_counts` | оркестрация admission/RAG/usage есть; проверки утечки solution нет |
 
 ## §20. AI Provider Layer
@@ -604,7 +604,7 @@ ls apps/api/migrations/versions apps/web/app apps/runner/runner_worker
 
 | № | Требование | Статус | Код | Тест | Комментарий |
 |---|---|---|---|---|---|
-| 73.1 | Сигналы: failed runs, много подсказок, «не понимаю», reset; смена режима tutor | `missing` | `нет` | `нет` | сигналов и режимов нет |
+| 73.1 | Сигналы: failed runs, много подсказок, «не понимаю», reset; смена режима tutor | `done` | `apps/api/app/tutor_modes.py:96` | `tests/test_tutor_modes.py::test_failed_runs_switch_the_mode_without_asking; tests/test_tutor_modes.py::test_repeated_confusion_switches_to_explanation` | три проваленных запуска → debug_coach, два сигнала непонимания → teach; причина смены возвращается клиенту |
 
 ## §74. Confidence Calibration
 

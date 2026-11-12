@@ -31,6 +31,8 @@ class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     request_id: UUID
     message: str = Field(min_length=1, max_length=4000)
+    # Explicit tutor mode; omitted means the server picks one from objective signals.
+    mode: str | None = Field(default=None, max_length=32)
 
     @field_validator("message")
     @classmethod
@@ -46,6 +48,8 @@ class ChatMessage(BaseModel):
     role: str
     content: str
     status: str
+    mode: str | None = None
+    mode_reason: str | None = None
     created_at: datetime
 
 
@@ -170,6 +174,14 @@ def _retrieval_context(db: Session, lesson_id: str, message: str, *, user: User 
         return []
 
 
+@router.get("/modes")
+def modes() -> dict:
+    """The eight tutor behaviours the product actually implements."""
+    from app import tutor_modes
+
+    return {"default": tutor_modes.DEFAULT_MODE, "modes": tutor_modes.catalogue()}
+
+
 @router.get("/lessons/{lesson_id}/chat", response_model=list[ChatMessage])
 def history(lesson_id: str, before: datetime | None = None,
             auth: tuple[User, AuthSession] = Depends(current_auth), db: Session = Depends(get_db)):
@@ -190,6 +202,12 @@ def chat(lesson_id: str, payload: ChatRequest,
     lesson = accessible_lesson(lesson_id, db, user)
     user_id = user.id
     level = user.profile.experience_level
+    from app import tutor_modes
+
+    try:
+        mode, mode_reason = tutor_modes.suggest(db, user, lesson_id, payload.mode)
+    except tutor_modes.UnknownMode:
+        raise HTTPException(422, "Unknown tutor mode") from None
     # The user lock protects conversation creation/cache lookup only. Admission
     # commits this transaction before embeddings or completion requests.
     db.execute(select(User.id).where(User.id == user_id).with_for_update()).scalar_one()
@@ -219,6 +237,7 @@ def chat(lesson_id: str, payload: ChatRequest,
                                  role="user", content=payload.message, status="failed",
                                  attempt_count=0, created_at=now)
         db.add(existing)
+    existing.mode = mode
     existing.attempt_count += 1
     existing.last_attempt_at = now
     db.flush()
@@ -227,7 +246,7 @@ def chat(lesson_id: str, payload: ChatRequest,
         MentorMessage.status == "completed",
         MentorMessage.id != existing.id,
     ).order_by(MentorMessage.created_at.desc()).limit(6)))))
-    messages = context_messages(lesson, level)
+    messages = context_messages(lesson, level, mode)
     messages += [{"role": message.role, "content": message.content} for message in prior]
     messages.append({"role": "user", "content": payload.message})
     conversation_id = conversation.id
@@ -284,10 +303,12 @@ def chat(lesson_id: str, payload: ChatRequest,
         status="completed",
     )
     existing.status = "completed"
-    assistant = MentorMessage(conversation_id=conversation_id, role="assistant", content=answer,
+    assistant = MentorMessage(conversation_id=conversation_id, role="assistant", content=answer, mode=mode,
                               status="completed", reply_to_id=existing.id,
                               created_at=datetime.now(UTC))
     db.add(assistant)
     db.commit()
     db.refresh(assistant)
-    return assistant
+    # The reason is user-facing: the learner sees why the mode was chosen.
+    response = ChatMessage.model_validate(assistant)
+    return response.model_copy(update={"mode_reason": mode_reason})

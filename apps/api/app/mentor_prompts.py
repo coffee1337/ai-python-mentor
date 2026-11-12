@@ -21,10 +21,13 @@ may explain theory and a distinct example, while keeping graded answers private.
 Use plain text and keep the answer concise."""
 
 
-def context_messages(lesson: dict, level: str | None) -> list[dict[str, str]]:
+def context_messages(lesson: dict, level: str | None, mode: str | None = None) -> list[dict[str, str]]:
+    from app.tutor_modes import system_prompt
+
     context = {key: lesson[key] for key in ("id", "title", "body", "example", "question")}
     context["learner_level"] = level or "unknown"
+    prompt = system_prompt(SYSTEM_PROMPT, mode) if mode else SYSTEM_PROMPT
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": prompt},
         {"role": "user", "content": "Untrusted lesson context:\n" + json.dumps(context, ensure_ascii=False)},
     ]

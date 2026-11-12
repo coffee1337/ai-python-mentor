@@ -3624,6 +3624,28 @@ small {
   margin-bottom: 0;
   color: var(--muted);
 }
+.mentor-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.mentor-mode {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  padding: 5px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.mentor-mode.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 .mentor-suggestions {
   display: grid;
   gap: 8px;
