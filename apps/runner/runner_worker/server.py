@@ -162,7 +162,11 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 try:
                     result = evaluate(self.server.policy, key, body, entry)
-                except Exception:
+                except Exception as error:
+                    # The client gets a stable code; operators get the class (and the
+                    # NotReady reason, which is a fixed vocabulary, never user text).
+                    reason = str(error) if isinstance(error, NotReady) else type(error).__name__
+                    print(f"runner_execution_failed reason={reason}", flush=True)
                     result = response(key, error="worker_not_ready")
                 self.server.journal.finish(caller, key, result)
                 self.answer(200, result)
@@ -170,7 +174,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.server.capacity.release()
         except Conflict:
             self.answer(409, {"error_code": "idempotency_conflict", "message": "Idempotency conflict"})
-        except NotReady:
+        except NotReady as error:
+            print(f"runner_admission_failed reason={error}", flush=True)
             self.answer(503, response(key, error="worker_not_ready"))
 
 

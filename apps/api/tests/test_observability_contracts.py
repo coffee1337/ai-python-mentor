@@ -68,7 +68,16 @@ def test_the_log_line_repeats_the_id_and_never_the_payload(client):
     finally:
         logger.removeHandler(records)
     request_id = response.headers["X-Request-ID"]
-    assert any(request_id in message and "route=/auth/login" in message for message in records.messages), records.messages
+    state = {
+        "disabled": logger.disabled,
+        "manager_disable": logging.root.manager.disable,
+        "level": logging.getLevelName(logger.level),
+        "effective": logging.getLevelName(logger.getEffectiveLevel()),
+        "propagate": logger.propagate,
+        "enabled_for_info": logger.isEnabledFor(logging.INFO),
+        "root_level": logging.getLevelName(logging.getLogger().level),
+    }
+    assert any(request_id in message and "route=/auth/login" in message for message in records.messages), (state, records.messages)
     joined = " ".join(records.messages)
     assert "wrong-password" not in joined, "пароль не должен попадать в лог"
     assert "nobody@example.com" not in joined.split("route=")[0], "логин не пишется в строку запроса"

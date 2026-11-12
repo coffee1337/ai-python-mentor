@@ -59,21 +59,27 @@ main() {
   expect "internal runner path hidden" 404 "$(curl_ "$BASE/internal/v1/runner/executions")"
 
   log "security headers"
-  local headers
-  headers=$(curl -s -I --cacert "$CA" "$BASE/")
+  # No pipelines here: `grep -q` closes its input early, and under `pipefail` the
+  # SIGPIPE from `tr` used to turn a matching header into a failure.
+  local headers_lc
+  headers_lc=$(curl -s -I --cacert "$CA" "$BASE/" | tr '[:upper:]' '[:lower:]')
+  has_header() { case "$headers_lc" in *$'\n'"$1:"*) return 0;; *) return 1;; esac; }
   for header in strict-transport-security x-content-type-options x-frame-options referrer-policy; do
-    if printf '%s' "$headers" | tr 'A-Z' 'a-z' | grep -q "^$header:"; then ok "header $header"; else fail "missing header $header"; fi
+    if has_header "$header"; then ok "header $header"; else fail "missing header $header"; fi
   done
-  if printf '%s' "$headers" | tr 'A-Z' 'a-z' | grep -q '^server: caddy'; then fail "server banner leaks proxied runtime"; else ok "server banner hidden"; fi
+  case "$headers_lc" in
+    *$'\n'server:*) fail "server banner leaks proxied runtime" ;;
+    *) ok "server banner hidden" ;;
+  esac
 
   log "ports"
-  local published
-  published=$(ss -ltnH 2>/dev/null | awk '{print $4}' | sed 's/.*://' | sort -u | tr '\n' ' ')
+  local listening
+  listening=" $(ss -ltnH 2>/dev/null | awk '{print $4}' | sed 's/.*://' | sort -u | tr '\n' ' ') "
   for port in 8443 80 443; do
-    if printf '%s' "$published" | grep -qw "$port"; then ok "port $port published (proxy)"; fi
+    case "$listening" in *" $port "*) ok "port $port published (proxy)";; esac
   done
-  for port in 5432 8000 8443 3000; do
-    if printf '%s' "$published" | grep -qw "$port" && [ "$port" != "8443" ]; then fail "internal port $port is published"; fi
+  for port in 5432 8000 3000 2019; do
+    case "$listening" in *" $port "*) fail "internal port $port is published";; esac
   done
   if docker port "$(docker compose -f compose.prod.yml -f compose.ci.yml --env-file .env.prod ps -q db)" >/dev/null 2>&1 \
      && [ -n "$(docker port "$($COMPOSE ps -q db)")" ]; then fail "database exposes a host port"; else ok "database is internal only"; fi

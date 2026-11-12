@@ -9,7 +9,10 @@ from app.db import models
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Alembic's default would disable every already-created logger. In tests the
+    # migrations run inside the application process, so that silently muted
+    # application logging for the rest of the suite.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 database_url = os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
 # ConfigParser interpolates percent signs; SQLAlchemy must receive the original
 # URL, including encoded credentials and literal percent signs in SQLite paths.
