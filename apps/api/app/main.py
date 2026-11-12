@@ -142,7 +142,6 @@ def health() -> dict[str, str]:
     return {"status": "ok", "database": "ok"}
 
 
-@app.middleware("http")
 def _schema_hint(error: Exception) -> str:
     """SQLSTATE and the object name from a database error, never the statement."""
     orig = getattr(error, "orig", None)
@@ -160,6 +159,7 @@ def _schema_hint(error: Exception) -> str:
     return " ".join(parts) if parts else "schema_hint=none"
 
 
+@app.middleware("http")
 async def request_observation(request, call_next):
     from time import monotonic
     from uuid import uuid4
