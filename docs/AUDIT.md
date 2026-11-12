@@ -290,3 +290,34 @@ Permission denied` — у hosted-раннера нет прав на `/var/cache
 `main` после закрытия P0-1 и P0-2: API — 363 passed, 10 skipped; PostgreSQL-only — 7 passed;
 runner — 35 passed в unit-job'е и 13 контейнерных тестов в отдельном job'е. Числа обновлены здесь,
 чтобы AUDIT, STATUS и SPEC-MATRIX не расходились.
+
+## 9. W0. Красный main: четыре дефекта, все закрыты (2026-11-12)
+
+Прогон 43193975454: **10 job'ов зелёные**, `COMPOSE SMOKE: ok`, API-набор `387 passed, 10 skipped`.
+Ни один провал не был «инфраструктурой»: пять красных подряд дали четыре разных дефекта.
+
+| # | Дефект | Доказательство до | Исправление |
+|---|---|---|---|
+| 1 | `alembic/env.py` вызывал `fileConfig` с дефолтным `disable_existing_loggers=True`; после теста миграций логгеры `mentor.request`, `ai.usage`, `runner.client` оставались выключенными | `test_the_log_line_repeats_the_id_and_never_the_payload`: `records.messages == []` в полном наборе, зелёный изолированно. Диагностика показала `disabled: True` у логгера | `disable_existing_loggers=False` + `conftest.py`, который падает на тесте-загрязнителе и называет логгер |
+| 2 | Проверка заголовков в смоуке: `printf \| tr \| grep -q` под `pipefail` возвращала код SIGPIPE из `tr`, когда `grep -q` закрывал вход после совпадения | `FAIL missing header x-content-type-options` при реально присутствующем заголовке, рядом `tr: write error: Broken pipe` | проверки переписаны на `case` по заранее посчитанной строке, без пайплайнов |
+| 3 | Клиентские сертификаты монтировались только в контейнер `api`; `execution-worker` вызывал раннер без PKI и падал до залогированного участка | задание получало `unavailable` с сообщением воркера, в логах воркера ноль строк | монтирование перенесено в общий якорь `x-api-common`; тест deploy-конфигурации требует PKI у любого сервиса с `RUNNER_*` |
+| 4 | Тест fork-бомбы форкал детей, которые сразу выходили — 200 последовательных fork законны, pids-limit не проверялся | job «Learner code in containers» упал на коммите 5716287, был зелёным до него | дети живут 30 с, проверяется предел одновременных процессов |
+
+Дополнительно раннер перестал молчать: `runner_execution_failed reason=<код>` и
+`runner_admission_failed reason=<код>` — раньше любой `NotReady` и любое исключение
+превращались в `worker_not_ready` без строки в логе.
+
+Что доказано смоуком в проде-стеке (job «Production compose comes up and serves the journey»):
+
+```
+ok   register (201) / onboarding (200) / next lesson (200)
+ok   public portfolio page (200) / portfolio api is public (200)
+ok   runner is configured for the API
+ok   job finished (finished)          ← код ученика реально исполнился
+ok   metrics hidden (404) / internal runner path hidden (404)
+ok   header strict-transport-security … referrer-policy / server banner hidden
+ok   port 8443, 80, 443 published (proxy) / database is internal only
+ok   webhook without secret (503) / api healthy after restart (200)
+ok   session survives restart (200)
+COMPOSE SMOKE: ok
+```

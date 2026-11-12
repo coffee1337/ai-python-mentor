@@ -10,21 +10,21 @@
 | 1 | Трассируемость | частично | `docs/SPEC-MATRIX.md`: 250 строк — done 67, partial 127, missing 35, out-of-scope 21 |
 | 2 | Исполнение кода | **зелёный** | CI job «Learner code in containers (gVisor and kernel parity)»: 31 тест, 150.996 s, зелёный; каталог 90 заданий / 288 кейсов на gVisor — эталоны 100 %; побеги в контейнере отклонены; паритет вердиктов с Landlock |
 | 3 | AI-контур | зелёный | `scripts/ai-smoke.py`: живые вызовы RU+EN, токены и стоимость в логах; `tests/test_model_routing.py` 12 passed |
-| 4 | Аккаунты и безопасность | частично | `tests/test_security_headers.py` 4 passed, `test_asvs_controls.py` 3 passed; открыт ASVS 2.2.3 (письма о неудачных входах) — нужен SMTP |
-| 5 | Email / Telegram / платежи | нет | адаптеры и outbox есть, провайдеров нет: ADR в `docs/decisions.md`, checkout скрыт в UI |
+| 4 | **зелёный** | `test_security_headers.py` 4, `test_asvs_controls.py` 3, `test_email_delivery.py` 7; ASVS 2.2.3 закрыт письмом о неудачных входах |
+| 5 | частично | email через SMTP и Telegram-бот работают (тесты на реальном SMTP-сокете и моке Bot API); платежи — ADR «вне v1.0», checkout скрыт |
 | 6 | Тесты | зелёный | API 363 passed / 10 skipped, PG 7 passed, runner 35 passed + 13 контейнерных, E2E 8 + исполнение 2, k6 p95 76 ms |
 | 7 | Наблюдаемость | частично | `/metrics`, Prometheus-правила и Grafana-дашборд валидированы `promtool` и `caddy validate`; агрегации логов (Loki) нет |
 | 8 | Данные | зелёный | `alembic upgrade/downgrade/upgrade` на копии PG с контрольными данными; `alembic check` чистый; restore drill 63 таблицы |
-| 9 | Деплой | нет | `compose.prod.yml` готов, не поднимался ни разу — нужен прогон в CI (W7) |
+| 9 | **зелёный** | CI job «Production compose comes up and serves the journey»: `COMPOSE SMOKE: ok`, включая исполнение кода через runner в compose-стеке (run 43193975454) |
 | 10 | Красота | зелёный | `visual.spec.mjs`: 8 экранов × 360/768/1440, 6 passed; `tests/test_content_quality.py` 9 passed |
 | 11 | Чистота | зелёный | `ruff check apps scripts` — All checks passed; TODO/FIXME — 0; тесты не отключены |
-| 12 | Релиз | нет | тег только v0.1.0, release notes не написаны (W9) |
+| 12 | нет | тег только v0.1.0, release notes не написаны (W9) |
 
 ## Зелёное (проверено командами)
 
 | Область | Проверка | Результат |
 |---|---|---|
-| API, SQLite-набор | `cd apps/api && python -m pytest -q` | 363 passed, 10 skipped |
+| API, SQLite-набор | `cd apps/api && python -m pytest -q` | 387 passed, 10 skipped |
 | API, PostgreSQL | `RUN_POSTGRES_TESTS=1 pytest tests/test_postgres_specific.py` | 7 passed |
 | Runner, unit | `python -m unittest discover -s apps/runner/tests` | 35 passed, 13 skipped (контейнерные — отдельным job'ом) |
 | Runner, контейнер | CI job «Learner code in containers» | 31 passed, каталог 90 заданий на gVisor |
